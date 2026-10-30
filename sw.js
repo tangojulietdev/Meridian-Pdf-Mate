@@ -1,11 +1,11 @@
 // Meridian PDF Mate service worker: full offline precache, share target, file opening.
-const VERSION = 'meridian-pdf-mate-v2';
+const VERSION = 'meridian-pdf-mate-v3';
 const SHARE = 'meridian-pdf-mate-share';
 const ASSETS = [
 "./",
 "index.html",
 "app.js?v=5",
-"manifest.webmanifest",
+"manifest.webmanifest?v=3",
 "icons/icon-192.png",
 "icons/icon-512.png",
 "icons/maskable-512.png",
@@ -234,6 +234,11 @@ self.addEventListener('fetch', (e) => {
   if (req.method === 'POST' && url.pathname.endsWith('/share-target')) { e.respondWith(handleShare(req)); return; }
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('manifest.webmanifest') || url.pathname.endsWith('/sw.js')) {
+    // Always fresh: the browser uses these to identify and update the installed app
+    e.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
+    return;
+  }
   if (req.mode === 'navigate') {
     // Network first so updates arrive; cached app shell when offline
     e.respondWith(fetch(req).then((res) => { if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put('index.html', copy)); } return res; })
