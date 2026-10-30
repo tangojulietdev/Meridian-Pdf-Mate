@@ -1044,17 +1044,18 @@ function paintFind(only) {
 
 /* ---------- Tools and format bar ---------- */
 const lastInGroup = { shape: 'rect', mark: 'tick' };
+const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 function buildTools() {
-  $('#tools').innerHTML = TOOLS.map(([k, label, ic]) => {
-    if (k === 'sep') return '<span class="tsep" aria-hidden="true"></span>';
-    if (k.startsWith('g:')) { const g = k.slice(2); const cur = g === 'sign' ? 'sign' : (GROUPS[g].find((v) => v[0] === lastInGroup[g]) || GROUPS[g][0])[2]; return `<button class="tool grp" data-group="${g}" aria-haspopup="menu" aria-label="${label}" title="${label}">${icon(cur)}<i class="chev" aria-hidden="true"></i></button>`; }
+  $('#tools').innerHTML = '<div class="tgroup" role="group">' + TOOLS.map(([k, label, ic]) => {
+    if (k === 'sep') return '</div><div class="tgroup" role="group">';
+    if (k.startsWith('g:')) { const g = k.slice(2); const cur = g === 'sign' ? 'sign' : (GROUPS[g].find((v) => v[0] === lastInGroup[g]) || GROUPS[g][0])[2]; return `<button class="tool grp" data-group="${g}" aria-haspopup="menu" aria-label="${label}" title="${label}">${icon(cur)}${CHEV}</button>`; }
     return `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${label}" title="${label}">${icon(ic)}</button>`;
-  }).join('');
+  }).join('') + '</div>';
 }
 function setTool(t) {
   if (t !== 'image') S.pendingImg = null;
   if (t !== 'stamp') S.pendingStamp = null;
-  const g = toolGroup(t); if (g) { lastInGroup[g] = t; const gb = $(`#tools [data-group="${g}"]`); if (gb) gb.innerHTML = icon(GROUPS[g].find((v) => v[0] === t)[2]) + '<i class="chev" aria-hidden="true"></i>'; }
+  const g = toolGroup(t); if (g) { lastInGroup[g] = t; const gb = $(`#tools [data-group="${g}"]`); if (gb) gb.innerHTML = icon(GROUPS[g].find((v) => v[0] === t)[2]) + CHEV; }
   S.tool = t; viewer.classList.toggle('drawing', DRAW_TOOLS.has(t)); viewer.dataset.tool = t;
   $$('#tools .tool').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : toolGroup(t) === b.dataset.group)));
   if (t !== 'select' && S.sel && !S.editing) select(null);
