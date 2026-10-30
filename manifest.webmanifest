@@ -2,7 +2,7 @@
   "name": "Meridian PDF Mate",
   "short_name": "Meridian PDF",
   "description": "Meridian PDF Mate by Tango Juliet Dev: fill, sign, stamp, mark up, merge, reorder and print PDFs offline.",
-  "id": "./",
+  "id": "/Meridian-Pdf-Mate/",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
