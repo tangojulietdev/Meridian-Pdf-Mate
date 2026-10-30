@@ -161,7 +161,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .thumb.sel .chk{background:var(--accent);box-shadow:none}
 .thumb.drop-before::before{content:"";position:absolute;left:10px;right:10px;top:-8px;height:3px;border-radius:2px;background:var(--accent)}
 .sb-foot{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-top:.5px solid var(--sep)}
-.sb-foot .tbtn{min-width:30px;height:30px;padding:0 6px}
+.sb-foot .tbtn{min-width:28px;height:30px;padding:0 4px}
 
 .viewer{position:relative;flex:1;min-width:0;overflow:auto;background:var(--canvas);overscroll-behavior:contain}
 .pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:22px;padding:72px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));min-width:min-content}
@@ -280,6 +280,16 @@ select.ff{padding:0 2px;appearance:auto}
 .rc:hover .rc-x,.rc:focus-within .rc-x{opacity:1}
 @media (hover:none){.rc-x{opacity:1}}
 
+/* Scanner and templates */
+.scan-wrap{position:relative;margin:0 auto;border-radius:10px;overflow:hidden;background:#000;touch-action:none;max-width:100%}
+.scan-wrap canvas,.scan-wrap svg{position:absolute;inset:0}
+.scan-wrap circle{cursor:grab;touch-action:none}
+.tpl-list{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.tpl{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;background:var(--fill)}
+.tpl b{display:block;font-size:13.5px}.tpl small{font-size:12px;color:var(--label-3)}
+.tpl > span{display:flex;align-items:center;gap:6px;flex:none}
+.tpl .btn{height:32px;padding:0 14px}
+
 /* Empty state */
 .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
 .empty-card{max-width:640px;max-height:calc(100% - 24px);overflow-y:auto;width:100%;text-align:center;padding:36px 28px;border-radius:22px;background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:1px solid var(--glass-edge)}
@@ -369,7 +379,7 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 
 .sidebar{overflow:hidden}
 @media (max-width:760px){.sb-foot{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
-.sb-foot{flex-wrap:wrap;justify-content:center}
+.sb-foot{flex-wrap:nowrap;justify-content:space-between;padding-left:6px;padding-right:6px}
 @media (hover:none){.menu button kbd{display:none}}
 
 @media (max-width:1420px) and (min-width:761px){ .tb-zoom{display:none!important} }
@@ -469,6 +479,7 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
           <div class="acts">
             <button class="btn primary" id="eOpen">Choose PDF</button>
             <button class="btn" id="ePhotos">Photos to PDF</button>
+            <button class="btn" id="eScan">Scan</button>
             <button class="btn" id="eBlank">Blank page</button>
           </div>
           <div class="feat" id="feat"></div>
@@ -485,9 +496,10 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 <input type="file" id="fileImg" accept="image/*" multiple hidden>
 <input type="file" id="fileStamp" accept="image/*" hidden>
 <input type="file" id="fileInsertImg" accept="image/*" hidden>
+<input type="file" id="fileScan" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=11"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -76,6 +76,8 @@ const IC = {
   goto: '<path d="M5 12h12"/><path d="m13 7 5 5-5 5"/><path d="M20 4v16"/>',
   props: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
   fitpage: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/>',
+  crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
   xmark: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/>'
 };
 const icon = (n, extra = '') => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${IC[n] || ''}</svg>`;
@@ -111,7 +113,7 @@ const GROUPS = {
 };
 const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#0040dd'], ['CHECKED', '#1a7f37'], ['ORIGINAL', '#0040dd'], ['COPY', '#c93400'], ['REJECTED', '#d70015'], ['VOID', '#d70015'], ['CONFIDENTIAL', '#d70015'], ['URGENT', '#d70015']];
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['text', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['crop', 'text', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -683,6 +685,11 @@ function drawOverlay(p, el = pageEl(p.id)) {
     const b = dispBox(a, g), pad = 6 / S.zoom;
     ui.appendChild(sv('rect', { class: 'ann hit', 'data-id': a.id, x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad, fill: 'transparent' }));
   }
+  if (p.crop) {
+    const c = p.crop; const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); const L = Math.min(d1[0], d2[0]), T = Math.min(d1[1], d2[1]), Rr = Math.max(d1[0], d2[0]), B = Math.max(d1[1], d2[1]);
+    ui.appendChild(sv('path', { d: `M0 0H${g.w}V${g.h}H0Z M${L} ${T}V${B}H${Rr}V${T}Z`, fill: 'rgba(20,20,24,.55)', 'fill-rule': 'evenodd', style: 'pointer-events:none' }));
+    ui.appendChild(sv('rect', { x: L, y: T, width: Rr - L, height: B - T, fill: 'none', stroke: '#0a84ff', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', 'stroke-dasharray': '6 4', style: 'pointer-events:none' }));
+  }
   if (S.sel && S.sel.pageId === p.id) {
     const a = p.annots.find((z) => z.id === S.sel.annId);
     if (a && !(S.editing && S.editing.annId === a.id)) {
@@ -882,6 +889,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
     if (tool === 'image') { setTool('select'); select(p.id, a.id); toast('Placed. Drag to move, use the corner to resize.'); }
     return;
   }
+  if (tool === 'crop') { drag = { mode: 'crop', p, el, g, start: pt, startPdf: pdfPt, id: e.pointerId, cur: pdfPt }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return; }
   // drag-to-create tools
   let a;
   if (BOXES.has(tool)) a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width };
@@ -895,6 +903,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
 pagesEl.addEventListener('pointermove', (e) => {
   if (!drag || e.pointerId !== drag.id) return;
   const { p, el, g, a } = drag; const pt = ptFromEvent(e, el); const pdfPt = ap(g.i, pt[0], pt[1]);
+  if (drag.mode === 'crop') { drag.cur = pdfPt; const [x0, y0] = drag.startPdf; p.crop = [Math.min(x0, pdfPt[0]), Math.min(y0, pdfPt[1]), Math.max(x0, pdfPt[0]), Math.max(y0, pdfPt[1])]; drawOverlay(p, el); return; }
   if (drag.mode === 'create') {
     if (BOXES.has(a.t)) { const [x0, y0] = drag.startPdf; a.x = Math.min(x0, pdfPt[0]); a.y = Math.min(y0, pdfPt[1]); a.w = Math.abs(pdfPt[0] - x0); a.h = Math.abs(pdfPt[1] - y0); }
     else if (a.t === 'pen') { const lp = a.pts[a.pts.length - 1]; if (Math.hypot(lp[0] - pdfPt[0], lp[1] - pdfPt[1]) > 0.6 / S.zoom + 0.3) a.pts.push(pdfPt); }
@@ -918,6 +927,7 @@ pagesEl.addEventListener('pointermove', (e) => {
 function endDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const { p, el, a, mode } = drag; drag = null;
+  if (mode === 'crop') { const c = p.crop; const g = geo(p); if (c) { const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); if (Math.abs(d2[0] - d1[0]) * S.zoom < 20 || Math.abs(d2[1] - d1[1]) * S.zoom < 20) p.crop = null; } drawOverlay(p, el); commit(); refreshFormatBar(); return; }
   if (mode === 'create') {
     let keep = true; const g = geo(p); const b = dispBox(a, g); const big = Math.max(b.R - b.L, b.B - b.T) * S.zoom;
     if (BOXES.has(a.t) && big < 6) {
@@ -1279,19 +1289,21 @@ function refreshFormatBar() {
   const parts = [];
   const isHl = kind === 'hl' || kind === 'markhl';
   const cur = s ? s.a.color : (isHl ? S.style.hl : S.style.ink);
-  const label = { edittext: 'Edit text', text: 'Text', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
+  const label = { crop: 'Crop', edittext: 'Edit text', text: 'Text', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
   parts.push(`<span class="fb-label">${label}</span>`);
   const sw = (list, c0, attr = 'data-color') => `<div class="swatches" role="group" aria-label="Colour">${list.map(([n, c]) => `<button class="sw" ${attr}="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === String(c0).toLowerCase()}"></button>`).join('')}</div>`;
-  if (!['white', 'image', 'redact', 'stamp', 'edittext'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
+  if (!['white', 'image', 'redact', 'stamp', 'edittext', 'crop'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
   if (kind === 'note') parts.push(sw(NOTE_BGS, s ? s.a.bg : (S.style.noteBg || '#fff3a6'), 'data-bg'));
   if (['text', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
   if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
-  const hints = { edittext: 'Click a line of text to change it. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
     if (s.a.t === 'text') parts.push(`<button class="tbtn" data-act="edit">${icon('edit')}<span class="tb-hide-m">Edit</span></button>`);
+    parts.push(`<button class="tbtn" data-act="allpages" aria-label="Copy to other pages" title="Copy to other pages">${icon('dup')}<span class="tb-hide-m">All pages</span></button>`);
     parts.push(`<button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}<span class="tb-hide-m">Duplicate</span></button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}<span class="tb-hide-m">Delete</span></button>`);
   } else if (hints[kind]) parts.push(`<span class="fb-hint">${hints[kind]}</span>`);
+  if (kind === 'crop') { const cp = S.pages[S.current]; parts.push(`<button class="tbtn" data-act="cropall" ${cp && cp.crop ? '' : 'disabled'}>Use on all pages</button><button class="tbtn" data-act="cropclear">Remove crop</button>`); }
   if (!s && kind !== 'select') parts.push(`<button class="tbtn" data-act="done">Done</button>`);
   fb.innerHTML = parts.join(''); fb.hidden = false;
 }
@@ -1314,6 +1326,10 @@ $('#formatBar').addEventListener('click', (e) => {
     const k = act.dataset.act;
     if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else if (k === 'edit' && s) openEditor(s.p, s.a);
     else if (k === 'done') { closeEditor(false); setTool('select'); }
+    else if (k === 'allpages') openCopyToPages();
+    else if (k === 'cropall') { const src = S.pages.find((p) => p.crop && p === S.pages[S.current]) || S.pages.find((p) => p.crop); if (!src) return; const g1 = geo(src); const c = src.crop; const d1 = ap(g1.t, c[0], c[1]), d2 = ap(g1.t, c[2], c[3]); const f = [Math.min(d1[0], d2[0]) / g1.w, Math.min(d1[1], d2[1]) / g1.h, Math.max(d1[0], d2[0]) / g1.w, Math.max(d1[1], d2[1]) / g1.h];
+      for (const p2 of S.pages) { const g2 = geo(p2); const a1 = ap(g2.i, f[0] * g2.w, f[1] * g2.h), a2 = ap(g2.i, f[2] * g2.w, f[3] * g2.h); p2.crop = [Math.min(a1[0], a2[0]), Math.min(a1[1], a2[1]), Math.max(a1[0], a2[0]), Math.max(a1[1], a2[1])]; drawOverlay(p2); } commit(); toast(`Cropped ${S.pages.length} pages`); }
+    else if (k === 'cropclear') { const cp = S.pages[S.current]; const any = S.pages.filter((p) => p.crop); if (!any.length) return; if (cp && cp.crop) cp.crop = null; else any.forEach((p) => { p.crop = null; }); S.pages.forEach((p) => drawOverlay(p)); commit(); refreshFormatBar(); }
   }
 });
 
@@ -1520,6 +1536,7 @@ async function buildPdf(list, onProgress, opts = {}) {
       page.setRotation(PL.degrees(tr(p)));
     }
     for (const a of p.annots) await drawAnn(page, a, font, embedImg);
+    if (p.crop) { const [cx0, cy0, cx1, cy1] = p.crop; page.setCropBox(cx0, cy0, cx1 - cx0, cy1 - cy0); }
     if (onProgress) onProgress((i + 1) / list.length);
   }
   const md = S.meta || {};
@@ -1527,6 +1544,22 @@ async function buildPdf(list, onProgress, opts = {}) {
   if (md.keywords) out.setKeywords(md.keywords.split(',').map((k) => k.trim()).filter(Boolean));
   if (opts.duplex) {
     try { const vp = out.catalog.getOrCreateViewerPreferences(); vp.setDuplex(PL.Duplex[{ simplex: 'Simplex', long: 'DuplexFlipLongEdge', short: 'DuplexFlipShortEdge' }[opts.duplex]]); } catch (e) { console.warn(e); }
+  }
+  if (opts.pageSize && PAGE_SIZES[opts.pageSize]) return fitPagesTo(out, PAGE_SIZES[opts.pageSize]);
+  return out.save({ useObjectStreams: true });
+}
+const PAGE_SIZES = { a4: [595.28, 841.89], letter: [612, 792] };
+async function fitPagesTo(src, [TW0, TH0]) {
+  const out = await PL.PDFDocument.create(); out.setProducer('Meridian PDF Mate by Tango Juliet Dev');
+  try { out.setTitle(src.getTitle() || ''); out.setAuthor(src.getAuthor() || ''); } catch (e) {}
+  for (const pg of src.getPages()) {
+    const cb = pg.getCropBox(); const r = ((pg.getRotation().angle % 360) + 360) % 360; const w = cb.width, h = cb.height;
+    const dw = r % 180 ? h : w, dh = r % 180 ? w : h; const land = dw > dh; const TW = land ? TH0 : TW0, TH = land ? TW0 : TH0;
+    const k = Math.min(TW / dw, TH / dh); const ox = (TW - dw * k) / 2, oy = (TH - dh * k) / 2;
+    const emb = await out.embedPage(pg, { left: cb.x, bottom: cb.y, right: cb.x + w, top: cb.y + h });
+    const np = out.addPage([TW, TH]);
+    const pos = { 0: [ox, oy], 90: [ox, oy + w * k], 180: [ox + w * k, oy + h * k], 270: [ox + h * k, oy] }[r] || [ox, oy];
+    np.drawPage(emb, { x: pos[0], y: pos[1], xScale: k, yScale: k, rotate: PL.degrees(-r) });
   }
   return out.save({ useObjectStreams: true });
 }
@@ -1573,12 +1606,14 @@ function openSave() {
   const sh = sheet(`<h2>Save PDF</h2><p class="sub">${S.pages.length} page${S.pages.length > 1 ? 's' : ''}. Markup, signatures and form entries are written into the file.</p>
     <div class="field"><label for="saveName">File name</label><input id="saveName" class="inp" value="${esc(fileName())}" autocomplete="off"></div>
     ${nSel ? `<div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button aria-pressed="true" data-sc="all">All ${S.pages.length}</button><button aria-pressed="false" data-sc="sel">Selected ${nSel}</button></div></div>` : ''}
+    <div class="field"><span class="flabel">Page size</span><div class="seg" role="group"><button aria-pressed="true" data-ps="">Original</button><button aria-pressed="false" data-ps="a4">A4</button><button aria-pressed="false" data-ps="letter">Letter</button></div></div>
     <div class="field"><span class="flabel">File size</span><div class="seg" role="group"><button aria-pressed="true" data-cz="0">Original</button><button aria-pressed="false" data-cz="150">Smaller</button><button aria-pressed="false" data-cz="100">Smallest</button></div>
       <small class="sub" id="czNote" style="margin:6px 0 0;display:block">Keeps text selectable and sharp.</small></div>
     <div class="progress" hidden><i></i></div>
     <div class="acts"><button class="btn" data-print>${icon('print')} Print</button>${canShare ? `<button class="btn" data-share>${icon('share')} Share</button>` : ''}<button class="btn primary" data-dl>${icon('download')} Download</button></div>`);
   sh.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { scope = b.dataset.sc; sh.querySelectorAll('[data-sc]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
-  let cz = 0;
+  let cz = 0, ps = '';
+  sh.querySelectorAll('[data-ps]').forEach((b) => b.onclick = () => { ps = b.dataset.ps; sh.querySelectorAll('[data-ps]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
   sh.querySelectorAll('[data-cz]').forEach((b) => b.onclick = () => { cz = +b.dataset.cz; sh.querySelectorAll('[data-cz]').forEach((z) => z.setAttribute('aria-pressed', z === b)); sh.querySelector('#czNote').textContent = cz ? `Pages are saved as images at ${cz} dpi for email over slow connections. Text will no longer be selectable.` : 'Keeps text selectable and sharp.'; });
   const run = async (mode) => {
     const name = (() => { let n = sh.querySelector('#saveName').value.trim() || 'Untitled'; n = n.replace(/[\\/:*?"<>|]+/g, '-'); return /\.pdf$/i.test(n) ? n : n + '.pdf'; })();
@@ -1587,7 +1622,7 @@ function openSave() {
     const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i');
     try {
       const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : S.pages;
-      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; });
+      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps });
       if (cz) { const smaller = await rasterizePdf(bytes, cz, cz >= 150 ? 0.8 : 0.68, (f) => { bar.style.width = Math.round(50 + f * 50) + '%'; }); if (smaller.length < bytes.length) bytes = smaller; else toast('This file is already as small as it gets'); }
       const blob = new Blob([bytes], { type: 'application/pdf' });
       if (mode === 'share') {
@@ -1913,6 +1948,205 @@ document.addEventListener('paste', async (e) => {
   }
 });
 
+/* ---------- Map markup between pages (copy to all pages, templates) ---------- */
+function mapAnnot(a, g1, tr1, g2, tr2) {
+  const c = JSON.parse(JSON.stringify(a)); c.id = uid('a'); delete c.gen; delete c.cover; delete c.orig;
+  const b = dispBox(a, g1); const fx = b.L / g1.w, fy = b.T / g1.h; const L2 = fx * g2.w, T2 = fy * g2.h;
+  const dx = L2 - b.L, dy = T2 - b.T; const mp = ([x, y]) => { const [u, v] = ap(g1.t, x, y); return ap(g2.i, u + dx, v + dy); };
+  if (BOXES.has(c.t)) { const p1 = mp([a.x, a.y]), p2 = mp([a.x + a.w, a.y + a.h]); c.x = Math.min(p1[0], p2[0]); c.y = Math.min(p1[1], p2[1]); c.w = Math.abs(p2[0] - p1[0]); c.h = Math.abs(p2[1] - p1[1]); }
+  else if (c.t === 'mark') { c.rects = a.rects.map(([x, y, w, h]) => { const p1 = mp([x, y]), p2 = mp([x + w, y + h]); return [Math.min(p1[0], p2[0]), Math.min(p1[1], p2[1]), Math.abs(p2[0] - p1[0]), Math.abs(p2[1] - p1[1])]; }); if (a.segs) c.segs = a.segs.map((sg) => sg.map(mp)); }
+  else if (c.pts) c.pts = a.pts.map(mp);
+  else { c.r = (((a.r - tr1 + tr2) % 360) + 360) % 360; const [ax, ay] = ap(g2.i, L2, T2 + (b.B - b.T)); c.ax = ax; c.ay = ay; if (Math.abs(((a.r - tr1) % 90)) > 0.01) { const m = mp([a.ax, a.ay]); c.ax = m[0]; c.ay = m[1]; } }
+  return c;
+}
+function openCopyToPages() {
+  const s0 = selectedAnn(); if (!s0) { toast('Select a mark, stamp or signature first'); return; }
+  const idx = S.pages.indexOf(s0.p);
+  const sh = sheet(`<h2>Copy to other pages</h2><p class="sub">Places a copy in the same spot on each page, for initials, stamps or headers.</p>
+    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button data-w="all" aria-pressed="true">All</button><button data-w="odd" aria-pressed="false">Odd</button><button data-w="even" aria-pressed="false">Even</button><button data-w="range" aria-pressed="false">Range</button></div>
+    <input id="cpRange" class="inp" style="margin-top:8px" placeholder="For example 2-5, 8" hidden autocomplete="off"></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>Copy</button></div>`);
+  let w = 'all';
+  sh.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => { w = b.dataset.w; sh.querySelectorAll('[data-w]').forEach((z) => z.setAttribute('aria-pressed', z === b)); sh.querySelector('#cpRange').hidden = w !== 'range'; });
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-go]').onclick = () => {
+    let targets = S.pages.map((p, i) => i).filter((i) => i !== idx);
+    if (w === 'odd') targets = targets.filter((i) => i % 2 === 0); else if (w === 'even') targets = targets.filter((i) => i % 2 === 1);
+    else if (w === 'range') { const r = parseRange(sh.querySelector('#cpRange').value, S.pages.length); if (!r) { toast('Enter a page range such as 2-5, 8', { err: true }); return; } targets = r.filter((i) => i !== idx); }
+    const g1 = geo(s0.p);
+    for (const i of targets) { const p2 = S.pages[i]; p2.annots.push(mapAnnot(s0.a, g1, tr(s0.p), geo(p2), tr(p2))); drawOverlay(p2); }
+    closeSheet(); commit(); toast(`Copied to ${targets.length} page${targets.length === 1 ? '' : 's'}`);
+  };
+}
+
+/* ---------- Form templates ---------- */
+const tplList = () => lsGet('pdfmate.tpl', []);
+function openTemplates() {
+  const list = tplList(); const marks = S.pages.reduce((n, p) => n + p.annots.filter((a) => !a.gen).length, 0);
+  const sh = sheet(`<h2>Templates</h2><p class="sub">Save where you typed, ticked and signed on a recurring form. Next time, open the blank form and apply the template.</p>
+    ${list.length ? `<div class="tpl-list">${list.map((t, i) => `<div class="tpl"><div><b>${esc(t.name)}</b><small>${t.count} item${t.count > 1 ? 's' : ''} · ${t.pages.length} page${t.pages.length > 1 ? 's' : ''} · ${new Date(t.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}</small></div><span><button class="btn" data-apply="${i}" ${S.pages.length ? '' : 'disabled'}>Apply</button><button class="tbtn" data-del="${i}" aria-label="Delete ${esc(t.name)}" style="color:var(--danger)">${icon('trash')}</button></span></div>`).join('')}</div>` : '<div class="empty-lib">No templates yet.</div>'}
+    <div class="field" style="margin-top:14px"><label for="tplName">Save this document's markup as a template</label><input id="tplName" class="inp" placeholder="For example Crew list Gunsan" value="${esc(($('#docName').value || '').slice(0, 40))}" autocomplete="off"></div>
+    <div class="acts"><button class="btn" data-x>Close</button><button class="btn primary" data-save ${marks ? '' : 'disabled'}>Save template (${marks})</button></div>`, { wide: true });
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-save]').onclick = () => {
+    const name = sh.querySelector('#tplName').value.trim() || 'Template';
+    const pages = S.pages.map((p) => ({ view: p.view, baseRot: p.baseRot, rot: p.rot, annots: p.annots.filter((a) => !a.gen && !(a.t === 'white' && a.edit)).map((a) => { const c = JSON.parse(JSON.stringify(a)); if (c.imgId) { const im = S.imgs.get(c.imgId); c._src = im ? im.src : null; c._w = im && im.w; c._h = im && im.h; } return c; }) }));
+    while (pages.length && !pages[pages.length - 1].annots.length) pages.pop();
+    const count = pages.reduce((n, p) => n + p.annots.length, 0); if (!count) { toast('Nothing to save yet', { err: true }); return; }
+    const all = [{ name, at: Date.now(), count, pages }, ...tplList().filter((t) => t.name !== name)].slice(0, 30);
+    if (!lsSet('pdfmate.tpl', all)) { toast('Storage is full. Delete an old template first.', { err: true }); return; }
+    toast(`Template "${name}" saved`); openTemplates();
+  };
+  sh.addEventListener('click', (e) => {
+    const d = e.target.closest('[data-del]'); if (d) { const l = tplList(); l.splice(+d.dataset.del, 1); lsSet('pdfmate.tpl', l); openTemplates(); return; }
+    const a = e.target.closest('[data-apply]'); if (!a) return; const t = tplList()[+a.dataset.apply]; let n = 0;
+    t.pages.forEach((tp, i) => { const p2 = S.pages[i]; if (!p2) return; const g1 = vpTransform(tp.view, (((tp.baseRot || 0) + (tp.rot || 0)) % 360 + 360) % 360, 1); g1.i = inv(g1.t);
+      for (const an of tp.annots) { if (an.imgId && an._src) { S.imgs.set(an.imgId, { src: an._src, w: an._w, h: an._h, el: null }); loadImageEl(an._src).then((el) => { const o = S.imgs.get(an.imgId); if (o) o.el = el; }); }
+        const src = { ...an }; delete src._src; delete src._w; delete src._h; p2.annots.push(mapAnnot(src, g1, (((tp.baseRot || 0) + (tp.rot || 0)) % 360 + 360) % 360, geo(p2), tr(p2))); n++; }
+      drawOverlay(p2); });
+    closeSheet(); commit(); toast(`Applied ${n} item${n === 1 ? '' : 's'} from "${t.name}". Edit the text where details differ.`, { ms: 4000 });
+  });
+}
+
+/* ---------- Crop ---------- */
+function setCrop(p, rect) { p.crop = rect; drawOverlay(p); commit(); refreshFormatBar(); }
+
+/* ---------- Export pages as images or text ---------- */
+function openExport() {
+  if (!S.pages.length) return; const nSel = S.selPages.size;
+  let fmt = 'jpg', dpi = 150, scope = nSel ? 'sel' : 'all';
+  const sh = sheet(`<h2>Export</h2><p class="sub">Pages as pictures for WhatsApp or email, or all the text as a plain text file. Markup is included.</p>
+    <div class="field"><span class="flabel">Format</span><div class="seg" role="group"><button data-f="jpg">JPG</button><button data-f="png">PNG</button><button data-f="txt">Text (.txt)</button></div></div>
+    <div class="field" id="exDpi"><span class="flabel">Quality</span><div class="seg" role="group"><button data-d="100">Small</button><button data-d="150">Standard</button><button data-d="300">Print</button></div></div>
+    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button data-s="all">All ${S.pages.length}</button>${nSel ? `<button data-s="sel">Selected ${nSel}</button>` : ''}<button data-s="cur">This page</button></div></div>
+    <div class="progress" hidden><i></i></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('download')} Export</button></div>`);
+  const paint = () => { sh.querySelectorAll('[data-f]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.f === fmt)); sh.querySelectorAll('[data-d]').forEach((b) => b.setAttribute('aria-pressed', +b.dataset.d === dpi)); sh.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.s === scope)); sh.querySelector('#exDpi').hidden = fmt === 'txt'; };
+  sh.addEventListener('click', (e) => { const f = e.target.closest('[data-f]'), d = e.target.closest('[data-d]'), s2 = e.target.closest('[data-s]'); if (f) fmt = f.dataset.f; if (d) dpi = +d.dataset.d; if (s2) scope = s2.dataset.s; paint(); });
+  paint(); sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-go]').onclick = async () => {
+    const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : scope === 'cur' ? [S.pages[S.current]] : S.pages;
+    const base = fileName().replace(/\.pdf$/i, ''); const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i');
+    sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = true);
+    try {
+      const bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * 30) + '%'; });
+      const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() }).promise; const n = pdf.numPages; const files = [];
+      const pad = (i) => String(i).padStart(Math.max(2, String(n).length), '0');
+      if (fmt === 'txt') {
+        let out = '';
+        for (let i = 1; i <= n; i++) { const tc = await (await pdf.getPage(i)).getTextContent(); out += `--- Page ${i} ---\n` + tc.items.map((it) => (it.str || '') + (it.hasEOL ? '\n' : '')).join('').replace(/[ \t]+\n/g, '\n').trim() + '\n\n'; bar.style.width = Math.round(30 + i / n * 70) + '%'; }
+        downloadBlob(new Blob([out], { type: 'text/plain;charset=utf-8' }), `${base}.txt`);
+        if (!out.replace(/--- Page \d+ ---/g, '').trim()) toast('These pages have no text. They may be scans; try Recognise text (OCR).', { ms: 4500 });
+      } else {
+        for (let i = 1; i <= n; i++) {
+          const pg = await pdf.getPage(i); const vp = pg.getViewport({ scale: dpi / 72 }); const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+          const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); await pg.render({ canvasContext: x, viewport: vp }).promise;
+          const blob = await new Promise((r) => c.toBlob(r, fmt === 'png' ? 'image/png' : 'image/jpeg', 0.88)); files.push({ name: `${base}-p${pad(i)}.${fmt}`, data: new Uint8Array(await blob.arrayBuffer()) }); c.width = c.height = 0;
+          bar.style.width = Math.round(30 + i / n * 70) + '%';
+        }
+        if (files.length === 1) downloadBlob(new Blob([files[0].data], { type: fmt === 'png' ? 'image/png' : 'image/jpeg' }), files[0].name); else downloadBlob(makeZip(files), `${base}-${fmt}.zip`);
+      }
+      try { pdf.loadingTask.destroy(); } catch (e) {}
+      closeSheet(); toast(fmt === 'txt' ? 'Text exported' : `Exported ${files.length} image${files.length > 1 ? 's' : ''}`);
+    } catch (e) { console.error(e); toast('Could not export', { err: true }); sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = false); }
+  };
+}
+
+/* ---------- Document scanner ---------- */
+function otsu(gray) { const h = new Array(256).fill(0); for (const v of gray) h[v]++; const tot = gray.length; let sum = 0; for (let i = 0; i < 256; i++) sum += i * h[i]; let sB = 0, wB = 0, best = 0, th = 128; for (let i = 0; i < 256; i++) { wB += h[i]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += i * h[i]; const mB = sB / wB, mF = (sum - sB) / wF; const v = wB * wF * (mB - mF) * (mB - mF); if (v > best) { best = v; th = i; } } return th; }
+function detectCorners(img) {
+  const S2 = 360, k = Math.min(1, S2 / Math.max(img.width, img.height)); const w = Math.max(8, Math.round(img.width * k)), h = Math.max(8, Math.round(img.height * k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data; const g = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) g[i] = (d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114) | 0;
+  const th = otsu(g); const fg = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) fg[i] = g[i] > th ? 1 : 0;
+  const lab = new Int32Array(w * h).fill(-1); let bestN = 0, bestL = -1; const stack = [];
+  for (let i = 0; i < w * h; i++) { if (!fg[i] || lab[i] >= 0) continue; let n = 0; stack.push(i); lab[i] = i; while (stack.length) { const q = stack.pop(); n++; const qx = q % w, qy = (q / w) | 0; for (const [nx, ny] of [[qx + 1, qy], [qx - 1, qy], [qx, qy + 1], [qx, qy - 1]]) { if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue; const j = ny * w + nx; if (fg[j] && lab[j] < 0) { lab[j] = i; stack.push(j); } } } if (n > bestN) { bestN = n; bestL = i; } }
+  const frac = bestN / (w * h); const inset = (f) => [[img.width * f, img.height * f], [img.width * (1 - f), img.height * f], [img.width * (1 - f), img.height * (1 - f)], [img.width * f, img.height * (1 - f)]];
+  if (frac < 0.15 || frac > 0.97) return inset(0.04);
+  let tl = null, tr2 = null, br = null, bl = null, a = -1e9, b = -1e9, c2 = -1e9, d2 = -1e9;
+  for (let i = 0; i < w * h; i++) { if (lab[i] !== bestL) continue; const px = i % w, py = (i / w) | 0; if (-px - py > a) { a = -px - py; tl = [px, py]; } if (px - py > b) { b = px - py; tr2 = [px, py]; } if (px + py > c2) { c2 = px + py; br = [px, py]; } if (py - px > d2) { d2 = py - px; bl = [px, py]; } }
+  const pts = [tl, tr2, br, bl].map(([px, py]) => [px / k, py / k]); const cx = pts.reduce((n, q) => n + q[0], 0) / 4, cy = pts.reduce((n, q) => n + q[1], 0) / 4;
+  return pts.map(([px, py]) => [clamp(px + (cx - px) * 0.012, 0, img.width), clamp(py + (cy - py) * 0.012, 0, img.height)]);
+}
+function homography(src, dst) {
+  // solve dst = H * src for 4 point pairs (8x8 linear system)
+  const A = [], B = [];
+  for (let i = 0; i < 4; i++) { const [x, y] = src[i], [u, v] = dst[i]; A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.push(u); A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); B.push(v); }
+  for (let c = 0; c < 8; c++) { let piv = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r; [A[c], A[piv]] = [A[piv], A[c]]; [B[c], B[piv]] = [B[piv], B[c]];
+    for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; B[r] -= f * B[c]; } }
+  const hh = B.map((v, i) => v / A[i][i]); return [...hh, 1];
+}
+function warp(img, q) {
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let W = Math.max(dist(q[0], q[1]), dist(q[3], q[2])), H = Math.max(dist(q[0], q[3]), dist(q[1], q[2])); const k = Math.min(1, 2200 / Math.max(W, H)); W = Math.round(W * k); H = Math.round(H * k);
+  const sc = document.createElement('canvas'); sc.width = img.width; sc.height = img.height; const sx = sc.getContext('2d'); sx.drawImage(img, 0, 0); const sd = sx.getImageData(0, 0, img.width, img.height).data;
+  const Hm = homography([[0, 0], [W, 0], [W, H], [0, H]], q); const out = new ImageData(W, H); const od = out.data; const iw = img.width, ih = img.height;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const z = Hm[6] * x + Hm[7] * y + 1; const u = (Hm[0] * x + Hm[1] * y + Hm[2]) / z, v = (Hm[3] * x + Hm[4] * y + Hm[5]) / z;
+    const x0 = Math.floor(u), y0 = Math.floor(v); if (x0 < 0 || y0 < 0 || x0 >= iw - 1 || y0 >= ih - 1) { const o = (y * W + x) * 4; od[o] = od[o + 1] = od[o + 2] = 255; od[o + 3] = 255; continue; }
+    const fx = u - x0, fy = v - y0; const i00 = (y0 * iw + x0) * 4, i10 = i00 + 4, i01 = i00 + iw * 4, i11 = i01 + 4; const o = (y * W + x) * 4;
+    for (let ch = 0; ch < 3; ch++) od[o + ch] = (sd[i00 + ch] * (1 - fx) + sd[i10 + ch] * fx) * (1 - fy) + (sd[i01 + ch] * (1 - fx) + sd[i11 + ch] * fx) * fy;
+    od[o + 3] = 255;
+  }
+  const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(out, 0, 0); return c;
+}
+function filterScan(c, mode) {
+  if (mode === 'orig') return c; const x = c.getContext('2d'); const W = c.width, H = c.height; const id = x.getImageData(0, 0, W, H); const d = id.data;
+  if (mode === 'enh') {
+    const lo = [255, 255, 255], hi = [0, 0, 0]; const hist = [0, 1, 2].map(() => new Uint32Array(256)); for (let i = 0; i < d.length; i += 4) for (let ch = 0; ch < 3; ch++) hist[ch][d[i + ch]]++;
+    const n = W * H; for (let ch = 0; ch < 3; ch++) { let acc = 0; for (let v = 0; v < 256; v++) { acc += hist[ch][v]; if (acc > n * 0.01) { lo[ch] = v; break; } } acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[ch][v]; if (acc > n * 0.08) { hi[ch] = v; break; } } }
+    for (let i = 0; i < d.length; i += 4) for (let ch = 0; ch < 3; ch++) d[i + ch] = clamp(((d[i + ch] - lo[ch]) * 255) / Math.max(1, hi[ch] - lo[ch]), 0, 255);
+  } else {
+    const g = new Float32Array(W * H); for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    if (mode === 'grey') { for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = clamp((g[j] - 30) * 1.2, 0, 255); d[i] = d[i + 1] = d[i + 2] = v; } }
+    else {
+      const I = new Float64Array((W + 1) * (H + 1)); for (let y = 1; y <= H; y++) { let row = 0; for (let x = 1; x <= W; x++) { row += g[(y - 1) * W + x - 1]; I[y * (W + 1) + x] = I[(y - 1) * (W + 1) + x] + row; } }
+      const r = Math.max(8, Math.round(Math.min(W, H) / 40)); const C = 12;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(W, x + r + 1), y1 = Math.min(H, y + r + 1); const sum = I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]; const m = sum / ((x1 - x0) * (y1 - y0)); const v = g[y * W + x] < m - C ? 0 : 255; const i = (y * W + x) * 4; d[i] = d[i + 1] = d[i + 2] = v; }
+    }
+  }
+  x.putImageData(id, 0, 0); return c;
+}
+const SCAN = { shots: [], mode: lsGet('pdfmate.scanmode', 'enh') };
+function startScan() { SCAN.shots = []; $('#fileScan').click(); }
+$('#fileScan').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) { if (SCAN.shots.length) scanReview(); return; }
+  try { const im = await normImage(await readAsDataURL(f), 2600); SCAN.shots.push({ img: im.el, q: detectCorners(im.el), rot: 0 }); scanEdit(SCAN.shots.length - 1); }
+  catch (err) { toast('Could not read that photo', { err: true }); }
+});
+function scanEdit(i) {
+  const shot = SCAN.shots[i]; const img = shot.img;
+  const sh = sheet(`<h2>Adjust page ${i + 1}</h2><p class="sub">Drag the corners to the edges of the paper.</p>
+    <div class="scan-wrap"><canvas id="scanCv"></canvas><svg id="scanSvg"></svg></div>
+    <div class="field" style="margin-top:12px"><span class="flabel">Look</span><div class="seg" role="group">${[['orig', 'Original'], ['enh', 'Enhanced'], ['grey', 'Grey'], ['bw', 'Black & white']].map(([k, l]) => `<button data-m="${k}" aria-pressed="${k === SCAN.mode}">${l}</button>`).join('')}</div></div>
+    <div class="acts" style="justify-content:space-between"><span style="display:flex;gap:8px"><button class="btn" data-x>Cancel</button><button class="btn" data-full>Whole photo</button></span><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-more>${icon('photo')} Next page</button><button class="btn primary" data-done>Done (${SCAN.shots.length})</button></span></div>`, { wide: true });
+  const cv = sh.querySelector('#scanCv'), svgEl = sh.querySelector('#scanSvg'); const wrap = sh.querySelector('.scan-wrap');
+  const maxW = Math.min(600, innerWidth - 72), maxH = Math.min(innerHeight * 0.52, 560); const k = Math.min(maxW / img.width, maxH / img.height); const W = Math.round(img.width * k), H = Math.round(img.height * k);
+  cv.width = W * 2; cv.height = H * 2; cv.style.width = W + 'px'; cv.style.height = H + 'px'; wrap.style.width = W + 'px'; wrap.style.height = H + 'px'; cv.getContext('2d').drawImage(img, 0, 0, W * 2, H * 2);
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`); svgEl.setAttribute('width', W); svgEl.setAttribute('height', H);
+  const draw = () => { const p = shot.q.map(([x, y]) => [x * k, y * k]); svgEl.innerHTML = `<path d="M0 0H${W}V${H}H0Z M${p.map((q) => q.join(' ')).join(' L')}Z" fill="rgba(0,0,0,.45)" fill-rule="evenodd"/><polygon points="${p.map((q) => q.join(',')).join(' ')}" fill="none" stroke="#0a84ff" stroke-width="2"/>${p.map(([x, y], j) => `<circle data-c="${j}" cx="${x}" cy="${y}" r="13" fill="rgba(10,132,255,.25)" stroke="#fff" stroke-width="2.5"/>`).join('')}`; };
+  draw(); let dragC = -1;
+  svgEl.addEventListener('pointerdown', (e) => { const c = e.target.closest('[data-c]'); if (!c) return; dragC = +c.dataset.c; svgEl.setPointerCapture(e.pointerId); e.preventDefault(); });
+  svgEl.addEventListener('pointermove', (e) => { if (dragC < 0) return; const r = svgEl.getBoundingClientRect(); shot.q[dragC] = [clamp((e.clientX - r.left) / k, 0, img.width), clamp((e.clientY - r.top) / k, 0, img.height)]; draw(); });
+  svgEl.addEventListener('pointerup', () => { dragC = -1; });
+  sh.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => { SCAN.mode = b.dataset.m; lsSet('pdfmate.scanmode', SCAN.mode); sh.querySelectorAll('[data-m]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
+  sh.querySelector('[data-full]').onclick = () => { shot.q = [[0, 0], [img.width, 0], [img.width, img.height], [0, img.height]]; draw(); };
+  sh.querySelector('[data-x]').onclick = () => { SCAN.shots.splice(i, 1); closeSheet(); if (SCAN.shots.length) scanReview(); };
+  sh.querySelector('[data-more]').onclick = () => { closeSheet(); $('#fileScan').click(); };
+  sh.querySelector('[data-done]').onclick = () => { closeSheet(); finishScan(); };
+}
+function scanReview() { finishScan(); }
+async function finishScan() {
+  if (!SCAN.shots.length) return; const t0 = toast('Straightening pages', { spin: true, sticky: true });
+  try {
+    const files = [];
+    for (const sh of SCAN.shots) { const c = filterScan(warp(sh.img, sh.q), SCAN.mode); const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', SCAN.mode === 'bw' ? 0.8 : 0.86)); files.push(new File([blob], `Scan ${new Date().toLocaleDateString([], { day: '2-digit', month: 'short' })}.jpg`, { type: 'image/jpeg' })); }
+    t0.remove(); const n = files.length; SCAN.shots = [];
+    if (S.pages.length) await addFiles(files, S.current + 1); else await addFiles(files);
+    toast(`Scanned ${n} page${n > 1 ? 's' : ''}`);
+  } catch (e) { t0.remove(); console.error(e); toast('Could not process the scan', { err: true }); }
+}
+
 /* ---------- Form list sheet ---------- */
 function openFormList() {
   const docs = [...S.docs.values()].filter((d) => d.fields.length && S.pages.some((p) => p.docId === d.id));
@@ -1962,6 +2196,7 @@ $('#btnPrint').addEventListener('click', openPrint);
 $('#eOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#ePhotos').addEventListener('click', () => $('#fileImg').click());
 $('#eBlank').addEventListener('click', () => newBlank());
+$('#eScan').addEventListener('click', startScan);
 $('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; openFilesInTabs(f); });
 $('#fileImg').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });
 $('#docName').addEventListener('input', updateMeta);
@@ -1978,11 +2213,15 @@ $('#btnMore').addEventListener('click', (e) => {
     { label: 'Find…', icon: 'search', kbd: 'Ctrl F', run: openFind, disabled: !has },
     { label: 'Print…', icon: 'print', kbd: 'Ctrl P', run: openPrint, disabled: !has },
     '-', { h: 'Pages' },
+    { label: 'Scan with camera…', icon: 'scan', run: startScan },
     { label: 'Insert blank page', icon: 'blank', run: () => pageAction('blank'), disabled: !has },
+    { label: 'Crop pages', icon: 'crop', run: () => setTool('crop'), disabled: !has },
+    { label: 'Templates…', icon: 'form', run: openTemplates },
     { label: 'Duplicate page', icon: 'dup', run: () => pageAction('dup'), disabled: !has },
     { label: 'Page numbers…', icon: 'pagenum', run: openPageNumbers, disabled: !has },
     { label: 'Watermark…', icon: 'watermark', run: openWatermark, disabled: !has },
     { label: 'Split into separate PDFs…', icon: 'split', run: openSplit, disabled: !has },
+    { label: 'Export as images or text…', icon: 'download', run: openExport, disabled: !has },
     { label: 'Go to page…', icon: 'goto', kbd: 'Ctrl G', run: openGoto, disabled: !has },
     '-',
     { label: forms ? `Fill form fields (${forms})` : 'Fill form fields', icon: 'form', run: openFormList, disabled: !forms },
