@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -384,10 +384,62 @@ function newBlank(at = S.pages.length, like) {
   if (S.pages.length === 1) { $('#docName').value = 'Untitled'; if (innerWidth > 760) setSidebar(true); }
   renderAll(); commit(); scrollToPage(at);
 }
-function closeDoc() {
-  for (const d of S.docs.values()) { try { d.pdf.loadingTask.destroy(); } catch (e) {} }
-  S.docs.clear(); S.imgs.clear(); S.pages = []; S.sel = null; S.selPages.clear(); thumbCache.clear(); textCache.clear(); S.meta = null; closeFind();
-  $('#docName').value = 'Untitled'; setTool('select'); renderAll(); resetHistory(); setDirty(false); updateChrome(); setSidebar(false);
+/* ---------- Document tabs ---------- */
+const WS = { list: [], active: 0 };
+function blankTab() { return { id: uid('t'), name: 'Untitled', pages: [], hist: [], fut: [], last: JSON.stringify({ pages: [], vals: [] }), sel: null, selPages: new Set(), current: 0, zoom: 1, fit: true, dirty: false, meta: null, scroll: 0, sbView: 'pages' }; }
+function saveTab() {
+  const t = WS.list[WS.active]; if (!t) return;
+  Object.assign(t, { pages: S.pages, hist: S.hist, fut: S.fut, last: S.last, sel: S.sel, selPages: S.selPages, current: S.current, zoom: S.zoom, fit: S.fit, dirty: S.dirty, meta: S.meta, name: $('#docName').value || 'Untitled', scroll: viewer.scrollTop, sbView: S.sbView || 'pages' });
+}
+function loadTab(i) {
+  closeEditor(true); closeFind(); hideBubble(); closeMenu();
+  WS.active = i; const t = WS.list[i];
+  Object.assign(S, { pages: t.pages, hist: t.hist, fut: t.fut, last: t.last, sel: t.sel, selPages: t.selPages, current: t.current, zoom: t.zoom, fit: t.fit, dirty: t.dirty, meta: t.meta });
+  $('#docName').value = t.name;
+  renderAll(); setSbView(t.sbView || 'pages');
+  requestAnimationFrame(() => { viewer.scrollTop = t.scroll || 0; onScroll(); });
+  if (S.selecting) { S.selecting = false; $('#sidebar').classList.remove('selecting'); $('#btnSelPages').textContent = 'Select'; }
+  updateChrome(); renderTabs(); refreshFormatBar();
+}
+function switchTab(i) { if (i === WS.active || !WS.list[i]) return; saveTab(); loadTab(i); }
+function newTab() { saveTab(); WS.list.push(blankTab()); loadTab(WS.list.length - 1); }
+function releaseUnused() {
+  const used = new Set(); const imgsUsed = new Set();
+  const scan = (pages) => { for (const p of pages) { if (p.docId) used.add(p.docId); if (p.imgId) imgsUsed.add(p.imgId); for (const a of p.annots) if (a.imgId) imgsUsed.add(a.imgId); } };
+  WS.list.forEach((t, k) => { scan(k === WS.active ? S.pages : t.pages); for (const h of [...t.hist, ...t.fut, t.last]) { try { scan(JSON.parse(h).pages); } catch (e) {} } });
+  for (const [id, d] of S.docs) if (!used.has(id)) { try { d.pdf.loadingTask.destroy(); } catch (e) {} S.docs.delete(id); }
+  for (const id of [...S.imgs.keys()]) if (!imgsUsed.has(id) && !libItems().some((x) => x.id === id)) S.imgs.delete(id);
+}
+function closeTab(i, force) {
+  saveTab(); const t = WS.list[i]; if (!t) return;
+  if (t.dirty && !force) { confirmSheet(`Close ${t.name}?`, 'Your changes to this document will be lost.', 'Close without saving', () => closeTab(i, true)); return; }
+  WS.list.splice(i, 1);
+  if (!WS.list.length) WS.list.push(blankTab());
+  let next = WS.active; if (i < WS.active) next--; else if (i === WS.active) next = Math.min(i, WS.list.length - 1);
+  WS.active = -1; loadTab(next); releaseUnused();
+  if (!S.pages.length) setSidebar(false);
+}
+function closeDoc() { closeTab(WS.active, true); }
+function renderTabs() {
+  const bar = $('#tabbar'); const list = $('#tabList'); if (!bar) return;
+  const show = WS.list.length > 1 || S.pages.length > 0; bar.hidden = !show; document.body.classList.toggle('has-tabs', show);
+  list.innerHTML = WS.list.map((t, k) => {
+    const on = k === WS.active; const name = on ? ($('#docName').value || 'Untitled') : t.name; const dirty = on ? S.dirty : t.dirty; const n = on ? S.pages.length : t.pages.length;
+    return `<div class="dtab${on ? ' on' : ''}${dirty ? ' dirty' : ''}" role="tab" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-k="${k}" title="${esc(name)}${n ? ` (${n} page${n > 1 ? 's' : ''})` : ''}">${icon('blank')}<span class="dt-name">${esc(name)}</span><button class="dt-x" data-x="${k}" aria-label="Close ${esc(name)}" tabindex="-1">${icon('close')}</button><i class="dt-dot" aria-hidden="true"></i></div>`;
+  }).join('');
+  const on = list.querySelector('.dtab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+async function openFilesInTabs(files) {
+  files = [...files]; if (!files.length) return;
+  const pdfs = files.filter(isPdf), imgs = files.filter((f) => !isPdf(f) && isImg(f));
+  const groups = [...pdfs.map((f) => [f]), ...(imgs.length ? [imgs] : [])];
+  if (!groups.length) { toast('Choose a PDF or an image', { err: true }); return; }
+  for (const g of groups) {
+    if (S.pages.length) newTab();
+    await addFiles(g);
+    if (!S.pages.length && WS.list.length > 1) { WS.list.splice(WS.active, 1); WS.active = -1; loadTab(WS.list.length - 1); }
+  }
+  renderTabs();
 }
 
 /* ---------- Rendering: pages ---------- */
@@ -1746,6 +1798,7 @@ function openFormList() {
 
 /* ---------- Chrome ---------- */
 function updateMeta() {
+  queueMicrotask(renderTabs);
   const n = S.pages.length;
   $('#docMeta').textContent = n ? `${n} page${n > 1 ? 's' : ''}${S.dirty ? ' · Edited' : ''}` : 'No document';
   document.title = n ? `${$('#docName').value || 'Untitled'}${S.dirty ? ' (edited)' : ''} · Meridian PDF Mate` : 'Meridian PDF Mate';
@@ -1762,12 +1815,17 @@ $('#btnUndo').addEventListener('click', undo); $('#btnRedo').addEventListener('c
 $('#zoomIn').addEventListener('click', () => setZoom(S.zoom * 1.2)); $('#zoomOut').addEventListener('click', () => setZoom(S.zoom / 1.2));
 $('#zoomLbl').addEventListener('click', () => setZoom(0, true));
 $('#btnOpen').addEventListener('click', () => $('#fileOpen').click());
+$('#tabNew').addEventListener('click', () => $('#fileOpen').click());
+$('#tabList').addEventListener('click', (e) => { const x = e.target.closest('[data-x]'); if (x) { e.stopPropagation(); closeTab(+x.dataset.x); return; } const t = e.target.closest('.dtab'); if (t) switchTab(+t.dataset.k); });
+$('#tabList').addEventListener('auxclick', (e) => { const t = e.target.closest('.dtab'); if (t && e.button === 1) { e.preventDefault(); closeTab(+t.dataset.k); } });
+$('#tabList').addEventListener('keydown', (e) => { const t = e.target.closest('.dtab'); if (!t) return; const k = +t.dataset.k; if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const n = (k + (e.key === 'ArrowRight' ? 1 : -1) + WS.list.length) % WS.list.length; switchTab(n); const el = $(`#tabList .dtab[data-k="${n}"]`); if (el) el.focus(); } else if (e.key === 'Delete') closeTab(k); });
+$('#fileAdd').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });
 $('#btnSave').addEventListener('click', openSave);
 $('#btnPrint').addEventListener('click', openPrint);
 $('#eOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#ePhotos').addEventListener('click', () => $('#fileImg').click());
 $('#eBlank').addEventListener('click', () => newBlank());
-$('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f); });
+$('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; openFilesInTabs(f); });
 $('#fileImg').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });
 $('#docName').addEventListener('input', updateMeta);
 $('#docName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
@@ -1777,7 +1835,8 @@ $('#btnMore').addEventListener('click', (e) => {
   if (menuEl) { closeMenu(); return; }
   const has = S.pages.length > 0; const forms = [...S.docs.values()].reduce((n, d) => n + d.fields.length, 0);
   openMenu(e.currentTarget, [
-    { label: 'Open or add PDF…', icon: 'open', kbd: 'Ctrl O', run: () => $('#fileOpen').click() },
+    { label: 'Open in new tab…', icon: 'open', kbd: 'Ctrl O', run: () => $('#fileOpen').click() },
+    { label: 'Add pages from file…', icon: 'merge', run: () => $('#fileAdd').click(), disabled: !has },
     { label: 'Add photos as pages…', icon: 'photo', run: () => $('#fileImg').click() },
     { label: 'Find…', icon: 'search', kbd: 'Ctrl F', run: openFind, disabled: !has },
     { label: 'Print…', icon: 'print', kbd: 'Ctrl P', run: openPrint, disabled: !has },
@@ -1803,7 +1862,7 @@ $('#btnMore').addEventListener('click', (e) => {
     { label: `Appearance: ${themeLabel()}`, icon: 'theme', run: cycleTheme },
     { label: 'Document properties…', icon: 'props', run: openProps, disabled: !has },
     { label: 'About Meridian PDF Mate', icon: 'info', run: about },
-    { label: 'Close document', icon: 'xmark', run: () => { if (S.dirty) confirmSheet('Close without saving?', 'Your changes to this document will be lost.', 'Close', closeDoc); else closeDoc(); }, disabled: !has }
+    { label: 'Close tab', icon: 'xmark', run: () => closeTab(WS.active), disabled: !has }
   ]);
 });
 function about() {
@@ -1840,11 +1899,11 @@ document.addEventListener('keydown', (e) => {
 /* ---------- Drag and drop files ---------- */
 let dragDepth = 0, mask = null;
 const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
-addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; if (!mask) { mask = document.createElement('div'); mask.className = 'dropmask'; mask.textContent = S.pages.length ? 'Drop to add pages' : 'Drop to open'; document.body.appendChild(mask); } });
+addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; if (!mask) { mask = document.createElement('div'); mask.className = 'dropmask'; mask.textContent = S.pages.length ? 'Drop to open in a new tab' : 'Drop to open'; document.body.appendChild(mask); } });
 addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth--; if (dragDepth <= 0 && mask) { mask.remove(); mask = null; dragDepth = 0; } });
 addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
-addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; if (mask) { mask.remove(); mask = null; } addFiles([...e.dataTransfer.files]); });
-addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; if (mask) { mask.remove(); mask = null; } openFilesInTabs([...e.dataTransfer.files]); });
+addEventListener('beforeunload', (e) => { saveTab(); if (WS.list.some((t) => t.dirty)) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- Boot ---------- */
 function boot() {
@@ -1858,7 +1917,8 @@ function boot() {
   $('#sbFoot [data-pa="dup"]').innerHTML = icon('dup');
   $$('#sbSeg button').forEach((b) => b.onclick = () => setSbView(b.dataset.v));
   $('#pageInd').addEventListener('click', openGoto);
-  buildTools(); setTool('select'); renderAll(); resetHistory(); updateChrome();
+  WS.list = [blankTab()]; WS.active = 0;
+  buildTools(); setTool('select'); renderAll(); resetHistory(); updateChrome(); renderTabs();
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('.toolbar')) $('.toolbar').insertBefore(t, $('.tb-right')); };
   placeTools(); mq.addEventListener('change', placeTools);
@@ -1907,7 +1967,7 @@ if ('launchQueue' in window) {
   window.launchQueue.setConsumer(async (params) => {
     if (!params.files || !params.files.length) return;
     const files = []; for (const h of params.files) { try { files.push(await h.getFile()); } catch (e) {} }
-    if (files.length) { await ready; addFiles(files); }
+    if (files.length) { await ready; openFilesInTabs(files); }
   });
 }
 // Files shared to PDF Mate from other apps (Android share sheet)
@@ -1917,7 +1977,7 @@ async function takeShared() {
   try {
     const c = await caches.open('meridian-pdf-mate-share'); const keys = await c.keys(); const files = [];
     for (const k of keys) { const r = await c.match(k); const b = await r.blob(); files.push(new File([b], decodeURIComponent(r.headers.get('x-name') || 'shared.pdf'), { type: b.type })); await c.delete(k); }
-    if (files.length) { await ready; addFiles(files); } else toast('Nothing was received from the share', { err: true });
+    if (files.length) { await ready; openFilesInTabs(files); } else toast('Nothing was received from the share', { err: true });
   } catch (e) { toast('Could not read the shared file', { err: true }); }
 }
 takeShared();

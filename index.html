@@ -240,6 +240,30 @@ select.ff{padding:0 2px;appearance:auto}
 .ol-empty{color:var(--label-3);font-size:13px;padding:12px;margin:0}
 @media (max-width:760px){.findbar{left:12px;right:12px;top:8px}.findbar input{flex:1;width:auto;max-width:none}}
 
+/* Document tabs */
+.tabbar{position:relative;z-index:28;display:flex;align-items:center;gap:6px;height:38px;padding:0 max(10px,env(safe-area-inset-right,0px)) 0 max(10px,env(safe-area-inset-left,0px));
+  background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);border-bottom:.5px solid var(--sep-strong)}
+.tab-list{flex:1;min-width:0;display:flex;align-items:center;gap:4px;height:100%;overflow-x:auto;scrollbar-width:none;padding:4px 2px}
+.tab-list::-webkit-scrollbar{display:none}
+.dtab{position:relative;flex:1 1 0;min-width:120px;max-width:260px;height:30px;display:flex;align-items:center;gap:7px;padding:0 8px 0 11px;border-radius:9px;color:var(--label-2);cursor:pointer;user-select:none;transition:background-color .15s var(--ease),color .15s}
+.dtab:hover{background:var(--fill)}
+.dtab.on{background:var(--pill);box-shadow:var(--pill-shadow);color:var(--label)}
+.dtab svg.i{width:14px;height:14px;flex:none;opacity:.7}
+.dtab.on > svg.i{color:var(--accent);opacity:1}
+.dt-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:500}
+.dtab.on .dt-name{font-weight:600}
+.dt-x{flex:none;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--label-3);opacity:0;transition:opacity .12s,background-color .12s}
+.dt-x svg.i{width:12px;height:12px;stroke-width:2.2;opacity:1}
+.dtab:hover .dt-x,.dtab.on .dt-x,.dt-x:focus-visible{opacity:1}
+.dt-x:hover{background:var(--fill-2);color:var(--label)}
+.dt-dot{position:absolute;right:13px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:var(--label-3);display:none;pointer-events:none}
+.dtab.dirty:not(:hover):not(.on) .dt-dot{display:block}
+.dtab.dirty:not(:hover):not(.on) .dt-x{opacity:0}
+.dtab.dirty.on .dt-name::after{content:" \2022";color:var(--label-3)}
+.tab-new{flex:none;height:30px;min-width:30px;padding:0;border-radius:9px}
+@media (hover:none){.dt-x{opacity:1}}
+@media (max-width:760px){.dtab{min-width:118px;max-width:180px;flex:0 0 auto}}
+
 /* Empty state */
 .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
 .empty-card{max-width:520px;width:100%;text-align:center;padding:36px 28px;border-radius:22px;background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:1px solid var(--glass-edge)}
@@ -397,7 +421,10 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
       <button class="tbtn primary" id="btnSave" disabled><span id="saveIc"></span><span class="tb-hide-m">Save</span></button>
     </div>
   </header>
-  <div class="body">
+  <div class="tabbar" id="tabbar" hidden>
+    <div class="tab-list" id="tabList" role="tablist" aria-label="Open documents"></div>
+    <button class="tbtn tab-new" id="tabNew" aria-label="Open a PDF in a new tab" title="Open in new tab (Ctrl+O)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>  <div class="body">
     <aside class="sidebar" id="sidebar" aria-label="Pages">
       <div class="sb-seg"><div class="seg" id="sbSeg" role="group" aria-label="Sidebar view"><button data-v="pages" aria-pressed="true">Pages</button><button data-v="outline" aria-pressed="false">Bookmarks</button></div></div>
       <div class="sb-head"><span class="sb-title" id="sbTitle">Pages</span><button class="tbtn" id="btnSelPages" style="height:26px;font-size:12px;font-weight:600">Select</button></div>
@@ -441,8 +468,9 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 <input type="file" id="fileImg" accept="image/*" multiple hidden>
 <input type="file" id="fileStamp" accept="image/*" hidden>
 <input type="file" id="fileInsertImg" accept="image/*" hidden>
+<input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=8"></script>
+<script type="module" src="app.js?v=9"></script>
 </body>
 </html>
