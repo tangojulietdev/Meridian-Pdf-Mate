@@ -166,7 +166,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .selbox{fill:none;stroke:var(--accent);stroke-width:1.2;vector-effect:non-scaling-stroke;stroke-dasharray:4 3;pointer-events:none}
 .handle-hit{fill:transparent;stroke:none;cursor:nwse-resize;touch-action:none}
 .handle{fill:#fff;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke;cursor:nwse-resize;touch-action:none}
-.pageind{position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:15;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--label-2);box-shadow:var(--pop-shadow);pointer-events:none}
+.pageind{border:0;cursor:pointer;pointer-events:auto!important;position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:15;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--label-2);box-shadow:var(--pop-shadow);pointer-events:none}
 .textedit{position:absolute;z-index:12;margin:0;padding:0;border:0;outline:1.5px solid var(--accent);outline-offset:2px;border-radius:2px;background:rgba(255,255,255,.85);resize:none;overflow:hidden;font-family:Helvetica,Arial,"Liberation Sans",sans-serif;line-height:1.2;white-space:pre;color:#000}
 
 .ff{position:absolute;margin:0;border:0;border-radius:2px;padding:0 3px;background:rgba(0,122,255,.11);box-shadow:inset 0 0 0 1px rgba(0,122,255,.30);color:#000;font-family:Helvetica,Arial,"Liberation Sans",sans-serif;line-height:1.15;resize:none;transition:box-shadow .15s,background-color .15s;color-scheme:light}
@@ -177,6 +177,57 @@ button.ff{display:flex;align-items:center;justify-content:center;padding:0;curso
 button.ff svg.i{width:85%;height:85%;stroke-width:2.6;color:#000}
 textarea.ff{padding-top:2px;white-space:pre-wrap}
 select.ff{padding:0 2px;appearance:auto}
+
+/* Text layer (from pdf.js viewer), find, selection bubble, hand */
+.page{--scale-round-x:1px;--scale-round-y:1px;--user-unit:1}
+.textLayer{color-scheme:only light;position:absolute;text-align:initial;inset:0;overflow:clip;opacity:1;line-height:1;letter-spacing:normal;word-spacing:normal;-webkit-text-size-adjust:none;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;caret-color:CanvasText;z-index:1;
+  --min-font-size:1;--text-scale-factor:calc(var(--total-scale-factor) * var(--min-font-size));--min-font-size-inv:calc(1 / var(--min-font-size))}
+.textLayer span,.textLayer br{color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0% 0%;-webkit-user-select:text;user-select:text}
+.textLayer > :not(.markedContent),.textLayer .markedContent span:not(.markedContent){z-index:1;--font-height:0;font-size:calc(var(--text-scale-factor) * var(--font-height));--scale-x:1;--rotate:0deg;transform:rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv))}
+.textLayer .markedContent{display:contents}
+.textLayer span[role="img"]{user-select:none;cursor:default}
+.textLayer ::selection{background:rgba(0,122,255,.28);color:transparent}
+.textLayer br::selection{background:transparent}
+.textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:0;cursor:default;user-select:none}
+.textLayer.selecting .endOfContent{top:0}
+[data-main-rotation="90"]{transform:rotate(90deg) translateY(-100%)}
+[data-main-rotation="180"]{transform:rotate(180deg) translate(-100%,-100%)}
+[data-main-rotation="270"]{transform:rotate(270deg) translateX(-100%)}
+.findlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
+.findlayer i{position:absolute;border-radius:2px;background:rgba(255,204,0,.45);mix-blend-mode:multiply}
+.findlayer i.cur{background:rgba(255,149,0,.75);box-shadow:0 0 0 2px rgba(255,149,0,.9)}
+.formlayer{z-index:3}
+.page svg.ov{z-index:4}
+.viewer:not(.drawing) .page svg.ov{pointer-events:none}
+.viewer:not(.drawing) .page svg.ov .ann,.viewer:not(.drawing) .page svg.ov .handle,.viewer:not(.drawing) .page svg.ov .handle-hit{pointer-events:all}
+.viewer.drawing .textLayer{pointer-events:none;user-select:none}
+.viewer[data-tool="hand"],.viewer.spacepan{cursor:grab}
+.viewer[data-tool="hand"] .page *,.viewer.spacepan .page *{pointer-events:none!important;user-select:none!important;cursor:grab!important}
+.viewer.panning,.viewer.panning .page *{cursor:grabbing!important}
+.viewer[data-tool="hand"] .pages{user-select:none}
+.tool.grp .chev{position:absolute;right:3px;bottom:3px;width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3.5px solid currentColor;opacity:.55;transform:rotate(-45deg)}
+.msw{width:16px;height:16px;border-radius:4px;flex:none;border:2px solid var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.menu button:hover .msw,.menu button:focus-visible .msw{border-color:#fff}
+.findbar{position:absolute;z-index:26;top:12px;right:max(14px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:4px;padding:4px 6px 4px 12px;border-radius:999px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);animation:fbin2 .18s var(--ease)}
+@keyframes fbin2{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.findbar input{border:0;background:transparent;outline:none;width:200px;max-width:42vw;height:30px;font-size:14px;color:var(--label)}
+.findbar .fcount{font-size:12px;color:var(--label-3);font-variant-numeric:tabular-nums;min-width:56px;text-align:right;white-space:nowrap}
+.findbar .tbtn{min-width:30px;height:30px;padding:0 6px}
+.bubble{position:fixed;z-index:65;display:flex;align-items:center;gap:2px;padding:4px;border-radius:12px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);animation:pop .14s var(--ease)}
+.bubble button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--label);font-weight:600;font-size:13px}
+.bubble button:hover{background:var(--fill-2)}
+.bubble .bsep{width:1px;height:20px;background:var(--sep-strong);margin:0 2px}
+.bubble .bhl{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:#ffd60a;color:#000;font-weight:800;font-size:12px}
+.bubble .bul{text-decoration:underline;text-decoration-thickness:2px;font-weight:800;font-size:15px;width:18px;text-align:center}
+.bubble .bst{text-decoration:line-through;text-decoration-thickness:2px;text-decoration-color:#d70015;font-weight:800;font-size:15px;width:18px;text-align:center}
+.sb-seg{padding:10px 12px 0}
+.sb-seg .seg button{height:26px;font-size:12px}
+.ol-list{flex:1;overflow-y:auto;padding:8px 8px 16px;display:flex;flex-direction:column;gap:1px}
+.ol-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--label);padding:6px 10px;border-radius:7px;font-size:13px;line-height:1.3}
+.ol-item:hover{background:var(--fill-2)}
+.ol-doc{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--label-3);padding:10px 10px 4px}
+.ol-empty{color:var(--label-3);font-size:13px;padding:12px;margin:0}
+@media (max-width:760px){.findbar{left:12px;right:12px;top:8px}.findbar input{flex:1;width:auto;max-width:none}}
 
 /* Empty state */
 .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -199,7 +250,7 @@ select.ff{padding:0 2px;appearance:auto}
 .dropmask{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--accent) 14%,transparent);border:3px dashed var(--accent);border-radius:18px;margin:10px;pointer-events:none;font-size:18px;font-weight:600;color:var(--accent)}
 
 /* Menus, sheets */
-.menu{position:fixed;z-index:60;min-width:220px;padding:5px;border-radius:12px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);animation:pop .16s var(--ease)}
+.menu{position:fixed;z-index:97;min-width:220px;padding:5px;border-radius:12px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);animation:pop .16s var(--ease)}
 .menu button{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:7px;background:transparent;text-align:left;color:var(--label)}
 .menu button:hover,.menu button:focus-visible{background:var(--accent);color:var(--accent-ink);outline:none}
 .menu button kbd{margin-left:auto;font-family:var(--font);font-size:12px;opacity:.6}
@@ -264,6 +315,16 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
   #printRoot img{max-width:100%;max-height:100%;object-fit:contain}
 }
 
+@media (max-width:1440px) and (min-width:761px){ #btnRedo,#btnPrint{display:none!important} .toolbar{gap:8px} }
+@media (max-width:1240px) and (min-width:761px){ .tb-right .capsule,#btnInstall{display:none!important} .docname input{max-width:180px} }
+@media (max-width:1020px) and (min-width:761px){ .tool{width:32px} .tsep{margin:0 1px} .docname small{display:none} }
+.tb-left{min-width:0;flex:1 1 120px}.tb-right{flex:0 0 auto}
+
+.sidebar{overflow:hidden}
+@media (max-width:760px){.sb-foot{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
+.sb-foot{flex-wrap:wrap;justify-content:center}
+@media (hover:none){.menu button kbd{display:none}}
+
 /* Phone */
 @media (max-width: 760px){
   :root{--tb-h:52px}
@@ -314,13 +375,16 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
   </header>
   <div class="body">
     <aside class="sidebar" id="sidebar" aria-label="Pages">
+      <div class="sb-seg"><div class="seg" id="sbSeg" role="group" aria-label="Sidebar view"><button data-v="pages" aria-pressed="true">Pages</button><button data-v="outline" aria-pressed="false">Bookmarks</button></div></div>
       <div class="sb-head"><span class="sb-title" id="sbTitle">Pages</span><button class="tbtn" id="btnSelPages" style="height:26px;font-size:12px;font-weight:600">Select</button></div>
       <div class="sb-list" id="sbList"></div>
+      <div class="ol-list" id="olList" hidden></div>
       <div class="sb-foot" id="sbFoot">
         <button class="tbtn" data-pa="rotl" aria-label="Rotate left" title="Rotate left"></button>
         <button class="tbtn" data-pa="rotr" aria-label="Rotate right" title="Rotate right"></button>
         <button class="tbtn" data-pa="up" aria-label="Move up" title="Move up"></button>
         <button class="tbtn" data-pa="down" aria-label="Move down" title="Move down"></button>
+        <button class="tbtn" data-pa="dup" aria-label="Duplicate page" title="Duplicate page"></button>
         <button class="tbtn" data-pa="blank" aria-label="Insert blank page after" title="Insert blank page"></button>
         <button class="tbtn" data-pa="del" aria-label="Delete page" title="Delete page" style="color:var(--danger)"></button>
       </div>
@@ -345,15 +409,16 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
         </div>
       </div>
     </main>
-    <div class="pageind glass" id="pageInd" hidden>1 / 1</div>
+    <button class="pageind glass" id="pageInd" title="Go to page (Ctrl+G)" hidden>1 / 1</button>
     </div>
   </div>
 </div>
 <input type="file" id="fileOpen" accept="application/pdf,.pdf,image/*" multiple hidden>
 <input type="file" id="fileImg" accept="image/*" multiple hidden>
 <input type="file" id="fileStamp" accept="image/*" hidden>
+<input type="file" id="fileInsertImg" accept="image/*" hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=5"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>
