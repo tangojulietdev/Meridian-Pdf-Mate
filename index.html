@@ -433,6 +433,27 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 }
 @media (min-width: 761px){ .tb-show-m{display:none!important} }
 @media (prefers-reduced-motion: reduce){ *,*::before,*::after{animation:none!important;transition:none!important} }
+
+/* batch 4: multi-select, guides, shortcuts, tour */
+svg.ov .selgroup{fill:none;stroke:var(--accent);stroke-width:1;vector-effect:non-scaling-stroke;stroke-dasharray:2 3;pointer-events:none}
+svg.ov .guide{stroke:#ff2d55;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
+svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--accent);stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
+.kgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 22px;margin:4px 0 6px}
+.kgrid h3{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--label-2);margin:10px 0 6px}
+.krow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:.5px solid var(--sep);font-size:13px}
+.krow span:last-child{display:flex;gap:3px;flex:none}
+.krow kbd{font-family:var(--font);font-size:11.5px;min-width:22px;text-align:center;padding:2px 6px;border-radius:6px;background:var(--fill);border:.5px solid var(--sep);box-shadow:0 1px 0 var(--sep);color:var(--label)}
+@media (max-width:760px){.kgrid{grid-template-columns:1fr}}
+.tour{position:fixed;inset:0;z-index:120;pointer-events:none}
+.tour-spot{position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(10,12,18,.42),0 0 0 2px var(--accent);transition:all .28s var(--ease);pointer-events:none}
+.tour-card{position:fixed;width:min(320px,calc(100vw - 16px));padding:16px 16px 12px;border-radius:16px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);pointer-events:auto;transition:left .28s var(--ease),top .28s var(--ease);animation:pop .2s var(--ease)}
+.tour-n{font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.03em}
+.tour-card h3{margin:4px 0 4px;font-size:16px;font-weight:650;letter-spacing:-.01em}
+.tour-card p{margin:0;font-size:13px;line-height:1.45;color:var(--label-2)}
+.tour-dots{display:flex;gap:5px;margin:12px 0 10px}.tour-dots i{width:6px;height:6px;border-radius:3px;background:var(--sep);transition:all .2s}.tour-dots i.on{width:16px;background:var(--accent)}
+.tour-act{display:flex;align-items:center;gap:6px}.tour-act span{flex:1}
+.tour-act .ghost{background:transparent;box-shadow:none;color:var(--label-2)}
+@media (prefers-reduced-motion:reduce){.tour-spot,.tour-card{transition:none;animation:none}}
 </style>
 </head>
 <body>
@@ -519,6 +540,6 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=12"></script>
+<script type="module" src="app.js?v=13"></script>
 </body>
 </html>

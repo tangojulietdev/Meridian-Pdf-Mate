@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.5.0';
+const VERSION = '2.6.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -19,6 +19,20 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 /* ---------- Icons (SF-style strokes) ---------- */
 const IC = {
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  paste: '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h4"/>',
+  cut: '<circle cx="6" cy="18" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M7.8 16 17 4M16.2 16 7 4"/>',
+  front: '<rect x="9" y="9" width="11" height="11" rx="2" fill="currentColor" fill-opacity=".18"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/>',
+  back: '<rect x="4" y="4" width="11" height="11" rx="2" fill="currentColor" fill-opacity=".18"/><path d="M9 15v3a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-3"/>',
+  al: '<path d="M4 3v18"/><rect x="7" y="6" width="12" height="4" rx="1"/><rect x="7" y="14" width="7" height="4" rx="1"/>',
+  ac: '<path d="M12 3v18"/><rect x="5" y="6" width="14" height="4" rx="1"/><rect x="8" y="14" width="8" height="4" rx="1"/>',
+  ar: '<path d="M20 3v18"/><rect x="5" y="6" width="12" height="4" rx="1"/><rect x="10" y="14" width="7" height="4" rx="1"/>',
+  at: '<path d="M3 4h18"/><rect x="6" y="7" width="4" height="12" rx="1"/><rect x="14" y="7" width="4" height="7" rx="1"/>',
+  am: '<path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/>',
+  ab: '<path d="M3 20h18"/><rect x="6" y="5" width="4" height="12" rx="1"/><rect x="14" y="10" width="4" height="7" rx="1"/>',
+  kbd: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h1M9.5 10h1M13 10h1M16.5 10h1M7 14h10"/>',
+  tour: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+  selall: '<rect x="4" y="4" width="16" height="16" rx="2.5" stroke-dasharray="3 2.4"/><path d="m9 12 2 2 4-4"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.5 4v16"/><path d="M5.5 8h2M5.5 11h2"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
@@ -280,15 +294,16 @@ function menuKey(e) {
   else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
 }
-function openMenu(anchor, items) {
+function openMenu(anchor, items, at) {
   closeMenu();
   const m = document.createElement('div'); m.className = 'menu'; m.setAttribute('role', 'menu');
   m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.h ? `<div class="mh">${esc(it.h)}</div>` : `<button role="menuitem" data-i="${i}" ${it.disabled ? 'disabled style="opacity:.4;pointer-events:none"' : ''}>${it.swatch ? `<span class="msw" style="--c:${it.swatch}"></span>` : icon(it.icon || 'info')}<span>${esc(it.label)}</span>${it.kbd ? `<kbd>${esc(it.kbd)}</kbd>` : ''}</button>`).join('');
   m.addEventListener('click', (e) => { const b = e.target.closest('button[data-i]'); if (!b) return; const it = items[+b.dataset.i]; closeMenu(); it.run(); });
   document.body.appendChild(m); menuEl = m;
   const r = anchor.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
-  m.style.left = clamp(r.right - mw, 8, innerWidth - mw - 8) + 'px';
-  m.style.top = (r.bottom + 6 + mh > innerHeight - 8 && r.top - mh - 6 > 8 ? r.top - mh - 6 : clamp(r.bottom + 6, 8, innerHeight - mh - 8)) + 'px';
+  if (at) { m.style.left = clamp(at.x + mw > innerWidth - 8 ? at.x - mw : at.x, 8, innerWidth - mw - 8) + 'px'; m.style.top = clamp(at.y + mh > innerHeight - 8 ? at.y - mh : at.y, 8, innerHeight - mh - 8) + 'px'; }
+  else m.style.left = clamp(r.right - mw, 8, innerWidth - mw - 8) + 'px';
+  if (!at) m.style.top = (r.bottom + 6 + mh > innerHeight - 8 && r.top - mh - 6 > 8 ? r.top - mh - 6 : clamp(r.bottom + 6, 8, innerHeight - mh - 8)) + 'px';
   m.style.maxHeight = (innerHeight - 16) + 'px'; m.style.overflowY = 'auto';
   setTimeout(() => { document.addEventListener('pointerdown', menuOutside, true); document.addEventListener('keydown', menuKey); const f = m.querySelector('button'); if (f) f.focus(); }, 0);
 }
@@ -675,6 +690,18 @@ function annNode(a) {
   }
   return g;
 }
+let GUIDES = null, MARQ = null, CLIP = null;
+function selIds() { return S.sel ? (S.sel.ids && S.sel.ids.length ? S.sel.ids : [S.sel.annId]) : []; }
+function selAnns() { if (!S.sel) return null; const p = pageById(S.sel.pageId); if (!p) return null; const ids = new Set(selIds()); const as = p.annots.filter((a) => ids.has(a.id)); return as.length ? { p, as } : null; }
+function unionBox(list, g) { let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity; for (const a of list) { const b = dispBox(a, g); L = Math.min(L, b.L); T = Math.min(T, b.T); R = Math.max(R, b.R); B = Math.max(B, b.B); } return { L, T, R, B }; }
+function snapTargets(p, g, ids) { const xs = [0, g.w / 2, g.w], ys = [0, g.h / 2, g.h]; for (const z of p.annots) { if (ids.includes(z.id)) continue; const b = dispBox(z, g); xs.push(b.L, (b.L + b.R) / 2, b.R); ys.push(b.T, (b.T + b.B) / 2, b.B); } return { xs, ys }; }
+function snapMove(b, dx, dy, t, th) {
+  const out = { dx, dy, gx: null, gy: null };
+  const best = (vals, cands) => { let m = null; for (const v of vals) for (const c of cands) { const d = c - v; if (Math.abs(d) <= th && (!m || Math.abs(d) < Math.abs(m.d))) m = { d, c }; } return m; };
+  const mx = best([b.L + dx, (b.L + b.R) / 2 + dx, b.R + dx], t.xs); if (mx) { out.dx += mx.d; out.gx = mx.c; }
+  const my = best([b.T + dy, (b.T + b.B) / 2 + dy, b.B + dy], t.ys); if (my) { out.dy += my.d; out.gy = my.c; }
+  return out;
+}
 function drawOverlay(p, el = pageEl(p.id)) {
   if (!el) return;
   const svg = el.querySelector('svg.ov'); const g = geo(p);
@@ -693,7 +720,11 @@ function drawOverlay(p, el = pageEl(p.id)) {
     ui.appendChild(sv('path', { d: `M0 0H${g.w}V${g.h}H0Z M${L} ${T}V${B}H${Rr}V${T}Z`, fill: 'rgba(20,20,24,.55)', 'fill-rule': 'evenodd', style: 'pointer-events:none' }));
     ui.appendChild(sv('rect', { x: L, y: T, width: Rr - L, height: B - T, fill: 'none', stroke: '#0a84ff', 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke', 'stroke-dasharray': '6 4', style: 'pointer-events:none' }));
   }
-  if (S.sel && S.sel.pageId === p.id) {
+  if (S.sel && S.sel.pageId === p.id && selIds().length > 1) {
+    const ids = new Set(selIds()); const list = p.annots.filter((z) => ids.has(z.id)); const pad = 4 / S.zoom;
+    for (const a of list) { const b = dispBox(a, g); ui.appendChild(sv('rect', { class: 'selbox', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad })); }
+    if (list.length) { const u = unionBox(list, g); ui.appendChild(sv('rect', { class: 'selgroup', x: u.L - pad * 2, y: u.T - pad * 2, width: u.R - u.L + 4 * pad, height: u.B - u.T + 4 * pad })); }
+  } else if (S.sel && S.sel.pageId === p.id) {
     const a = p.annots.find((z) => z.id === S.sel.annId);
     if (a && !(S.editing && S.editing.annId === a.id)) {
       const b = dispBox(a, g), pad = 4 / S.zoom, r = 7 / S.zoom;
@@ -702,6 +733,11 @@ function drawOverlay(p, el = pageEl(p.id)) {
       ui.appendChild(sv('circle', { class: 'handle', 'data-h': 'se', cx: b.R + pad, cy: b.B + pad, r }));
     }
   }
+  if (GUIDES && GUIDES.pageId === p.id) {
+    if (GUIDES.gx != null) ui.appendChild(sv('line', { class: 'guide', x1: GUIDES.gx, y1: 0, x2: GUIDES.gx, y2: g.h }));
+    if (GUIDES.gy != null) ui.appendChild(sv('line', { class: 'guide', x1: 0, y1: GUIDES.gy, x2: g.w, y2: GUIDES.gy }));
+  }
+  if (MARQ && MARQ.pageId === p.id) ui.appendChild(sv('rect', { class: 'marq', x: MARQ.L, y: MARQ.T, width: MARQ.R - MARQ.L, height: MARQ.B - MARQ.T }));
   svg.appendChild(content); svg.appendChild(ui);
   scheduleThumb(p.id);
 }
@@ -833,6 +869,15 @@ viewer.addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey) || !S.pa
 /* ---------- Pointer interaction ---------- */
 function ptFromEvent(e, el) { const r = el.getBoundingClientRect(); return [(e.clientX - r.left) / S.zoom, (e.clientY - r.top) / S.zoom]; }
 let drag = null, lastTap = { t: 0, id: null };
+function addTextAt(p, pt, note) {
+  const g = geo(p); const size = note ? Math.min(S.style.size, 11) : S.style.size; const r = tr(p);
+  const a = { id: uid('a'), t: 'text', r, text: '', size, color: note ? '#000000' : S.style.ink, w: 1, h: 1, ax: 0, ay: 0 };
+  if (note) a.bg = S.style.noteBg || '#fff3a6';
+  const bx = textBox(a); a.w = bx.w; a.h = bx.h;
+  const topLeftDisp = [pt[0], pt[1] - size * 0.6 - bx.pad];
+  const [ax, ay] = ap(g.i, topLeftDisp[0], topLeftDisp[1] + a.h); a.ax = ax; a.ay = ay;
+  p.annots.push(a); openEditor(p, a, true);
+}
 pagesEl.addEventListener('pointerdown', (e) => {
   const el = e.target.closest('.page'); if (!el || e.button > 0) return;
   if (e.target.closest('.ff')) return;
@@ -855,11 +900,15 @@ pagesEl.addEventListener('pointerdown', (e) => {
       drag = { mode: 'resize', p, el, g, a, orig: JSON.parse(JSON.stringify(a)), box: dispBox(a, g), start: pt, id: e.pointerId };
     } else if (hit) {
       const a = p.annots.find((z) => z.id === hit.dataset.id); if (!a) return;
+      if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); select(p.id, a.id, { add: true }); return; }
       const now = Date.now();
       if (a.t === 'text' && lastTap.id === a.id && now - lastTap.t < 380) { lastTap = { t: 0, id: null }; e.preventDefault(); openEditor(p, a); return; }
       lastTap = { t: now, id: a.id };
-      select(p.id, a.id);
-      drag = { mode: 'move', p, el, g, a, orig: JSON.parse(JSON.stringify(a)), start: pt, id: e.pointerId };
+      if (!(S.sel && S.sel.pageId === p.id && selIds().includes(a.id))) select(p.id, a.id);
+      const ids = selIds(); const list = p.annots.filter((z) => ids.includes(z.id));
+      drag = { mode: 'move', p, el, g, a, orig: JSON.parse(JSON.stringify(a)), group: list.map((z) => ({ id: z.id, orig: JSON.parse(JSON.stringify(z)) })), box: unionBox(list, g), targets: snapTargets(p, g, ids), start: pt, id: e.pointerId };
+    } else if (e.shiftKey && !e.target.closest('.textLayer span')) {
+      drag = { mode: 'marquee', p, el, g, start: pt, base: S.sel && S.sel.pageId === p.id ? selIds().slice() : [], id: e.pointerId };
     } else { if (S.sel) { select(null); } return; }
     e.preventDefault(); el.querySelector('svg.ov').setPointerCapture(e.pointerId); return;
   }
@@ -868,13 +917,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
   if (tool === 'text' || tool === 'note') {
     const hitText = [...p.annots].reverse().find((a) => a.t === 'text' && (() => { const b = dispBox(a, g); return pt[0] >= b.L && pt[0] <= b.R && pt[1] >= b.T && pt[1] <= b.B; })());
     if (hitText) { openEditor(p, hitText); return; }
-    const note = tool === 'note'; const size = note ? Math.min(S.style.size, 11) : S.style.size; const r = tr(p);
-    const a = { id: uid('a'), t: 'text', r, text: '', size, color: note ? '#000000' : S.style.ink, w: 1, h: 1, ax: 0, ay: 0 };
-    if (note) a.bg = S.style.noteBg || '#fff3a6';
-    const bx = textBox(a); a.w = bx.w; a.h = bx.h;
-    const topLeftDisp = [pt[0], pt[1] - size * 0.6 - bx.pad];
-    const [ax, ay] = ap(g.i, topLeftDisp[0], topLeftDisp[1] + a.h); a.ax = ax; a.ay = ay;
-    p.annots.push(a); openEditor(p, a, true); return;
+    addTextAt(p, pt, tool === 'note'); return;
   }
   if (tool === 'stamp') {
     const st = S.pendingStamp; if (!st) return; const r = tr(p);
@@ -917,6 +960,19 @@ pagesEl.addEventListener('pointermove', (e) => {
   const dx = pt[0] - drag.start[0], dy = pt[1] - drag.start[1];
   if (!drag.moved && Math.hypot(dx, dy) * S.zoom < 3) return;
   drag.moved = true;
+  if (drag.mode === 'marquee') {
+    MARQ = { pageId: p.id, L: Math.min(pt[0], drag.start[0]), T: Math.min(pt[1], drag.start[1]), R: Math.max(pt[0], drag.start[0]), B: Math.max(pt[1], drag.start[1]) };
+    const hits = p.annots.filter((z) => { const b = dispBox(z, g); return b.R >= MARQ.L && b.L <= MARQ.R && b.B >= MARQ.T && b.T <= MARQ.B; }).map((z) => z.id);
+    const ids = [...new Set([...drag.base, ...hits])]; if (ids.length) select(p.id, null, { ids }); else { S.sel = null; drawOverlay(p, el); refreshFormatBar(); }
+    return;
+  }
+  if (drag.mode === 'move' && drag.group) {
+    let mdx = dx, mdy = dy; GUIDES = null;
+    if (!e.altKey) { const sn = snapMove(drag.box, dx, dy, drag.targets, 5 / S.zoom); mdx = sn.dx; mdy = sn.dy; if (sn.gx != null || sn.gy != null) GUIDES = { pageId: p.id, gx: sn.gx, gy: sn.gy }; }
+    const T = pdfAffineFromDisplay(g, (x, y) => [x + mdx, y + mdy]);
+    for (const it of drag.group) { const f = JSON.parse(JSON.stringify(it.orig)); applyT(f, T); const i = p.annots.findIndex((z) => z.id === it.id); if (i >= 0) p.annots[i] = f; if (it.id === a.id) drag.a = f; }
+    drawOverlay(p, el); return;
+  }
   const fresh = JSON.parse(JSON.stringify(drag.orig)); const idx = p.annots.findIndex((z) => z.id === a.id);
   if (drag.mode === 'move') applyT(fresh, pdfAffineFromDisplay(g, (x, y) => [x + dx, y + dy]));
   else {
@@ -930,7 +986,9 @@ pagesEl.addEventListener('pointermove', (e) => {
 });
 function endDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
-  const { p, el, a, mode } = drag; drag = null;
+  const { p, el, a, mode, moved, group } = drag; drag = null;
+  if (mode === 'marquee') { MARQ = null; drawOverlay(p, el); refreshFormatBar(); return; }
+  if (mode === 'move') { GUIDES = null; if (!moved && group && group.length > 1) { S.sel = { pageId: p.id, annId: a.id }; } }
   if (mode === 'crop') { const c = p.crop; const g = geo(p); if (c) { const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); if (Math.abs(d2[0] - d1[0]) * S.zoom < 20 || Math.abs(d2[1] - d1[1]) * S.zoom < 20) p.crop = null; } drawOverlay(p, el); commit(); refreshFormatBar(); return; }
   if (mode === 'create') {
     let keep = true; const g = geo(p); const b = dispBox(a, g); const big = Math.max(b.R - b.L, b.B - b.T) * S.zoom;
@@ -951,18 +1009,91 @@ pagesEl.addEventListener('dblclick', (e) => {
   const p = pageById(el.dataset.id); const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') openEditor(p, a);
 });
 
-function select(pageId, annId) {
-  const prev = S.sel; S.sel = pageId ? { pageId, annId } : null;
+pagesEl.addEventListener('contextmenu', (e) => {
+  const el = e.target.closest('.page'); if (!el || e.target.closest('.ff')) return;
+  const hit = e.target.closest('.ann');
+  if (!hit && String(getSelection() || '').trim()) return;
+  e.preventDefault(); if (S.editing) closeEditor(false);
+  const p = pageById(el.dataset.id); const pt = ptFromEvent(e, el); const pi = S.pages.indexOf(p);
+  S.current = pi; if (!S.selPages.has(p.id)) S.selPages.clear(); markThumbs();
+  const at = { x: e.clientX, y: e.clientY }; let items;
+  if (hit) {
+    const id = hit.dataset.id; if (S.tool !== 'select') setTool('select');
+    if (!(S.sel && S.sel.pageId === p.id && selIds().includes(id))) select(p.id, id);
+    const n = selIds().length; const a = p.annots.find((z) => z.id === id);
+    items = [{ h: n > 1 ? `${n} items selected` : annLabel(a) }];
+    if (n === 1 && a.t === 'text') items.push({ label: 'Edit text', icon: 'edit', run: () => openEditor(p, a) });
+    items.push(
+      { label: 'Copy', icon: 'copy', kbd: 'Ctrl C', run: () => copySelected(false) },
+      { label: 'Cut', icon: 'cut', kbd: 'Ctrl X', run: () => copySelected(true) },
+      { label: 'Duplicate', icon: 'dup', kbd: 'Ctrl D', run: duplicateSelected });
+    if (n === 1) items.push({ label: 'Copy to other pages…', icon: 'pages', run: openCopyToPages });
+    items.push('-', { label: 'Bring to front', icon: 'front', kbd: 'Ctrl ]', run: () => reorderSelected(true) }, { label: 'Send to back', icon: 'back', kbd: 'Ctrl [', run: () => reorderSelected(false) });
+    if (n > 1) items.push('-', { h: 'Align' }, { label: 'Left edges', icon: 'al', run: () => alignSelected('l') }, { label: 'Centres', icon: 'ac', run: () => alignSelected('c') }, { label: 'Right edges', icon: 'ar', run: () => alignSelected('r') }, { label: 'Top edges', icon: 'at', run: () => alignSelected('t') }, { label: 'Middles', icon: 'am', run: () => alignSelected('m') }, { label: 'Bottom edges', icon: 'ab', run: () => alignSelected('b') });
+    items.push('-', { label: n > 1 ? `Delete ${n} items` : 'Delete', icon: 'trash', kbd: 'Del', run: deleteSelected });
+  } else {
+    if (S.sel) select(null);
+    items = [{ h: `Page ${pi + 1} of ${S.pages.length}` },
+      { label: CLIP ? (CLIP.items.length > 1 ? `Paste ${CLIP.items.length} items here` : 'Paste here') : 'Paste', icon: 'paste', kbd: 'Ctrl V', run: () => pasteClip(p, pt), disabled: !CLIP },
+      { label: 'Add text here', icon: 'text', run: () => { setTool('text'); addTextAt(p, pt, false); } },
+      { label: 'Add note here', icon: 'note', run: () => { setTool('note'); addTextAt(p, pt, true); } },
+      { label: 'Select all marks on page', icon: 'selall', kbd: 'Ctrl A', run: () => selectAllOnPage(p), disabled: !p.annots.length },
+      '-', { h: 'Page' },
+      { label: 'Rotate left', icon: 'rotl', run: () => pageAction('rotl') },
+      { label: 'Rotate right', icon: 'rotr', run: () => pageAction('rotr') },
+      { label: 'Duplicate page', icon: 'dup', run: () => pageAction('dup') },
+      { label: 'Insert blank page after', icon: 'blank', run: () => pageAction('blank') },
+      { label: 'Delete page', icon: 'trash', run: () => pageAction('del') }];
+  }
+  openMenu(el, items, at);
+});
+function select(pageId, annId, o = {}) {
+  const prev = S.sel;
+  if (o.ids) S.sel = o.ids.length ? { pageId, annId: o.ids[o.ids.length - 1], ids: o.ids.slice() } : null;
+  else if (o.add && prev && prev.pageId === pageId) { const ids = selIds().slice(); const i = ids.indexOf(annId); if (i >= 0) ids.splice(i, 1); else ids.push(annId); S.sel = ids.length ? { pageId, annId: ids[ids.length - 1], ids } : null; }
+  else S.sel = pageId ? { pageId, annId } : null;
   if (prev && prev.pageId !== pageId) { const pp = pageById(prev.pageId); if (pp) drawOverlay(pp); }
   if (pageId) drawOverlay(pageById(pageId));
   refreshFormatBar();
 }
 function selectedAnn() { if (!S.sel) return null; const p = pageById(S.sel.pageId); const a = p && p.annots.find((z) => z.id === S.sel.annId); return a ? { p, a } : null; }
-function deleteSelected() { const s = selectedAnn(); if (!s) return; s.p.annots = s.p.annots.filter((z) => z !== s.a); S.sel = null; drawOverlay(s.p); commit(); refreshFormatBar(); }
+function deleteSelected() { const s = selAnns(); if (!s) return; const ids = new Set(s.as.map((a) => a.id)); s.p.annots = s.p.annots.filter((z) => !ids.has(z.id)); S.sel = null; drawOverlay(s.p); commit(); refreshFormatBar(); }
 function duplicateSelected() {
-  const s = selectedAnn(); if (!s) return; const g = geo(s.p); const c = JSON.parse(JSON.stringify(s.a)); c.id = uid('a');
-  applyT(c, pdfAffineFromDisplay(g, (x, y) => [x + 12, y + 12])); s.p.annots.push(c); select(s.p.id, c.id); commit();
+  const s = selAnns(); if (!s) return; const g = geo(s.p); const T = pdfAffineFromDisplay(g, (x, y) => [x + 12, y + 12]);
+  const cs = s.as.map((a) => { const c = JSON.parse(JSON.stringify(a)); c.id = uid('a'); applyT(c, T); return c; });
+  s.p.annots.push(...cs); select(s.p.id, null, { ids: cs.map((c) => c.id) }); commit();
 }
+function copySelected(cut) {
+  const s = selAnns(); if (!s) return false; const g = geo(s.p);
+  CLIP = { pageId: s.p.id, rot: tr(s.p), box: unionBox(s.as, g), items: s.as.map((a) => JSON.parse(JSON.stringify(a))) };
+  if (cut) deleteSelected(); toast(`${cut ? 'Cut' : 'Copied'} ${s.as.length} item${s.as.length > 1 ? 's' : ''}`); return true;
+}
+function pasteClip(p, at) {
+  if (!CLIP) return; p = p || S.pages[S.current]; if (!p) return; const g = geo(p);
+  let items = CLIP.items.map((a) => { const c = JSON.parse(JSON.stringify(a)); c.id = uid('a'); return c; });
+  const src = pageById(CLIP.pageId); if (CLIP.pageId !== p.id && src) { const g1 = geo(src), t1 = tr(src), t2 = tr(p); items = CLIP.items.map((a) => mapAnnot(a, g1, t1, g, t2)); }
+  const u = unionBox(items, g); let dx = 0, dy = 0;
+  if (at) { dx = at[0] - u.L; dy = at[1] - u.T; } else if (CLIP.pageId === p.id) { dx = 12; dy = 12; }
+  if (dx || dy) { const T = pdfAffineFromDisplay(g, (x, y) => [x + dx, y + dy]); items.forEach((c) => applyT(c, T)); }
+  if (CLIP.pageId === p.id && !at) CLIP.items = items.map((c) => JSON.parse(JSON.stringify(c)));
+  p.annots.push(...items); select(p.id, null, { ids: items.map((c) => c.id) }); commit();
+}
+function reorderSelected(front) {
+  const s = selAnns(); if (!s) return; const ids = new Set(s.as.map((a) => a.id)); const rest = s.p.annots.filter((z) => !ids.has(z.id));
+  s.p.annots = front ? [...rest, ...s.as] : [...s.as, ...rest]; drawOverlay(s.p); commit();
+}
+function alignSelected(k) {
+  const s = selAnns(); if (!s || s.as.length < 2) return; const g = geo(s.p); const u = unionBox(s.as, g);
+  s.p.annots = s.p.annots.map((a) => {
+    if (!s.as.includes(a)) return a; const b = dispBox(a, g); let dx = 0, dy = 0;
+    if (k === 'l') dx = u.L - b.L; else if (k === 'r') dx = u.R - b.R; else if (k === 'c') dx = (u.L + u.R) / 2 - (b.L + b.R) / 2;
+    else if (k === 't') dy = u.T - b.T; else if (k === 'b') dy = u.B - b.B; else if (k === 'm') dy = (u.T + u.B) / 2 - (b.T + b.B) / 2;
+    const c = JSON.parse(JSON.stringify(a)); applyT(c, pdfAffineFromDisplay(g, (x, y) => [x + dx, y + dy])); return c;
+  });
+  drawOverlay(s.p); commit();
+}
+function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
+function annLabel(a) { return ({ text: a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
 /* ---------- Text editor ---------- */
 function openEditor(p, a, isNew = false) {
@@ -1454,7 +1585,15 @@ function saveStyle() { lsSet('pdfmate.style', S.style); }
 let styleCommitT;
 function applyStyleToSel(fn) { const s = selectedAnn(); if (!s) return; fn(s.a); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 350); if (S.editing) { const ta = $('#textEditor'); if (ta) { ta.style.color = s.a.color; ta.style.fontSize = s.a.size * S.zoom + 'px'; ta.dispatchEvent(new Event('input')); } } }
 function refreshFormatBar() {
-  const fb = $('#formatBar'); const s = selectedAnn();
+  const fb = $('#formatBar');
+  if (S.sel && selIds().length > 1 && S.pages.length) {
+    const n = selIds().length; const B = (k, ic, t) => `<button class="tbtn" data-mal="${k}" title="${t}" aria-label="${t}">${icon(ic)}</button>`;
+    fb.innerHTML = `<span class="fb-label">${n} selected</span><span class="fb-spacer"></span>${B('l', 'al', 'Align left')}${B('c', 'ac', 'Align centres')}${B('r', 'ar', 'Align right')}<span class="fb-spacer"></span>${B('t', 'at', 'Align top')}${B('m', 'am', 'Align middles')}${B('b', 'ab', 'Align bottom')}<span class="fb-spacer"></span>${B('dup', 'dup', 'Duplicate')}${B('del', 'trash', 'Delete')}`;
+    fb.hidden = false;
+    fb.querySelectorAll('[data-mal]').forEach((b) => b.onclick = () => { const k = b.dataset.mal; if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else alignSelected(k); });
+    return;
+  }
+  const s = selectedAnn();
   let kind = s ? s.a.t : S.tool;
   if (s && s.a.t === 'text') kind = s.a.bg ? 'note' : s.a.border ? 'stampa' : 'text';
   if (s && s.a.t === 'mark') kind = s.a.kind === 'hl' ? 'markhl' : 'markline';
@@ -1612,6 +1751,17 @@ function pageAction(k) {
     S.pages.splice(at, 0, ...clones); renderAll(); commit(); scrollToPage(at); toast(`Duplicated ${clones.length} page${clones.length > 1 ? 's' : ''}`);
   } else if (k === 'blank') { const at = (tps.length ? S.pages.indexOf(tps[tps.length - 1]) : S.current) + 1; newBlank(at, S.pages[at - 1]); }
 }
+sbList.addEventListener('contextmenu', (e) => {
+  const t = e.target.closest('.thumb'); if (!t) return; e.preventDefault();
+  const i = S.pages.findIndex((p) => p.id === t.dataset.id); if (i < 0) return;
+  if (!S.selPages.has(t.dataset.id)) { S.selPages.clear(); } S.current = i; markThumbs();
+  const n = S.selPages.size || 1; const s = n > 1 ? `${n} pages` : `Page ${i + 1}`;
+  openMenu(t, [{ h: s }, { label: 'Go to page', icon: 'goto', run: () => scrollToPage(i) },
+    { label: 'Rotate left', icon: 'rotl', run: () => pageAction('rotl') }, { label: 'Rotate right', icon: 'rotr', run: () => pageAction('rotr') },
+    { label: 'Move up', icon: 'up', run: () => pageAction('up') }, { label: 'Move down', icon: 'down', run: () => pageAction('down') },
+    { label: 'Duplicate', icon: 'dup', run: () => pageAction('dup') }, { label: 'Insert blank page after', icon: 'blank', run: () => pageAction('blank') },
+    '-', { label: n > 1 ? `Delete ${n} pages` : 'Delete page', icon: 'trash', run: () => pageAction('del') }], { x: e.clientX, y: e.clientY });
+});
 $('#sbFoot').addEventListener('click', (e) => { const b = e.target.closest('[data-pa]'); if (b) pageAction(b.dataset.pa); });
 $('#btnSelPages').addEventListener('click', () => { S.selecting = !S.selecting; if (!S.selecting) S.selPages.clear(); $('#sidebar').classList.toggle('selecting', S.selecting); $('#btnSelPages').textContent = S.selecting ? 'Done' : 'Select'; markThumbs(); updateChrome(); });
 let lastThumbIdx = 0;
@@ -2348,7 +2498,9 @@ function updateMeta() {
   $('#docMeta').textContent = n ? `${n} page${n > 1 ? 's' : ''}${S.dirty ? ' · Edited' : ''}` : 'No document';
   document.title = n ? `${$('#docName').value || 'Untitled'}${S.dirty ? ' (edited)' : ''} · Meridian PDF Mate` : 'Meridian PDF Mate';
 }
+let tourQueued = false;
 function updateChrome() {
+  if (S.pages.length && !tourQueued && !tourSeen()) { tourQueued = true; setTimeout(() => startTour(false), 900); }
   const has = S.pages.length > 0;
   $('#btnSave').disabled = !has; $('#btnPrint').disabled = !has; $('#tools').hidden = !has; $('#btnUndo').disabled = !S.hist.length; $('#btnRedo').disabled = !S.fut.length;
   $('#zoomIn').disabled = $('#zoomOut').disabled = $('#zoomLbl').disabled = !has;
@@ -2410,6 +2562,8 @@ $('#btnMore').addEventListener('click', (e) => {
     { label: 'Actual size', icon: 'zin', run: () => setZoom(96 / 72), disabled: !has },
     { label: 'Redo', icon: 'redo', kbd: 'Ctrl ⇧ Z', run: redo, disabled: !S.fut.length },
     '-',
+    { label: 'Keyboard shortcuts', icon: 'kbd', kbd: '?', run: openShortcuts },
+    { label: 'Show the tour', icon: 'tour', run: () => startTour(true), disabled: !has },
     ...(isStandalone() ? [] : [{ label: 'Install app', icon: 'install', run: doInstall }]),
     { label: `Appearance: ${themeLabel()}`, icon: 'theme', run: cycleTheme },
     { label: 'Document properties…', icon: 'props', run: openProps, disabled: !has },
@@ -2439,14 +2593,81 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === '-') { e.preventDefault(); setZoom(S.zoom / 1.2); return; }
   if (mod && e.key === '0') { e.preventDefault(); setZoom(0, true); return; }
   if (inField || $('#layer .scrim')) return;
+  if (mod && e.key.toLowerCase() === 'a' && S.pages.length && !String(getSelection() || '')) { e.preventDefault(); selectAllOnPage(); return; }
+  if (mod && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x') && S.sel && !String(getSelection() || '')) { e.preventDefault(); copySelected(e.key.toLowerCase() === 'x'); return; }
+  if (mod && e.key.toLowerCase() === 'v' && CLIP && S.pages.length) { e.preventDefault(); pasteClip(); return; }
+  if (mod && e.key.toLowerCase() === 'd' && S.sel) { e.preventDefault(); duplicateSelected(); return; }
+  if (mod && e.key === ']' && S.sel) { e.preventDefault(); reorderSelected(true); return; }
+  if (mod && e.key === '[' && S.sel) { e.preventDefault(); reorderSelected(false); return; }
+  if (e.key === '?' && !mod) { e.preventDefault(); openShortcuts(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) { e.preventDefault(); deleteSelected(); return; }
   if (e.key === 'Escape') { if (S.sel) select(null); else if (S.tool !== 'select') setTool('select'); return; }
   if (S.sel && e.key.startsWith('Arrow')) {
-    e.preventDefault(); const s = selectedAnn(); const st = e.shiftKey ? 10 : 1; const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
-    applyT(s.a, pdfAffineFromDisplay(geo(s.p), (x, y) => [x + d[0], y + d[1]])); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 400); return;
+    e.preventDefault(); const s = selAnns(); if (!s) return; const st = e.shiftKey ? 10 : 1; const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
+    const T = pdfAffineFromDisplay(geo(s.p), (x, y) => [x + d[0], y + d[1]]); s.as.forEach((a) => applyT(a, T)); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 400); return;
   }
   if (!mod && S.pages.length) { const map = { v: 'select', h: 'hand', t: 'text', d: 'edittext', n: 'note', u: 'hl', w: 'white', x: 'redact', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' }; const k = map[e.key.toLowerCase()]; if (k) setTool(k); }
 });
+
+/* ---------- Shortcuts sheet ---------- */
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+function openShortcuts() {
+  const K = (k) => k.split(' ').map((x) => `<kbd>${esc(x === 'Ctrl' && MAC ? '⌘' : x === 'Alt' && MAC ? '⌥' : x)}</kbd>`).join('');
+  const groups = [
+    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Edit existing text', 'D'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
+    ['Marks', [['Add to selection', 'Shift Click'], ['Box select', 'Shift Drag'], ['Select all on page', 'Ctrl A'], ['Copy / Cut / Paste', 'Ctrl C'], ['Duplicate', 'Ctrl D'], ['Bring to front / back', 'Ctrl ]'], ['Nudge (10 pt with Shift)', '← → ↑ ↓'], ['Move without snapping', 'Alt Drag'], ['Delete', 'Del'], ['Deselect', 'Esc'], ['More actions', 'Right-click']]],
+    ['Document', [['Open', 'Ctrl O'], ['Save or share', 'Ctrl S'], ['Print', 'Ctrl P'], ['Find', 'Ctrl F'], ['Go to page', 'Ctrl G'], ['Undo', 'Ctrl Z'], ['Redo', 'Ctrl Shift Z'], ['Zoom in / out', 'Ctrl + −'], ['Fit to width', 'Ctrl 0'], ['This list', '?']]],
+  ];
+  const sh = sheet(`<h2>Keyboard shortcuts</h2><p class="sub">${MAC ? '⌘ is Command.' : 'On a Mac, use ⌘ in place of Ctrl.'}</p><div class="kgrid">${groups.map(([t, rows]) => `<section><h3>${t}</h3>${rows.map(([l, k]) => `<div class="krow"><span>${esc(l)}</span><span>${K(k)}</span></div>`).join('')}</section>`).join('')}</div>
+    <div class="acts"><button class="btn" data-k="tour">${icon('tour')} Show the tour</button><button class="btn primary" data-k="ok">Done</button></div>`, { wide: true });
+  sh.querySelector('[data-k="ok"]').onclick = closeSheet;
+  sh.querySelector('[data-k="tour"]').onclick = () => { closeSheet(); startTour(true); };
+}
+
+/* ---------- First-run tour ---------- */
+const TOUR = [
+  { sel: '#tools', t: 'Tools', d: 'Select, hand, text, edit existing text, notes, highlight, shapes, pen and signatures. Each has a one-letter shortcut.' },
+  { sel: '#tabbar', t: 'Tabs', d: 'Keep several PDFs open at once. Drop files anywhere to open them in new tabs.' },
+  { sel: '#sidebar', t: 'Pages', d: 'Drag thumbnails to reorder. Shift-click to pick several, then rotate, duplicate or delete.' },
+  { sel: '#viewer', t: 'Right-click for more', d: 'Right-click a page or a mark for copy, paste, layering and align. Shift-click or Shift-drag selects several marks, and they snap to edges and centres as you drag.' },
+  { sel: '#btnMore', t: 'More', d: 'OCR, compare, scan, page numbers, watermark, split, export and templates live here.' },
+  { sel: '#btnSave', t: 'Save', d: 'Save, share or print. Your files never leave this device, and the app works offline. Press ? for all shortcuts.' },
+];
+let tourEl = null, tourI = 0;
+function tourSeen() { try { return localStorage.getItem('pdfmate.tour') === '1'; } catch (e) { return true; } }
+function endTour() { if (tourEl) { tourEl.remove(); tourEl = null; } try { localStorage.setItem('pdfmate.tour', '1'); } catch (e) { } removeEventListener('resize', placeTour); document.removeEventListener('keydown', tourKey, true); }
+function tourKey(e) { if (!tourEl) return; if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endTour(); } else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); tourGo(tourI + 1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); tourGo(tourI - 1); } }
+function tourSteps() { return TOUR.filter((st) => { const n = $(st.sel); if (!n) return false; const r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; }); }
+function startTour(force) {
+  if (tourEl || (!force && tourSeen()) || !S.pages.length) return;
+  tourEl = document.createElement('div'); tourEl.className = 'tour';
+  tourEl.innerHTML = `<div class="tour-spot"></div><div class="tour-card" role="dialog" aria-live="polite"><div class="tour-n"></div><h3></h3><p></p><div class="tour-dots"></div><div class="tour-act"><button class="btn ghost" data-t="skip">Skip</button><span></span><button class="btn" data-t="back">Back</button><button class="btn primary" data-t="next">Next</button></div></div>`;
+  document.body.appendChild(tourEl);
+  tourEl.addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (!b) return; const k = b.dataset.t; if (k === 'skip') endTour(); else tourGo(tourI + (k === 'next' ? 1 : -1)); });
+  addEventListener('resize', placeTour); document.addEventListener('keydown', tourKey, true);
+  tourGo(0);
+}
+function tourGo(i) {
+  const steps = tourSteps(); if (i >= steps.length) { endTour(); return; } tourI = Math.max(0, i);
+  const st = steps[tourI]; const c = tourEl.querySelector('.tour-card');
+  c.querySelector('.tour-n').textContent = `${tourI + 1} of ${steps.length}`; c.querySelector('h3').textContent = st.t; c.querySelector('p').textContent = st.d;
+  c.querySelector('.tour-dots').innerHTML = steps.map((_, k) => `<i class="${k === tourI ? 'on' : ''}"></i>`).join('');
+  c.querySelector('[data-t="back"]').hidden = tourI === 0; c.querySelector('[data-t="next"]').textContent = tourI === steps.length - 1 ? 'Done' : 'Next';
+  placeTour(); c.querySelector('[data-t="next"]').focus();
+}
+function placeTour() {
+  if (!tourEl) return; const st = tourSteps()[tourI]; if (!st) return; const n = $(st.sel); const r = n.getBoundingClientRect(); const pad = 6;
+  const big = r.width * r.height > innerWidth * innerHeight * 0.35;
+  const L = Math.max(4, r.left - pad), T = Math.max(4, r.top - pad), W = Math.min(innerWidth - 8, r.width + pad * 2), H = Math.min(innerHeight - 8, r.height + pad * 2);
+  const sp = tourEl.querySelector('.tour-spot'); Object.assign(sp.style, { left: L + 'px', top: T + 'px', width: W + 'px', height: H + 'px' });
+  const c = tourEl.querySelector('.tour-card'); const cw = c.offsetWidth, ch = c.offsetHeight; let x, y;
+  if (big) { x = r.left + r.width / 2 - cw / 2; y = r.top + r.height / 2 - ch / 2; }
+  else if (T + H + 12 + ch < innerHeight - 8) { x = r.left + r.width / 2 - cw / 2; y = T + H + 12; }
+  else if (T - 12 - ch > 8) { x = r.left + r.width / 2 - cw / 2; y = T - 12 - ch; }
+  else if (L + W + 12 + cw < innerWidth - 8) { x = L + W + 12; y = r.top + r.height / 2 - ch / 2; }
+  else { x = L - 12 - cw; y = r.top + r.height / 2 - ch / 2; }
+  c.style.left = clamp(x, 8, innerWidth - cw - 8) + 'px'; c.style.top = clamp(y, 8, innerHeight - ch - 8) + 'px';
+}
 
 /* ---------- Drag and drop files ---------- */
 let dragDepth = 0, mask = null;
