@@ -193,6 +193,8 @@ select.ff{padding:0 2px;appearance:auto}
 [data-main-rotation="90"]{transform:rotate(90deg) translateY(-100%)}
 [data-main-rotation="180"]{transform:rotate(180deg) translate(-100%,-100%)}
 [data-main-rotation="270"]{transform:rotate(270deg) translateX(-100%)}
+.viewer[data-tool="edittext"] .textLayer span{cursor:pointer;user-select:none;-webkit-user-select:none;border-radius:2px}
+.viewer[data-tool="edittext"] .textLayer span:hover{background:rgba(0,122,255,.14);box-shadow:0 0 0 1px rgba(0,122,255,.55)}
 .findlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
 .findlayer i{position:absolute;border-radius:2px;background:rgba(255,204,0,.45);mix-blend-mode:multiply}
 .findlayer i.cur{background:rgba(255,149,0,.75);box-shadow:0 0 0 2px rgba(255,149,0,.9)}
@@ -419,6 +421,6 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 <input type="file" id="fileInsertImg" accept="image/*" hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=6"></script>
+<script type="module" src="app.js?v=7"></script>
 </body>
 </html>
