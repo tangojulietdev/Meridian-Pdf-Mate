@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.6.0';
+const VERSION = '2.6.1';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -2695,10 +2695,10 @@ function boot() {
   $('#recents').addEventListener('click', (e) => { const x = e.target.closest('[data-forget]'); if (x) { e.stopPropagation(); forgetRecent(x.dataset.forget); return; } const c = e.target.closest('[data-rid]'); if (c) openRecent(c.dataset.rid); });
   $('#recents').addEventListener('keydown', (e) => { const c = e.target.closest('[data-rid]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRecent(c.dataset.rid); } });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-  return restoreSession().catch((e) => console.warn(e));
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('.toolbar')) $('.toolbar').insertBefore(t, $('.tb-right')); };
   placeTools(); mq.addEventListener('change', placeTools);
+  return restoreSession().catch((e) => console.warn(e));
 }
 let readyRes; const ready = new Promise((r) => { readyRes = r; });
 initFont().then(boot).catch((e) => { console.error(e); return boot(); }).then(() => readyRes(), () => readyRes());
