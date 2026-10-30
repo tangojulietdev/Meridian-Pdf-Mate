@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.4.0';
+const VERSION = '2.5.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -78,6 +78,8 @@ const IC = {
   fitpage: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/>',
   crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
+  ocr: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8.5 15.5 11 8.5h2l2.5 7M9.5 13h5"/>',
+  compare: '<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M5.5 9h3M5.5 12h3M15.5 9h3M15.5 12h3" /><path d="M15.5 15h3" stroke="#d70015"/>',
   xmark: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/>'
 };
 const icon = (n, extra = '') => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${IC[n] || ''}</svg>`;
@@ -407,7 +409,7 @@ function saveTab() {
   Object.assign(t, { pages: S.pages, hist: S.hist, fut: S.fut, last: S.last, sel: S.sel, selPages: S.selPages, current: S.current, zoom: S.zoom, fit: S.fit, dirty: S.dirty, meta: S.meta, name: $('#docName').value || 'Untitled', scroll: viewer.scrollTop, sbView: S.sbView || 'pages' });
 }
 function loadTab(i) {
-  closeEditor(true); closeFind(); hideBubble(); closeMenu();
+  closeEditor(true); closeFind(); hideBubble(); closeMenu(); closeCompare();
   WS.active = i; const t = WS.list[i];
   Object.assign(S, { pages: t.pages, hist: t.hist, fut: t.fut, last: t.last, sel: t.sel, selPages: t.selPages, current: t.current, zoom: t.zoom, fit: t.fit, dirty: t.dirty, meta: t.meta });
   $('#docName').value = t.name;
@@ -632,6 +634,7 @@ async function paintCanvas(el) {
       }
     }
     if (el._key !== key) return;
+    if (p.kind !== 'pdf' && p.ocr && p.ocr.length && !el._ocrDone) { buildOcrLayer(el, p); el._tlReady = true; }
     c.width = off.width; c.height = off.height; c.getContext('2d').drawImage(off, 0, 0);
   } catch (e) { if (e && e.name !== 'RenderingCancelledException') console.error(e); el._key = null; }
 }
@@ -821,6 +824,7 @@ function setZoom(z, fit = false) {
   S.pages.forEach((p) => { const el = pageEl(p.id); const g = geo(p); el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px'; el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom); if (el._vis) { el._ov = true; drawOverlay(p, el); drawForm(p, el); } else el._ov = false; });
   if (FIND.q) paintFind();
   viewer.scrollTop = ratio * viewer.scrollHeight; rerenderVisible(); updateZoomLbl();
+  if (CMP.marks.size) setTimeout(paintCmp, 60);
 }
 function updateZoomLbl() { $('#zoomLbl').textContent = Math.round(S.zoom * 75) + '%'; }
 let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.fit && S.pages.length) setZoom(0, true); }, 150); });
@@ -993,12 +997,16 @@ async function renderTextLayer(el, p, pg) {
   const div = el.querySelector('.textLayer'); if (!div) return;
   try {
     const tl = new pdfjsLib.TextLayer({ textContentSource: pg.streamTextContent({ includeMarkedContent: true, disableNormalization: true }), container: div, viewport: pg.getViewport({ scale: 1, rotation: tr(p) }) });
-    await tl.render(); el._tlReady = true; el._tl = tl; el._pg = pg; pageItems(el, p).catch(() => {});
+    await tl.render(); el._tl = tl; el._pg = pg; pageItems(el, p).catch(() => {});
+    if (p.ocr && p.ocr.length) buildOcrLayer(el, p); el._tlReady = true;
     if (FIND.q) paintFind(el);
+    if (CMP.marks.size) paintCmp();
   } catch (e) { console.warn('text layer', e); }
 }
 const textCache = new Map();
+const ocrText = (p) => (p.ocr || []).map((w) => w.t + ' ').join('');
 async function pageText(p) {
+  if (p.ocr && p.ocr.length) return ocrText(p);
   if (p.kind !== 'pdf') return '';
   const k = p.docId + ':' + p.index; if (textCache.has(k)) return textCache.get(k);
   const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1);
@@ -1074,6 +1082,171 @@ async function pageItems(el, p) {
   if (el._items) return el._items; const pg = el._pg || await S.docs.get(p.docId).pdf.getPage(p.index + 1);
   const tc = await pg.getTextContent({ includeMarkedContent: true, disableNormalization: true });
   el._items = tc.items.filter((x) => x.str !== undefined); if (el._tl && !el._tl._styles) el._tl._styles = tc.styles; return el._items;
+}
+
+/* OCR: recognise text on scanned pages (Tesseract, offline) */
+function buildOcrLayer(el, p) {
+  el._ocrDone = true; let lay = el.querySelector('.ocrLayer'); if (lay) lay.remove();
+  if (!p.ocr || !p.ocr.length) return; const g = geo(p);
+  lay = document.createElement('div'); lay.className = 'textLayer ocrLayer'; lay.style.inset = '0'; lay.style.width = '100%'; lay.style.height = '100%';
+  if (!mctx) mctx = document.createElement('canvas').getContext('2d');
+  for (const w of p.ocr) {
+    const { U, V } = UV(w.r); const pts = [[w.ax, w.ay], [w.ax + w.w * U[0], w.ay + w.w * U[1]], [w.ax + w.h * V[0], w.ay + w.h * V[1]]].map(([x, y]) => ap(g.t, x, y));
+    const L = Math.min(...pts.map((q) => q[0])), T = Math.min(...pts.map((q) => q[1])), Rr = Math.max(...pts.map((q) => q[0])), B = Math.max(...pts.map((q) => q[1]));
+    const fh = (B - T) * 0.92; mctx.font = `${fh}px sans-serif`; const mw = mctx.measureText(w.t).width || 1;
+    const sp = document.createElement('span'); sp.textContent = w.t + ' ';
+    sp.style.left = (100 * L / g.w).toFixed(3) + '%'; sp.style.top = (100 * T / g.h).toFixed(3) + '%'; sp.style.fontFamily = 'sans-serif';
+    sp.style.setProperty('--font-height', fh.toFixed(2) + 'px'); sp.style.setProperty('--scale-x', ((Rr - L) / mw).toFixed(4));
+    lay.appendChild(sp);
+  }
+  el.querySelector('.findlayer').before(lay);
+}
+let ocrW = null, ocrSeq = 0; const ocrWait = new Map();
+function ocrCall(cmd, data) {
+  if (!ocrW) { ocrW = new Worker(base + 'tesseract/ocr-worker.js'); ocrW.onmessage = (e) => { const f = ocrWait.get(e.data.id); if (f) { ocrWait.delete(e.data.id); f(e.data); } }; ocrW.onerror = (e) => { for (const f of ocrWait.values()) f({ ok: false, err: e.message || 'OCR failed to start' }); ocrWait.clear(); ocrW = null; }; }
+  return new Promise((res) => { const id = ++ocrSeq; ocrWait.set(id, res); ocrW.postMessage({ id, cmd, data }, data ? [data] : []); });
+}
+async function pageImageForOcr(p) {
+  const g = geo(p); const sc = Math.min(300 / 72, 3400 / Math.max(g.w, g.h)); const c = document.createElement('canvas'); c.width = Math.round(g.w * sc); c.height = Math.round(g.h * sc);
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  if (p.kind === 'pdf') { const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: sc, rotation: tr(p) }) }).promise; }
+  else if (p.kind === 'img') { const im = S.imgs.get(p.imgId); const t = g.t; x.setTransform(t[0] * sc, t[1] * sc, t[2] * sc, t[3] * sc, t[4] * sc, t[5] * sc); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(im.el, 0, 0, 1, 1); }
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png')); const buf = await blob.arrayBuffer(); c.width = c.height = 0; return { buf, sc };
+}
+async function ocrPage(p) {
+  const { buf, sc } = await pageImageForOcr(p); const r = await ocrCall('ocr', buf); if (!r.ok) throw new Error(r.err);
+  const g = geo(p); const words = []; const rot = tr(p);
+  for (const line of r.tsv.split('\n')) {
+    const c = line.split('\t'); if (c[0] !== '5' || c.length < 12) continue; const t = (c[11] || '').trim(); const conf = +c[10]; if (!t || conf < 35) continue;
+    const L = +c[6] / sc, T = +c[7] / sc, W = +c[8] / sc, H = +c[9] / sc; const [ax, ay] = ap(g.i, L, T + H);
+    words.push({ t: needsUni(t) ? t : sanitize(t), r: rot, ax, ay, w: W, h: H });
+  }
+  return words;
+}
+async function openOcr() {
+  if (!S.pages.length) return;
+  const cur = S.pages[S.current]; const sh = sheet(`<h2>Recognise text (OCR)</h2><p class="sub">Reads scanned pages so their text can be selected, copied, searched and edited. Works offline. English.</p>
+    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button data-o="need" aria-pressed="true">Scanned pages</button><button data-o="cur" aria-pressed="false">This page</button><button data-o="all" aria-pressed="false">All pages</button></div></div>
+    <p class="sub" id="ocrMsg" style="margin:0">Pages that already have real text are skipped.</p>
+    <div class="progress" hidden><i></i></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('search')} Recognise</button></div>`);
+  let which = 'need'; let stop = false;
+  sh.querySelectorAll('[data-o]').forEach((b) => b.onclick = () => { which = b.dataset.o; sh.querySelectorAll('[data-o]').forEach((z) => z.setAttribute('aria-pressed', z === b)); sh.querySelector('#ocrMsg').textContent = which === 'need' ? 'Pages that already have real text are skipped.' : which === 'cur' ? `Page ${S.current + 1} only.` : 'Every page, replacing earlier recognised text.'; });
+  sh.querySelector('[data-x]').onclick = () => { stop = true; closeSheet(); };
+  sh.querySelector('[data-go]').onclick = async () => {
+    const btn = sh.querySelector('[data-go]'); btn.disabled = true; const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i'); const msg = sh.querySelector('#ocrMsg');
+    let list = which === 'cur' ? [cur] : S.pages.slice();
+    if (which === 'need') { const keep = []; for (const p of list) { if (p.ocr && p.ocr.length) continue; const tx = p.kind === 'pdf' ? (await pageText(p)).trim() : ''; if (tx.length < 20) keep.push(p); } list = keep; }
+    if (!list.length) { msg.textContent = 'Every page already has text. Choose All pages to read them again.'; btn.disabled = false; pr.hidden = true; return; }
+    try {
+      msg.textContent = 'Starting the text recogniser…'; const ini = await ocrCall('init'); if (!ini.ok) throw new Error(ini.err);
+      let n = 0, words = 0;
+      for (const p of list) {
+        if (stop) break; msg.textContent = `Reading page ${S.pages.indexOf(p) + 1} (${n + 1} of ${list.length})…`;
+        p.ocr = await ocrPage(p); words += p.ocr.length; n++; bar.style.width = Math.round(n / list.length * 100) + '%';
+        textCache.delete(p.docId + ':' + p.index); const el = pageEl(p.id); if (el) { el._ocrDone = false; buildOcrLayer(el, p); el._tlReady = true; }
+      }
+      commit(); closeSheet();
+      toast(words ? `Recognised ${words} words on ${n} page${n > 1 ? 's' : ''}. You can now select, copy and search them.` : 'No readable text was found. Try a sharper scan.', { ms: 4500, err: !words });
+    } catch (e) { console.error(e); toast('Text recognition failed: ' + e.message, { err: true, ms: 5000 }); btn.disabled = false; pr.hidden = true; }
+  };
+}
+
+/* Compare two versions */
+const CMP = { marks: new Map(), list: [], name: '' };
+async function tokensOfPage(p, pdfOverride) {
+  if (p && p.ocr && p.ocr.length) { const str = ocrText(p); const toks = []; const re = /\S+/g; let m; while ((m = re.exec(str))) toks.push({ w: m[0], s: m.index, e: m.index + m[0].length }); return { str, toks }; }
+  let pg = null;
+  if (pdfOverride) pg = pdfOverride; else if (p && p.kind === 'pdf') pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1); else return { str: '', toks: [] };
+  const tc = await pg.getTextContent({ disableNormalization: true }); let str = ''; const toks = [];
+  for (const it of tc.items) { if (it.str === undefined) continue; const base = str.length; const re = /\S+/g; let m; while ((m = re.exec(it.str))) toks.push({ w: m[0], s: base + m.index, e: base + m.index + m[0].length }); str += it.str; }
+  return { str, toks };
+}
+function diffWords(A, B) {
+  const N = A.length, M = B.length, MAX = N + M; if (!MAX) return [];
+  const off = MAX + 1; const v = new Int32Array(2 * MAX + 3); const trace = [];
+  for (let d = 0; d <= MAX; d++) {
+    trace.push(v.slice(off - d - 1, off + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x = (k === -d || (k !== d && v[off + k - 1] < v[off + k + 1])) ? v[off + k + 1] : v[off + k - 1] + 1; let y = x - k;
+      while (x < N && y < M && A[x] === B[y]) { x++; y++; } v[off + k] = x;
+      if (x >= N && y >= M) {
+        const ops = []; let cx = N, cy = M;
+        for (let dd = d; dd > 0; dd--) {
+          const tv = trace[dd]; const at = (kk) => tv[kk + dd + 1]; const kk = cx - cy;
+          const prevK = (kk === -dd || (kk !== dd && at(kk - 1) < at(kk + 1))) ? kk + 1 : kk - 1; const px = at(prevK), py = px - prevK;
+          while (cx > px && cy > py) { ops.push(['eq', cx - 1, cy - 1]); cx--; cy--; }
+          if (cx === px) { ops.push(['ins', cx, cy - 1]); cy--; } else { ops.push(['del', cx - 1, cy]); cx--; }
+        }
+        while (cx > 0 && cy > 0) { ops.push(['eq', cx - 1, cy - 1]); cx--; cy--; }
+        return ops.reverse();
+      }
+    }
+    if (d > 3000) return null;
+  }
+  return null;
+}
+function openCompare() {
+  const others = WS.list.map((t, k) => ({ t, k })).filter((o) => o.k !== WS.active && o.t.pages.length);
+  const sh = sheet(`<h2>Compare with another version</h2><p class="sub">Shows what changed between this document and another, word by word, page by page. Changes are marked on this document.</p>
+    ${others.length ? `<div class="field"><span class="flabel">Open documents</span><div class="tpl-list">${others.map((o) => `<div class="tpl"><div><b>${esc(o.t.name)}</b><small>${o.t.pages.length} pages</small></div><span><button class="btn" data-tab="${o.k}">Compare</button></span></div>`).join('')}</div></div>` : ''}
+    <div class="acts" style="justify-content:space-between"><button class="btn" data-x>Cancel</button><button class="btn primary" data-file>${icon('open')} Choose a file…</button></div>`, { wide: true });
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-file]').onclick = () => { closeSheet(); $('#fileCmp').click(); };
+  sh.querySelectorAll('[data-tab]').forEach((b) => b.onclick = async () => { const o = WS.list[+b.dataset.tab]; closeSheet(); await runCompare(o.name, o.pages.map((pp) => () => tokensOfPage(pp))); });
+}
+$('#fileCmp').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: new Uint8Array(await f.arrayBuffer()) }).promise; const getters = []; for (let i = 1; i <= pdf.numPages; i++) getters.push(async () => tokensOfPage(null, await pdf.getPage(i)));
+    await runCompare(f.name.replace(/\.pdf$/i, ''), getters); try { pdf.loadingTask.destroy(); } catch (er) {} }
+  catch (er) { toast('Could not open that file for comparison', { err: true }); }
+});
+async function runCompare(name, otherGetters) {
+  const t0 = toast('Comparing…', { spin: true, sticky: true }); CMP.marks.clear(); CMP.list = []; CMP.name = name;
+  try {
+    const n = Math.max(S.pages.length, otherGetters.length);
+    for (let i = 0; i < n; i++) {
+      const A = S.pages[i] ? await tokensOfPage(S.pages[i]) : { toks: [] }; const B = otherGetters[i] ? await otherGetters[i]() : { toks: [] };
+      if (!S.pages[i]) { if (B.toks.length) CMP.list.push({ page: Math.max(0, S.pages.length - 1), type: 'ins', text: `Extra page ${i + 1} in ${name}: ` + B.toks.slice(0, 12).map((t) => t.w).join(' ') + (B.toks.length > 12 ? '…' : '') }); continue; }
+      if (!otherGetters[i]) { if (A.toks.length) { CMP.list.push({ page: i, type: 'del', text: `Page ${i + 1} is not in ${name}` }); CMP.marks.set(i, [{ s: A.toks[0].s, e: A.toks[A.toks.length - 1].e, type: 'del' }]); } continue; }
+      const ops = diffWords(A.toks.map((t) => t.w), B.toks.map((t) => t.w));
+      if (!ops) { CMP.list.push({ page: i, type: 'del', text: `Page ${i + 1} is too different to compare word by word` }); continue; }
+      const marks = []; let k = 0;
+      while (k < ops.length) {
+        if (ops[k][0] === 'eq') { k++; continue; }
+        const dels = [], ins = []; while (k < ops.length && ops[k][0] !== 'eq') { if (ops[k][0] === 'del') dels.push(ops[k][1]); else ins.push(ops[k][2]); k++; }
+        const delTxt = dels.map((j) => A.toks[j].w).join(' '), insTxt = ins.map((j) => B.toks[j].w).join(' ');
+        if (dels.length) marks.push({ s: A.toks[dels[0]].s, e: A.toks[dels[dels.length - 1]].e, type: ins.length ? 'chg' : 'del' });
+        else { let j = -1; for (let q = k - 1; q >= 0; q--) if (ops[q][0] === 'eq') { j = ops[q][1]; break; } if (j >= 0 && A.toks[j]) marks.push({ s: A.toks[j].s, e: A.toks[j].e, type: 'ins' }); }
+        const clip = (x) => (x.length > 70 ? x.slice(0, 70) + '…' : x);
+        CMP.list.push({ page: i, type: ins.length && dels.length ? 'chg' : dels.length ? 'del' : 'ins', text: ins.length && dels.length ? `“${clip(delTxt)}” → “${clip(insTxt)}”` : dels.length ? `Removed “${clip(delTxt)}”` : `Added “${clip(insTxt)}”` });
+      }
+      if (marks.length) CMP.marks.set(i, marks);
+    }
+  } catch (e) { console.error(e); t0.remove(); toast('Could not compare', { err: true }); return; }
+  t0.remove(); showCmpPanel(); paintCmp();
+}
+function showCmpPanel() {
+  let pn = $('#cmpPanel'); if (!pn) { pn = document.createElement('aside'); pn.id = 'cmpPanel'; pn.className = 'cmp-panel'; $('.stage').appendChild(pn); }
+  pn.hidden = false; const n = CMP.list.length;
+  pn.innerHTML = `<div class="cmp-h"><div><b>${n ? `${n} change${n > 1 ? 's' : ''}` : 'No differences'}</b><small>Compared with ${esc(CMP.name)}</small></div><button class="tbtn" id="cmpClose" aria-label="Close comparison">${icon('close')}</button></div>
+    <div class="cmp-legend"><span><i class="lg del"></i>Removed or changed</span><span><i class="lg ins"></i>Added after</span></div>
+    <div class="cmp-list">${n ? CMP.list.map((c, j) => `<button class="cmp-item ${c.type}" data-j="${j}"><span class="cmp-p">p.${c.page + 1}</span><span>${esc(c.text)}</span></button>`).join('') : '<p class="ol-empty">The text of both documents is the same.</p>'}</div>`;
+  pn.querySelector('#cmpClose').onclick = closeCompare;
+  pn.querySelectorAll('[data-j]').forEach((b) => b.onclick = () => { const c = CMP.list[+b.dataset.j]; scrollToPage(c.page); setTimeout(() => paintCmp(), 600); });
+}
+function closeCompare() { CMP.marks.clear(); CMP.list = []; const pn = $('#cmpPanel'); if (pn) pn.hidden = true; $$('.cmplayer', pagesEl).forEach((x) => x.remove()); }
+function paintCmp() {
+  $$('.page', pagesEl).forEach((el, idx) => {
+    let lay = el.querySelector('.cmplayer'); const marks = CMP.marks.get(idx); if (!marks || !el._tlReady) { if (lay) lay.innerHTML = ''; return; }
+    if (!lay) { lay = document.createElement('div'); lay.className = 'cmplayer'; el.querySelector('.findlayer').after(lay); } lay.innerHTML = '';
+    const spans = $$('.textLayer span:not(.markedContent)', el).filter((sp) => sp.firstChild && sp.firstChild.nodeType === 3);
+    const nodes = []; let full = ''; for (const sp of spans) { nodes.push({ node: sp.firstChild, start: full.length }); full += sp.firstChild.data; }
+    if (!nodes.length) return; const pr = el.getBoundingClientRect();
+    const locate = (o) => { let lo = 0; for (let i = 0; i < nodes.length; i++) if (nodes[i].start <= o) lo = i; else break; return [nodes[lo].node, Math.min(nodes[lo].node.data.length, o - nodes[lo].start)]; };
+    for (const m of marks) { try { const rg = document.createRange(); const [sn, so] = locate(m.s); const [en, eo] = locate(Math.max(m.s, m.e - 1)); rg.setStart(sn, so); rg.setEnd(en, Math.min(en.data.length, eo + 1));
+      for (const r of rg.getClientRects()) { const d = document.createElement('i'); d.className = m.type; Object.assign(d.style, { left: r.left - pr.left + 'px', top: r.top - pr.top + 'px', width: r.width + 'px', height: r.height + 'px' }); lay.appendChild(d); } } catch (e) {} }
+  });
 }
 
 /* Selection bubble: copy, highlight, underline, strike through */
@@ -1536,6 +1709,7 @@ async function buildPdf(list, onProgress, opts = {}) {
       page.setRotation(PL.degrees(tr(p)));
     }
     for (const a of p.annots) await drawAnn(page, a, font, embedImg);
+    if (p.ocr && p.ocr.length) { const f = await font('helv', false); for (const w of p.ocr) { if (needsUni(w.t)) continue; const wd = f.widthOfTextAtSize(w.t, 1) || 1; const size = Math.max(1, Math.min(w.h * 0.95, w.w / wd)); const { V } = UV(w.r); const off = w.h * 0.18; try { page.drawText(w.t, { x: w.ax + off * V[0], y: w.ay + off * V[1], size, font: f, opacity: 0, rotate: PL.degrees(w.r) }); } catch (e) {} } }
     if (p.crop) { const [cx0, cy0, cx1, cy1] = p.crop; page.setCropBox(cx0, cy0, cx1 - cx0, cy1 - cy0); }
     if (onProgress) onProgress((i + 1) / list.length);
   }
@@ -2211,6 +2385,8 @@ $('#btnMore').addEventListener('click', (e) => {
     { label: 'Add pages from file…', icon: 'merge', run: () => $('#fileAdd').click(), disabled: !has },
     { label: 'Add photos as pages…', icon: 'photo', run: () => $('#fileImg').click() },
     { label: 'Find…', icon: 'search', kbd: 'Ctrl F', run: openFind, disabled: !has },
+    { label: 'Recognise text (OCR)…', icon: 'ocr', run: openOcr, disabled: !has },
+    { label: 'Compare with…', icon: 'compare', run: openCompare, disabled: !has },
     { label: 'Print…', icon: 'print', kbd: 'Ctrl P', run: openPrint, disabled: !has },
     '-', { h: 'Pages' },
     { label: 'Scan with camera…', icon: 'scan', run: startScan },

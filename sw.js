@@ -1,10 +1,10 @@
 // Meridian PDF Mate service worker: full offline precache, share target, file opening.
-const VERSION = 'meridian-pdf-mate-v9';
+const VERSION = 'meridian-pdf-mate-v10';
 const SHARE = 'meridian-pdf-mate-share';
 const ASSETS = [
 "./",
 "index.html",
-"app.js?v=11",
+"app.js?v=12",
 "manifest.webmanifest?v=3",
 "icons/icon-192.png",
 "icons/icon-512.png",
@@ -204,7 +204,11 @@ const ASSETS = [
 "vendor/wasm/openjpeg_nowasm_fallback.js",
 "vendor/wasm/qcms_bg.wasm",
 "vendor/wasm/quickjs-eval.js",
-"vendor/wasm/quickjs-eval.wasm"
+"vendor/wasm/quickjs-eval.wasm",
+"vendor/tesseract/ocr-worker.js",
+"vendor/tesseract/tesseract-core-lstm.js",
+"vendor/tesseract/tesseract-core-lstm.wasm",
+"vendor/tesseract/eng.traineddata"
 ];
 
 self.addEventListener('install', (e) => {
