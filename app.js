@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -148,15 +148,27 @@ function sanitize(str) {
   return out;
 }
 const LH = 1.2, BASE = 0.9;
+function needsUni(t) {
+  for (const ch of String(t || '')) {
+    if (ch === '\n') continue; let ok = encOK.get(ch);
+    if (ok === undefined) { try { HELV.encodeText(ch); HELV.widthOfTextAtSize(ch, 10); ok = true; } catch (e) { ok = false; } encOK.set(ch, ok); }
+    if (!ok) return true;
+  }
+  return false;
+}
+const UNI_FALLBACK = '"Noto Sans CJK KR", "Noto Sans", "Apple SD Gothic Neo", "Malgun Gothic", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", "Nirmala UI", "Kohinoor Devanagari", sans-serif';
+const uniFont = (a, px) => `${a.bold ? '700' : '400'} ${px}px ${FONT_CSS[a.font || 'helv']}, ${UNI_FALLBACK}`;
+let mctx = null;
+function measureUni(a, line) { if (!mctx) mctx = document.createElement('canvas').getContext('2d'); mctx.font = uniFont(a, a.size * 4); return mctx.measureText(line).width / 4; }
 const tpad = (a) => (a.bg || a.border ? a.size * 0.4 : 0);
 function textBox(a) {
   const lines = String(a.text || '').split('\n'); const f = MET[a.font || 'helv'] ? MET[a.font || 'helv'][a.bold ? 1 : 0] : (a.bold ? HELVB : HELV); const pad = tpad(a);
-  let w = 0; for (const l of lines) w = Math.max(w, f ? f.widthOfTextAtSize(l, a.size) : l.length * a.size * 0.5);
+  let w = 0; for (const l of lines) w = Math.max(w, a.uni ? measureUni(a, l) : f ? f.widthOfTextAtSize(l, a.size) : l.length * a.size * 0.5);
   return { w: Math.max(w, a.size * 0.6) + 2 * pad, h: lines.length * LH * a.size + 2 * pad, lines, pad };
 }
 function setText(a, text, size) {
   const { U, V } = UV(a.r); const topX = a.ax + a.h * V[0], topY = a.ay + a.h * V[1];
-  if (text != null) a.text = sanitize(text);
+  if (text != null) { if (needsUni(text)) { a.uni = true; a.text = String(text); } else { a.uni = false; a.text = sanitize(text); } }
   if (size != null) a.size = size;
   const b = textBox(a); a.w = b.w; a.h = b.h;
   a.ax = topX - a.h * V[0]; a.ay = topY - a.h * V[1];
@@ -220,8 +232,8 @@ function restore(str) {
   S.sel = null; S.selPages.clear(); renderAll();
 }
 function commit() {
-  const s = snap(); if (s === S.last) return;
-  S.hist.push(S.last); if (S.hist.length > 80) S.hist.shift(); S.fut = []; S.last = s; setDirty(true); updateChrome();
+  const s = snap(); if (s === S.last) return; scheduleSave();
+  S.hist.push(S.last); if (S.hist.length > 40) S.hist.shift(); S.fut = []; S.last = s; setDirty(true); updateChrome();
 }
 function undo() { if (!S.hist.length) return; closeEditor(true); S.fut.push(S.last); S.last = S.hist.pop(); restore(S.last); setDirty(true); updateChrome(); }
 function redo() { if (!S.fut.length) return; closeEditor(true); S.hist.push(S.last); S.last = S.fut.pop(); restore(S.last); setDirty(true); updateChrome(); }
@@ -376,6 +388,7 @@ async function addFiles(files, at = S.pages.length) {
   renderAll(); commit();
   if (wasEmpty) { setDirty(false); resetHistory(); updateChrome(); }
   else { toast(`Added ${newPages.length} page${newPages.length > 1 ? 's' : ''}`); scrollToPage(at); }
+  scheduleSave();
   if (formCount) toast(`This PDF has ${formCount} form field${formCount > 1 ? 's' : ''}. Tap a field to fill it.`, { ms: 4200 });
 }
 function newBlank(at = S.pages.length, like) {
@@ -401,7 +414,7 @@ function loadTab(i) {
   if (S.selecting) { S.selecting = false; $('#sidebar').classList.remove('selecting'); $('#btnSelPages').textContent = 'Select'; }
   updateChrome(); renderTabs(); refreshFormatBar();
 }
-function switchTab(i) { if (i === WS.active || !WS.list[i]) return; saveTab(); loadTab(i); }
+function switchTab(i) { if (i === WS.active || !WS.list[i]) return; saveTab(); loadTab(i); scheduleSave(); }
 function newTab() { saveTab(); WS.list.push(blankTab()); loadTab(WS.list.length - 1); }
 function releaseUnused() {
   const used = new Set(); const imgsUsed = new Set();
@@ -416,7 +429,7 @@ function closeTab(i, force) {
   WS.list.splice(i, 1);
   if (!WS.list.length) WS.list.push(blankTab());
   let next = WS.active; if (i < WS.active) next--; else if (i === WS.active) next = Math.min(i, WS.list.length - 1);
-  WS.active = -1; loadTab(next); releaseUnused();
+  WS.active = -1; loadTab(next); releaseUnused(); scheduleSave();
   if (!S.pages.length) setSidebar(false);
 }
 function closeDoc() { closeTab(WS.active, true); }
@@ -429,6 +442,119 @@ function renderTabs() {
   }).join('');
   const on = list.querySelector('.dtab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
+/* ---------- Auto-save and recent files (stored on this device in IndexedDB) ---------- */
+let dbp = null;
+function idb() {
+  if (dbp) return dbp;
+  dbp = new Promise((res, rej) => { let r; try { r = indexedDB.open('meridian-pdf-mate', 1); } catch (e) { rej(e); return; }
+    r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('blobs')) d.createObjectStore('blobs'); if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  return dbp;
+}
+function tx(store, mode, fn) { return idb().then((d) => new Promise((res, rej) => { const t = d.transaction(store, mode); const st = t.objectStore(store); const rq = fn(st); t.oncomplete = () => res(rq && 'result' in rq ? rq.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); })); }
+const kvGet = (k) => tx('kv', 'readonly', (st) => st.get(k)).catch(() => null);
+const kvSet = (k, v) => tx('kv', 'readwrite', (st) => st.put(v, k));
+const blobGet = (k) => tx('blobs', 'readonly', (st) => st.get(k)).catch(() => null);
+const blobKeys = () => tx('blobs', 'readonly', (st) => st.getAllKeys()).catch(() => []);
+const stored = new Set();
+let saveT = null, saving = false, restoring = false;
+function scheduleSave() { if (restoring) return; clearTimeout(saveT); saveT = setTimeout(saveSession, 900); }
+function refsOf(pages, docs, imgs) { for (const p of pages) { if (p.docId) docs.add(p.docId); if (p.imgId) imgs.add(p.imgId); for (const a of p.annots) if (a.imgId) imgs.add(a.imgId); } }
+async function tabThumb(t) {
+  const p = t.pages[0]; if (!p) return null; const c = thumbCache.get(p.id + '|' + tr(p)); if (!c) return null;
+  try { const k = Math.min(1, 160 / c.width); const o = document.createElement('canvas'); o.width = Math.round(c.width * k); o.height = Math.round(c.height * k); o.getContext('2d').drawImage(c, 0, 0, o.width, o.height); return o.toDataURL('image/jpeg', 0.7); } catch (e) { return null; }
+}
+async function saveSession() {
+  if (saving || restoring) { scheduleSave(); return; } saving = true;
+  try {
+    saveTab();
+    const open = WS.list.filter((t) => t.pages.length);
+    const docs = new Set(), imgs = new Set();
+    open.forEach((t) => refsOf(t.pages, docs, imgs));
+    let recent = (await kvGet('recent')) || [];
+    for (const t of open) {
+      const old = recent.find((r) => r.id === t.id);
+      const ent = { id: t.id, name: t.name, pages: t.pages, meta: t.meta, n: t.pages.length, at: Date.now(), vals: [], thumb: (await tabThumb(t)) || (old && old.thumb) || null };
+      const dd = new Set(), ii = new Set(); refsOf(t.pages, dd, ii); ent.vals = [...dd].map((id) => [id, (S.docs.get(id) || {}).values || {}]);
+      recent = [ent, ...recent.filter((r) => r.id !== t.id)];
+    }
+    recent = recent.slice(0, 12); recent.forEach((r) => refsOf(r.pages, docs, imgs));
+    const toPut = [];
+    for (const id of docs) { if (stored.has(id)) continue; const d = S.docs.get(id); if (d) toPut.push([id, { kind: 'pdf', name: d.name, bytes: d.bytes, password: d.password || null }]); }
+    for (const id of imgs) { if (stored.has(id)) continue; const im = S.imgs.get(id); if (im) toPut.push([id, { kind: 'img', src: im.src, w: im.w, h: im.h }]); }
+    if (toPut.length) { await tx('blobs', 'readwrite', (st) => { for (const [k, v] of toPut) st.put(v, k); }); toPut.forEach(([k]) => stored.add(k)); }
+    const active = open.indexOf(WS.list[WS.active]);
+    await kvSet('session', { tabs: open.map((t) => ({ id: t.id, name: t.name, pages: t.pages, meta: t.meta, dirty: t.dirty, zoom: t.zoom, fit: t.fit, current: t.current, sbView: t.sbView })), active: Math.max(0, active), vals: [...docs].map((id) => [id, (S.docs.get(id) || {}).values || {}]) });
+    await kvSet('recent', recent);
+    const keep = new Set([...docs, ...imgs]); const all = await blobKeys(); const drop = all.filter((k) => !keep.has(k));
+    if (drop.length) { await tx('blobs', 'readwrite', (st) => { for (const k of drop) st.delete(k); }); drop.forEach((k) => stored.delete(k)); }
+    renderRecents(recent);
+  } catch (e) { console.warn('auto-save', e); }
+  saving = false;
+}
+async function ensureDoc(id, vals) {
+  if (S.docs.has(id)) return true; const b = await blobGet(id); if (!b || b.kind !== 'pdf') return false;
+  try {
+    const bytes = b.bytes instanceof Uint8Array ? b.bytes : new Uint8Array(b.bytes);
+    const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice(), password: b.password || undefined }).promise;
+    const doc = { id, name: b.name, bytes, pdf, password: b.password || undefined, fields: [], values: {}, widgets: new Map() };
+    await readFields(doc); if (b.password) doc.encrypted = true; if (vals) doc.values = vals;
+    S.docs.set(id, doc); stored.add(id); return true;
+  } catch (e) { console.warn('restore doc', e); return false; }
+}
+async function ensureImg(id) {
+  if (S.imgs.has(id) && S.imgs.get(id).el) return true;
+  let src = null, w = 0, h = 0; const b = await blobGet(id);
+  if (b && b.kind === 'img') { src = b.src; w = b.w; h = b.h; stored.add(id); } else { const it = libItems().find((x) => x.id === id); if (it) { src = it.src; w = it.w; h = it.h; } }
+  if (!src) return false; try { S.imgs.set(id, { src, w, h, el: await loadImageEl(src) }); return true; } catch (e) { return false; }
+}
+async function hydrate(pages, valsList) {
+  const vals = new Map(valsList || []); const docs = new Set(), imgs = new Set(); refsOf(pages, docs, imgs);
+  const okD = new Set(); for (const id of docs) if (await ensureDoc(id, vals.get(id))) okD.add(id); else if (S.docs.has(id) && vals.get(id)) S.docs.get(id).values = vals.get(id);
+  for (const id of imgs) await ensureImg(id);
+  return pages.filter((p) => (p.kind !== 'pdf' || okD.has(p.docId) || S.docs.has(p.docId)) && (p.kind !== 'img' || S.imgs.has(p.imgId)));
+}
+async function restoreSession() {
+  const ses = await kvGet('session'); if (!ses || !ses.tabs || !ses.tabs.length) { renderRecents(); return false; }
+  restoring = true; const t0 = toast('Restoring your documents', { spin: true, sticky: true });
+  try {
+    const tabs = [];
+    for (const st of ses.tabs) {
+      const pages = await hydrate(st.pages, ses.vals); if (!pages.length) continue;
+      const t = blankTab(); Object.assign(t, { id: st.id, name: st.name, pages, meta: st.meta, dirty: !!st.dirty, zoom: st.zoom || 1, fit: st.fit !== false, current: st.current || 0, sbView: st.sbView || 'pages' });
+      tabs.push(t);
+    }
+    if (tabs.length) {
+      WS.list = tabs; WS.active = -1; loadTab(Math.min(ses.active || 0, tabs.length - 1));
+      for (const t of WS.list) { const keep = { pages: S.pages }; t.last = JSON.stringify({ pages: t.pages, vals: [...S.docs.values()].map((d) => [d.id, d.values]) }); }
+      S.last = WS.list[WS.active].last; if (innerWidth > 760) setSidebar(true);
+      toast(`Restored ${tabs.length} document${tabs.length > 1 ? 's' : ''}`);
+    }
+  } catch (e) { console.warn('restore', e); }
+  t0.remove(); restoring = false; renderRecents(); return true;
+}
+async function openRecent(id) {
+  const recent = (await kvGet('recent')) || []; const r = recent.find((x) => x.id === id); if (!r) return;
+  const open = WS.list.findIndex((t) => t.id === id); if (open >= 0) { switchTab(open); return; }
+  const t0 = toast(`Opening ${r.name}`, { spin: true, sticky: true });
+  const pages = await hydrate(JSON.parse(JSON.stringify(r.pages)), r.vals); t0.remove();
+  if (!pages.length) { toast('That file is no longer stored on this device', { err: true }); return; }
+  if (S.pages.length) newTab();
+  const t = WS.list[WS.active]; t.id = r.id;
+  S.pages = pages; S.meta = r.meta || null; $('#docName').value = r.name; resetHistory(); setDirty(false);
+  renderAll(); if (innerWidth > 760) setSidebar(true); renderTabs(); scheduleSave();
+}
+async function forgetRecent(id) { const recent = ((await kvGet('recent')) || []).filter((r) => r.id !== id); await kvSet('recent', recent); renderRecents(recent); scheduleSave(); }
+async function renderRecents(list) {
+  const box = $('#recents'); if (!box) return; if (!list) list = (await kvGet('recent')) || [];
+  if (!list.length) { box.hidden = true; box.innerHTML = ''; return; }
+  const fmt = (ms) => { const d = new Date(ms), now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' }); };
+  box.hidden = false;
+  box.innerHTML = `<div class="rc-h">Recent</div><div class="rc-grid">${list.slice(0, 8).map((r) => `<div class="rc" role="button" tabindex="0" data-rid="${r.id}" aria-label="Open ${esc(r.name)}"><div class="rc-th">${r.thumb ? `<img src="${r.thumb}" alt="">` : icon('blank')}</div><div class="rc-t">${esc(r.name)}</div><div class="rc-m">${r.n} page${r.n > 1 ? 's' : ''} · ${fmt(r.at)}</div><button class="rc-x" data-forget="${r.id}" aria-label="Remove ${esc(r.name)} from recent">${icon('close')}</button></div>`).join('')}</div>`;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { clearTimeout(saveT); saveSession(); } });
+addEventListener('pagehide', () => { clearTimeout(saveT); saveSession(); });
+
 async function openFilesInTabs(files) {
   files = [...files]; if (!files.length) return;
   const pdfs = files.filter(isPdf), imgs = files.filter((f) => !isPdf(f) && isImg(f));
@@ -457,7 +583,7 @@ function renderAll() {
   if (S.fit) S.zoom = fitZoom();
   pagesEl.innerHTML = '';
   if (io) io.disconnect();
-  io = new IntersectionObserver((ents) => { for (const e of ents) { const el = e.target; el._vis = e.isIntersecting; if (e.isIntersecting) paintCanvas(el); else freeCanvas(el); } }, { root: viewer, rootMargin: '900px 0px' });
+  io = new IntersectionObserver((ents) => { for (const e of ents) { const el = e.target; el._vis = e.isIntersecting; if (e.isIntersecting) { if (!el._ov) { const pp = pageById(el.dataset.id); if (pp) { el._ov = true; drawOverlay(pp, el); drawForm(pp, el); } } paintCanvas(el); } else freeCanvas(el); } }, { root: viewer, rootMargin: '900px 0px' });
   S.pages.forEach((p, i) => {
     const g = geo(p);
     const el = document.createElement('div'); el.className = 'page'; el.dataset.id = p.id;
@@ -465,7 +591,6 @@ function renderAll() {
     el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom);
     el.innerHTML = `<canvas></canvas><div class="textLayer"></div><div class="findlayer"></div><div class="formlayer"></div><svg class="ov" viewBox="0 0 ${g.w} ${g.h}" xmlns="${SVGNS}" aria-label="Page ${i + 1}"></svg><span class="pnum">${i + 1}</span>`;
     pagesEl.appendChild(el); io.observe(el);
-    drawOverlay(p, el); drawForm(p, el);
   });
   $('#empty').hidden = S.pages.length > 0;
   $('#pageInd').hidden = S.pages.length === 0;
@@ -536,7 +661,7 @@ function annNode(a) {
       const lines = String(a.text || '').split('\n'); const pad = tpad(a); const op = a.opacity == null ? 1 : a.opacity;
       if (a.bg) fr.appendChild(sv('rect', { x: 0, y: 0, width: a.w, height: a.h, fill: a.bg, 'fill-opacity': op }));
       if (a.border) { const bw = Math.max(1, a.size * 0.09); fr.appendChild(sv('rect', { x: bw / 2, y: bw / 2, width: Math.max(0, a.w - bw), height: Math.max(0, a.h - bw), fill: 'none', stroke: a.color, 'stroke-width': bw, 'stroke-opacity': op })); }
-      lines.forEach((l, i) => { const t = sv('text', { x: pad, y: pad + BASE * a.size + i * LH * a.size, 'font-family': FONT_CSS[a.font || 'helv'], 'font-weight': a.bold ? 700 : 400, 'font-size': a.size, fill: a.color, 'fill-opacity': op, 'xml:space': 'preserve' }); t.textContent = l; fr.appendChild(t); });
+      lines.forEach((l, i) => { const t = sv('text', { x: pad, y: pad + BASE * a.size + i * LH * a.size, 'font-family': FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, 'font-weight': a.bold ? 700 : 400, 'font-size': a.size, fill: a.color, 'fill-opacity': op, 'xml:space': 'preserve' }); t.textContent = l; fr.appendChild(t); });
     } else {
       const segs = a.t === 'tick' ? [TICK] : CROSS;
       for (const s of segs) fr.appendChild(sv('polyline', { points: s.map(([p, q]) => `${p * a.w},${q * a.h}`).join(' '), fill: 'none', stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
@@ -612,20 +737,22 @@ function drawForm(p, el = pageEl(p.id)) {
     lay.appendChild(node);
   }
 }
-function syncField(doc, f, src) { for (const n of $$(`.ff[data-field="${CSS.escape(f.name)}"]`)) if (n !== src && n.tagName !== 'BUTTON') n.value = doc.values[f.name]; }
+function syncField(doc, f, src) { scheduleSave(); for (const n of $$(`.ff[data-field="${CSS.escape(f.name)}"]`)) if (n !== src && n.tagName !== 'BUTTON') n.value = doc.values[f.name]; }
 function refreshForms(doc) { for (const p of S.pages) if (p.docId === doc.id) drawForm(p); }
 
 /* ---------- Thumbnails ---------- */
 const sbList = $('#sbList');
 const thumbCache = new Map();
 let thumbQ = new Set(), thumbBusy = false;
+const thumbIO = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { thumbIO.unobserve(e.target); scheduleThumb(e.target.dataset.id); } }, { root: document.getElementById('sbList'), rootMargin: '400px 0px' });
 function renderThumbs() {
+  thumbIO.disconnect();
   sbList.innerHTML = '';
   S.pages.forEach((p, i) => {
     const b = document.createElement('button'); b.className = 'thumb'; b.dataset.id = p.id; b.draggable = true;
     b.setAttribute('aria-label', `Page ${i + 1}`);
     b.innerHTML = `<div class="tw"><canvas width="1" height="1"></canvas></div><span class="tn">${i + 1}</span><span class="chk">${icon('check', 'style="width:13px;height:13px;stroke-width:2.6"')}</span>`;
-    sbList.appendChild(b); scheduleThumb(p.id);
+    sbList.appendChild(b); thumbIO.observe(b);
   });
   markThumbs();
   $('#sbTitle').textContent = S.pages.length ? `${S.pages.length} page${S.pages.length > 1 ? 's' : ''}` : 'Pages';
@@ -633,7 +760,7 @@ function renderThumbs() {
 function markThumbs() {
   $$('.thumb', sbList).forEach((b, i) => { b.classList.toggle('current', i === S.current); b.classList.toggle('sel', S.selPages.has(b.dataset.id)); });
 }
-function scheduleThumb(id) { thumbQ.add(id); if (!thumbBusy) setTimeout(runThumbs, 60); }
+function scheduleThumb(id) { const tb = sbList.querySelector(`.thumb[data-id="${id}"]`); if (tb && !tb._seen) { const r = tb.getBoundingClientRect(), lr = sbList.getBoundingClientRect(); if (!sbList.offsetParent || r.bottom < lr.top - 400 || r.top > lr.bottom + 400) { return; } tb._seen = true; } thumbQ.add(id); if (!thumbBusy) setTimeout(runThumbs, 60); }
 async function runThumbs() {
   if (thumbBusy) return; thumbBusy = true;
   while (thumbQ.size) {
@@ -684,7 +811,7 @@ function setZoom(z, fit = false) {
   const ratio = viewer.scrollTop / Math.max(1, viewer.scrollHeight);
   S.fit = fit; S.zoom = fit ? fitZoom() : clamp(z, 0.25, 5);
   closeEditor(false);
-  S.pages.forEach((p) => { const el = pageEl(p.id); const g = geo(p); el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px'; el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom); drawOverlay(p, el); drawForm(p, el); });
+  S.pages.forEach((p) => { const el = pageEl(p.id); const g = geo(p); el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px'; el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom); if (el._vis) { el._ov = true; drawOverlay(p, el); drawForm(p, el); } else el._ov = false; });
   if (FIND.q) paintFind();
   viewer.scrollTop = ratio * viewer.scrollHeight; rerenderVisible(); updateZoomLbl();
 }
@@ -831,7 +958,7 @@ function openEditor(p, a, isNew = false) {
   const b = dispBox(a, g); const ta = document.createElement('textarea'); ta.className = 'textedit'; ta.id = 'textEditor';
   ta.value = a.text || ''; ta.spellcheck = true; ta.setAttribute('aria-label', 'Text');
   const fs = a.size * S.zoom; const pz = tpad(a) * S.zoom;
-  Object.assign(ta.style, { left: el.offsetLeft + b.L * S.zoom + 'px', top: el.offsetTop + b.T * S.zoom + 'px', fontSize: fs + 'px', color: a.color, minWidth: Math.max(40, fs * 2) + 'px', padding: pz + 'px', fontWeight: a.bold ? '700' : '400', fontFamily: FONT_CSS[a.font || 'helv'], background: a.bg || (a.cover ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.85)') });
+  Object.assign(ta.style, { left: el.offsetLeft + b.L * S.zoom + 'px', top: el.offsetTop + b.T * S.zoom + 'px', fontSize: fs + 'px', color: a.color, minWidth: Math.max(40, fs * 2) + 'px', padding: pz + 'px', fontWeight: a.bold ? '700' : '400', fontFamily: FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, background: a.bg || (a.cover ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.85)') });
   const fitTa = () => { ta.style.width = '0px'; ta.style.height = '0px'; ta.style.width = Math.max(fs * 2, ta.scrollWidth + fs * 0.6) + 'px'; ta.style.height = ta.scrollHeight + 'px'; };
   ta.addEventListener('input', fitTa);
   ta.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); closeEditor(false); } e.stopPropagation(); });
@@ -847,7 +974,7 @@ function closeEditor(silent) {
   const txt = ta ? ta.value.replace(/\s+$/, '') : a.text;
   if (a.orig != null && txt === a.orig && !a.touched) { p.annots = p.annots.filter((z) => z !== a && z.id !== a.cover); S.sel = null; }
   else if (!txt.trim()) { p.annots = p.annots.filter((z) => z !== a); S.sel = null; if (a.cover) toast('Text removed'); }
-  else { const before = a.text; setText(a, txt); if (sanitize(txt) !== txt && before !== a.text) toast('Some characters are not supported by the PDF font and were replaced.'); }
+  else { setText(a, txt); if (a.uni) toast('Saved with special characters. That line is stored as a sharp image in the PDF.', { ms: 3200 }); }
   drawOverlay(p); if (!silent) commit(); refreshFormatBar();
 }
 
@@ -926,7 +1053,7 @@ function editExistingLine(p, el, span) {
   const c1 = ap(g.i, rect.L, rect.T), c2 = ap(g.i, rect.R, rect.B);
   const cover = { id: uid('a'), t: 'white', fill: bg, x: Math.min(c1[0], c2[0]), y: Math.min(c1[1], c2[1]), w: Math.abs(c2[0] - c1[0]), h: Math.abs(c2[1] - c1[1]), edit: true };
   const ff = fontOf(el, parts[0].t);
-  const a = { id: uid('a'), t: 'text', r: tr(p), text: sanitize(text), size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, w: 1, h: 1, ax: 0, ay: 0, orig: sanitize(text), cover: cover.id };
+  const uni = needsUni(text); const a = { id: uid('a'), t: 'text', r: tr(p), text: uni ? text : sanitize(text), uni, size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, w: 1, h: 1, ax: 0, ay: 0, orig: uni ? text : sanitize(text), cover: cover.id };
   const bx = textBox(a); a.w = bx.w; a.h = bx.h;
   const left = Math.min(...parts.map((c) => ap(g.t, c.t.transform[4], c.t.transform[5])[0]));
   const [ax, ay] = ap(g.i, left, base[1] - BASE * a.size + a.h); a.ax = ax; a.ay = ay;
@@ -1422,8 +1549,18 @@ async function drawAnn(page, a, font, embedImg) {
   else if (a.t === 'text') {
     const { U, V } = UV(a.r); const lines = String(a.text || '').split('\n'); const pad = tpad(a); const op = a.opacity == null ? 1 : a.opacity;
     const at = (u, v) => [a.ax + u * U[0] + v * V[0], a.ay + u * U[1] + v * V[1]];
-    if (a.bg) { const [x, y] = at(0, 0); page.drawRectangle({ x, y, width: a.w, height: a.h, color: hexRgb(a.bg), opacity: op, rotate: PL.degrees(a.r) }); }
-    if (a.border) { const bw = Math.max(1, a.size * 0.09); const [x, y] = at(bw / 2, bw / 2); page.drawRectangle({ x, y, width: Math.max(0, a.w - bw), height: Math.max(0, a.h - bw), borderColor: col, borderWidth: bw, borderOpacity: op, rotate: PL.degrees(a.r) }); }
+    if (a.bg && !a.uni) { const [x, y] = at(0, 0); page.drawRectangle({ x, y, width: a.w, height: a.h, color: hexRgb(a.bg), opacity: op, rotate: PL.degrees(a.r) }); }
+    if (a.border && !a.uni) { const bw = Math.max(1, a.size * 0.09); const [x, y] = at(bw / 2, bw / 2); page.drawRectangle({ x, y, width: Math.max(0, a.w - bw), height: Math.max(0, a.h - bw), borderColor: col, borderWidth: bw, borderOpacity: op, rotate: PL.degrees(a.r) }); }
+    if (a.uni) {
+      const k = 300 / 72; const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(a.w * k)); c.height = Math.max(1, Math.ceil(a.h * k));
+      const x = c.getContext('2d'); x.scale(k, k); x.globalAlpha = op;
+      if (a.bg) { x.fillStyle = a.bg; x.fillRect(0, 0, a.w, a.h); }
+      if (a.border) { const bw = Math.max(1, a.size * 0.09); x.strokeStyle = a.color; x.lineWidth = bw; x.strokeRect(bw / 2, bw / 2, a.w - bw, a.h - bw); }
+      x.font = uniFont(a, a.size); x.fillStyle = a.color; x.textBaseline = 'alphabetic';
+      lines.forEach((l, i) => x.fillText(l, pad, pad + BASE * a.size + i * LH * a.size));
+      const png = await page.doc.embedPng(dataUrlBytes(c.toDataURL('image/png'))); const [x0, y0] = at(0, 0);
+      page.drawImage(png, { x: x0, y: y0, width: a.w, height: a.h, rotate: PL.degrees(a.r) }); return;
+    }
     const f = await font(a.font || 'helv', !!a.bold);
     lines.forEach((l, i) => { if (!l) return; const [x, y] = at(pad, a.h - pad - (BASE * a.size + i * LH * a.size)); page.drawText(l, { x, y, size: a.size, font: f, color: col, opacity: op, rotate: PL.degrees(a.r) }); });
   }
@@ -1458,7 +1595,7 @@ function openSave() {
         if (navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); } catch (e) { if (e.name !== 'AbortError') throw e; } }
         else { downloadBlob(blob, name); }
       } else downloadBlob(blob, name);
-      closeSheet(); if (scope === 'all') setDirty(false);
+      closeSheet(); if (scope === 'all') { setDirty(false); scheduleSave(); }
       const flat = [...S.docs.values()].some((d) => d._flatFail);
       const sz = bytes.length >= 1048576 ? (bytes.length / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes.length / 1024)) + ' KB';
       toast(flat ? 'Saved. Some form fields could not be flattened.' : `Saved ${name} (${sz})`);
@@ -1919,12 +2056,16 @@ function boot() {
   $('#pageInd').addEventListener('click', openGoto);
   WS.list = [blankTab()]; WS.active = 0;
   buildTools(); setTool('select'); renderAll(); resetHistory(); updateChrome(); renderTabs();
+  $('#recents').addEventListener('click', (e) => { const x = e.target.closest('[data-forget]'); if (x) { e.stopPropagation(); forgetRecent(x.dataset.forget); return; } const c = e.target.closest('[data-rid]'); if (c) openRecent(c.dataset.rid); });
+  $('#recents').addEventListener('keydown', (e) => { const c = e.target.closest('[data-rid]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRecent(c.dataset.rid); } });
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  return restoreSession().catch((e) => console.warn(e));
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('.toolbar')) $('.toolbar').insertBefore(t, $('.tb-right')); };
   placeTools(); mq.addEventListener('change', placeTools);
 }
 let readyRes; const ready = new Promise((r) => { readyRes = r; });
-initFont().then(boot).catch((e) => { console.error(e); boot(); }).then(() => readyRes());
+initFont().then(boot).catch((e) => { console.error(e); return boot(); }).then(() => readyRes(), () => readyRes());
 
 /* ---------- PWA: offline, install, open from OS ---------- */
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;

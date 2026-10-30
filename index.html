@@ -264,9 +264,25 @@ select.ff{padding:0 2px;appearance:auto}
 @media (hover:none){.dt-x{opacity:1}}
 @media (max-width:760px){.dtab{min-width:118px;max-width:180px;flex:0 0 auto}}
 
+/* Recent files */
+.recents{margin-top:24px;text-align:left}
+.rc-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--label-3);margin:0 0 10px 2px}
+.rc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:12px}
+.rc{position:relative;display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:12px;cursor:pointer;transition:background-color .15s}
+.rc:hover,.rc:focus-visible{background:var(--fill)}
+.rc-th{height:132px;border-radius:6px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.16),0 2px 6px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#c7c7cc}
+.rc-th img{width:100%;height:100%;object-fit:cover;object-position:top}
+.rc-th svg.i{width:34px;height:34px}
+.rc-t{font-size:12.5px;font-weight:600;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}
+.rc-m{font-size:11px;color:var(--label-3)}
+.rc-x{position:absolute;top:12px;right:12px;width:22px;height:22px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.rc-x svg.i{width:11px;height:11px;stroke-width:2.4}
+.rc:hover .rc-x,.rc:focus-within .rc-x{opacity:1}
+@media (hover:none){.rc-x{opacity:1}}
+
 /* Empty state */
 .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
-.empty-card{max-width:520px;width:100%;text-align:center;padding:36px 28px;border-radius:22px;background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:1px solid var(--glass-edge)}
+.empty-card{max-width:640px;max-height:calc(100% - 24px);overflow-y:auto;width:100%;text-align:center;padding:36px 28px;border-radius:22px;background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);box-shadow:var(--pop-shadow);border:1px solid var(--glass-edge)}
 .empty-ic{width:76px;height:92px;margin:0 auto 18px;position:relative}
 .brandline{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:-4px 0 8px}
 .empty h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px;text-wrap:balance}
@@ -457,6 +473,7 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
           </div>
           <div class="feat" id="feat"></div>
           <button class="btn" id="eInstall" style="margin-top:18px" hidden>Install app</button>
+          <div class="recents" id="recents" hidden></div>
         </div>
       </div>
     </main>
@@ -471,6 +488,6 @@ textarea.inp{height:auto;min-height:70px;padding:8px 11px;resize:vertical}
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=9"></script>
+<script type="module" src="app.js?v=10"></script>
 </body>
 </html>
