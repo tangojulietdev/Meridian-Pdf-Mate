@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.6.1';
+const VERSION = '2.7.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -94,6 +94,12 @@ const IC = {
   crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
   ocr: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8.5 15.5 11 8.5h2l2.5 7M9.5 13h5"/>',
   compare: '<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M5.5 9h3M5.5 12h3M15.5 9h3M15.5 12h3" /><path d="M15.5 15h3" stroke="#d70015"/>',
+  tbox: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 8.5h9M12 8.5v8"/>',
+  fmt: '<path d="M4 19 9.5 5h1L16 19M6.2 14h7.6"/><path d="M17 8h4M17 12h4M19 16h2"/>',
+  tal: '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
+  tac: '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',
+  tar: '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>',
+  taj: '<path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>',
   xmark: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/>'
 };
 const icon = (n, extra = '') => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra}>${IC[n] || ''}</svg>`;
@@ -119,7 +125,7 @@ const INKS = [['Black', '#000000'], ['Blue', '#0040dd'], ['Red', '#d70015'], ['G
 const HLS = [['Yellow', '#ffd60a'], ['Green', '#8be28b'], ['Pink', '#ff9ecf'], ['Blue', '#7cc7ff']];
 const TOOLS = [
   ['select', 'Select text and objects (V)', 'select'], ['hand', 'Hand: drag to move around (H, or hold Space)', 'hand'], ['sep'],
-  ['text', 'Add text (T)', 'text'], ['edittext', 'Edit existing text (D)', 'edit'], ['note', 'Sticky note (N)', 'note'], ['hl', 'Highlight area (U)', 'hl'], ['white', 'Whiteout (W)', 'white'], ['redact', 'Redact: remove content permanently (X)', 'redact'], ['sep'],
+  ['text', 'Add text (T)', 'text'], ['tbox', 'Text box (B)', 'tbox'], ['edittext', 'Edit existing text (D)', 'edit'], ['note', 'Sticky note (N)', 'note'], ['hl', 'Highlight area (U)', 'hl'], ['white', 'Whiteout (W)', 'white'], ['redact', 'Redact: remove content permanently (X)', 'redact'], ['sep'],
   ['g:shape', 'Shapes', 'rect'], ['pen', 'Pen (P)', 'pen'], ['g:mark', 'Tick or cross', 'tick'], ['sep'],
   ['g:sign', 'Sign, stamp or insert image', 'sign']
 ];
@@ -129,7 +135,7 @@ const GROUPS = {
 };
 const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#0040dd'], ['CHECKED', '#1a7f37'], ['ORIGINAL', '#0040dd'], ['COPY', '#c93400'], ['REJECTED', '#d70015'], ['VOID', '#d70015'], ['CONFIDENTIAL', '#d70015'], ['URGENT', '#d70015']];
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['crop', 'text', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -152,9 +158,10 @@ const UV = (r) => { r = ((r % 360) + 360) % 360; const rd = r * Math.PI / 180; c
 
 /* ---------- Text metrics (Helvetica, same as export) ---------- */
 let HELV = null, HELVB = null; const MET = {}; const encOK = new Map();
-const FONT_KEYS = { helv: ['Helvetica', 'HelveticaBold'], times: ['TimesRoman', 'TimesRomanBold'], cour: ['Courier', 'CourierBold'] };
+const FONT_KEYS = { helv: ['Helvetica', 'HelveticaBold', 'HelveticaOblique', 'HelveticaBoldOblique'], times: ['TimesRoman', 'TimesRomanBold', 'TimesRomanItalic', 'TimesRomanBoldItalic'], cour: ['Courier', 'CourierBold', 'CourierOblique', 'CourierBoldOblique'] };
 const FONT_CSS = { helv: 'Helvetica, Arial, "Liberation Sans", sans-serif', times: '"Times New Roman", Times, "Liberation Serif", serif', cour: '"Courier New", Courier, "Liberation Mono", monospace' };
-async function initFont() { const d = await PL.PDFDocument.create(); for (const k in FONT_KEYS) MET[k] = [await d.embedFont(PL.StandardFonts[FONT_KEYS[k][0]]), await d.embedFont(PL.StandardFonts[FONT_KEYS[k][1]])]; HELV = MET.helv[0]; HELVB = MET.helv[1]; }
+const FONT_NAMES = [['helv', 'Arial / Helvetica'], ['times', 'Times New Roman'], ['cour', 'Courier New']];
+async function initFont() { const d = await PL.PDFDocument.create(); for (const k in FONT_KEYS) { MET[k] = []; for (const n of FONT_KEYS[k]) MET[k].push(await d.embedFont(PL.StandardFonts[n])); } HELV = MET.helv[0]; HELVB = MET.helv[1]; }
 function sanitize(str) {
   let out = '';
   for (const ch of String(str)) {
@@ -175,21 +182,76 @@ function needsUni(t) {
   return false;
 }
 const UNI_FALLBACK = '"Noto Sans CJK KR", "Noto Sans", "Apple SD Gothic Neo", "Malgun Gothic", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", "Nirmala UI", "Kohinoor Devanagari", sans-serif';
-const uniFont = (a, px) => `${a.bold ? '700' : '400'} ${px}px ${FONT_CSS[a.font || 'helv']}, ${UNI_FALLBACK}`;
+const uniFont = (a, px) => `${a.italic ? 'italic ' : ''}${a.bold ? '700' : '400'} ${px}px ${FONT_CSS[a.font || 'helv']}, ${UNI_FALLBACK}`;
 let mctx = null;
 function measureUni(a, line) { if (!mctx) mctx = document.createElement('canvas').getContext('2d'); mctx.font = uniFont(a, a.size * 4); return mctx.measureText(line).width / 4; }
-const tpad = (a) => (a.bg || a.border ? a.size * 0.4 : 0);
-function textBox(a) {
-  const lines = String(a.text || '').split('\n'); const f = MET[a.font || 'helv'] ? MET[a.font || 'helv'][a.bold ? 1 : 0] : (a.bold ? HELVB : HELV); const pad = tpad(a);
-  let w = 0; for (const l of lines) w = Math.max(w, a.uni ? measureUni(a, l) : f ? f.widthOfTextAtSize(l, a.size) : l.length * a.size * 0.5);
-  return { w: Math.max(w, a.size * 0.6) + 2 * pad, h: lines.length * LH * a.size + 2 * pad, lines, pad };
+const tpad = (a) => (a.pad != null && (a.box || a.bg || a.border || a.grad) ? a.pad : a.bg || a.border || a.grad || a.box ? a.size * 0.4 : 0);
+const fsty = (a) => (a.bold ? 1 : 0) + (a.italic ? 2 : 0);
+function tfont(a) { const m = MET[a.font || 'helv'] || MET.helv; return m ? m[fsty(a)] || m[0] : null; }
+const lhOf = (a) => LH * a.size * (a.lh || 1);
+function mw(a, s) { if (!s) return 0; const f = tfont(a); let w; try { w = a.uni ? measureUni(a, s) : f ? f.widthOfTextAtSize(s, a.size) : s.length * a.size * 0.5; } catch (e) { w = measureUni(a, s); } return w + (a.ls || 0) * [...s].length; }
+function wrapPara(a, s, avail) {
+  if (!isFinite(avail) || mw(a, s) <= avail) return [s];
+  const out = []; let cur = '';
+  const longWord = (w) => { let piece = ''; for (const ch of w) { if (piece && mw(a, piece + ch) > avail) { out.push(piece); piece = ''; } piece += ch; } return piece; };
+  for (const w of s.split(/( +)/).filter(Boolean)) {
+    if (/^ +$/.test(w)) { cur += w; continue; }
+    if (mw(a, cur + w) <= avail) { cur += w; continue; }
+    if (cur.trim()) { out.push(cur.replace(/ +$/, '')); cur = ''; }
+    cur = mw(a, w) <= avail ? w : longWord(w);
+  }
+  out.push(cur.replace(/ +$/, '')); return out;
 }
+// One layout for screen, editor, export and print. Rows carry x/baseline in box space (top-left origin, y down).
+function layoutText(a) {
+  const pad = tpad(a); const lh = lhOf(a); const lineBox = LH * a.size;
+  const ind = a.list ? (a.list === 'bullet' ? a.size * 1.1 : mw(a, '00.') + a.size * 0.45) : 0;
+  const avail = a.box ? Math.max(a.size, (a.w || 0) - 2 * pad - ind) : Infinity;
+  const rows = []; let n = 0;
+  for (const para of String(a.text || '').split('\n')) {
+    const has = para.trim().length > 0; if (has) n++;
+    const parts = wrapPara(a, para, avail);
+    parts.forEach((s, j) => rows.push({ s, w: mw(a, s), pre: j === 0 && has && a.list ? (a.list === 'bullet' ? '•' : n + '.') : '', last: j === parts.length - 1 }));
+  }
+  const maxW = rows.reduce((m, r) => Math.max(m, r.w), 0);
+  const cw = a.box ? avail : Math.max(maxW, a.size * 0.6);
+  const W = a.box ? a.w : cw + ind + 2 * pad;
+  const ch = rows.length * lh; const H = Math.max(ch + 2 * pad, a.box ? (a.minH || 0) : 0);
+  const free = H - ch - 2 * pad; const voff = free > 0 ? (a.valign === 'middle' ? free / 2 : a.valign === 'bottom' ? free : 0) : 0;
+  const al = a.align || 'left';
+  rows.forEach((r, i) => {
+    let x = pad + ind; if (al === 'center') x += (cw - r.w) / 2; else if (al === 'right') x += cw - r.w;
+    r.x = x; r.top = pad + voff + i * lh + (lh - lineBox) / 2; r.y = r.top + BASE * a.size;
+    r.jw = al === 'justify' && !r.last && / /.test(r.s.trim()) && r.w < cw ? cw : 0;
+  });
+  return { w: W, h: H, rows, pad, ind, cw, lineBox };
+}
+// Words with x positions for a justified row.
+function justWords(a, r) { const ws = r.s.trim().split(/ +/); const tot = ws.reduce((m, w) => m + mw(a, w), 0); const gap = (r.jw - tot) / Math.max(1, ws.length - 1); let x = r.x; return ws.map((w) => { const o = { w, x }; x += mw(a, w) + gap; return o; }); }
+function textBox(a) { const L = layoutText(a); return { w: L.w, h: L.h, lines: L.rows.map((r) => r.s), pad: L.pad }; }
 function setText(a, text, size) {
-  const { U, V } = UV(a.r); const topX = a.ax + a.h * V[0], topY = a.ay + a.h * V[1];
+  const { V } = UV(a.r); const topX = a.ax + a.h * V[0], topY = a.ay + a.h * V[1];
   if (text != null) { if (needsUni(text)) { a.uni = true; a.text = String(text); } else { a.uni = false; a.text = sanitize(text); } }
   if (size != null) a.size = size;
   const b = textBox(a); a.w = b.w; a.h = b.h;
   a.ax = topX - a.h * V[0]; a.ay = topY - a.h * V[1];
+}
+// Box shape path in box space (y down), optional rounded corners.
+function boxPath(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r || 0, w / 2, h / 2)); if (!r) return `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+  const k = r * 0.4477;
+  return `M${x + r} ${y}H${x + w - r}C${x + w - k} ${y} ${x + w} ${y + k} ${x + w} ${y + r}V${y + h - r}C${x + w} ${y + h - k} ${x + w - k} ${y + h} ${x + w - r} ${y + h}H${x + r}C${x + k} ${y + h} ${x} ${y + h - k} ${x} ${y + h - r}V${y + r}C${x} ${y + k} ${x + k} ${y} ${x + r} ${y}Z`;
+}
+const bdW = (a) => (a.bdw != null ? a.bdw : Math.max(1, a.size * 0.09));
+const bdDash = (a, bw) => (a.bds === 'dash' ? [bw * 3, bw * 2] : a.bds === 'dot' ? [0.01, bw * 2] : null);
+const shOff = (a) => Math.max(1.5, a.size * 0.2);
+const GRAD_DIR = { v: [0, 0, 0, 1], h: [0, 0, 1, 0], d: [0, 0, 1, 1] };
+function hexA(hex, op) { const h = String(hex || '#000').replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${op})`; }
+function gradCanvas(a, k = 4) {
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(a.w * k)); c.height = Math.max(1, Math.ceil(a.h * k));
+  const x = c.getContext('2d'); x.scale(k, k); const d = GRAD_DIR[a.grad[2]] || GRAD_DIR.v;
+  const gr = x.createLinearGradient(d[0] * a.w, d[1] * a.h, d[2] * a.w, d[3] * a.h); gr.addColorStop(0, a.grad[0]); gr.addColorStop(1, a.grad[1]);
+  x.fillStyle = gr; x.fill(new Path2D(boxPath(0, 0, a.w, a.h, a.rad))); return c;
 }
 
 /* ---------- Annotation geometry ---------- */
@@ -223,7 +285,8 @@ function applyT(a, T, uniform) {
   if (uniform) { const s = Math.abs(su - 1) > Math.abs(sv - 1) ? su : sv; su = sv = s; }
   // anchor: keep the corner that maps to the same relative position
   const [ax, ay] = f(a.ax, a.ay); a.ax = ax; a.ay = ay;
-  if (a.t === 'text') { a.size = clamp(a.size * Math.abs(sv), 4, 300); const b = textBox(a); a.w = b.w; a.h = b.h; }
+  if (a.t === 'text' && a.box) { if (Math.abs(su - 1) > 1e-6) a.w = Math.max(a.size * 2, a.w * Math.abs(su)); if (Math.abs(sv - 1) > 1e-6) a.minH = Math.max(0, a.h * Math.abs(sv)); const b = textBox(a); a.h = b.h; }
+  else if (a.t === 'text') { a.size = clamp(a.size * Math.abs(sv), 4, 300); const b = textBox(a); a.w = b.w; a.h = b.h; }
   else { a.w = Math.max(2, a.w * su); a.h = Math.max(2, a.h * sv); }
 }
 function arrowHead(a) {
@@ -657,6 +720,28 @@ function rerenderVisible() { for (const el of $$('.page', pagesEl)) { el._key = 
 
 /* ---------- Overlay SVG ---------- */
 const sv = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+let gradN = 0;
+function textSvg(fr, a) {
+  const L = layoutText(a); const op = a.opacity == null ? 1 : a.opacity; const rad = a.rad || 0;
+  if (a.shadow) { const o = shOff(a); fr.appendChild(sv('path', { d: boxPath(o, o, a.w, a.h, rad), fill: '#000', 'fill-opacity': 0.22 * op })); }
+  if (a.grad) {
+    const id = 'tg' + (gradN++); const d = GRAD_DIR[a.grad[2]] || GRAD_DIR.v; const defs = sv('defs', {}); const lg = sv('linearGradient', { id, x1: d[0], y1: d[1], x2: d[2], y2: d[3] });
+    lg.appendChild(sv('stop', { offset: 0, 'stop-color': a.grad[0] })); lg.appendChild(sv('stop', { offset: 1, 'stop-color': a.grad[1] })); defs.appendChild(lg); fr.appendChild(defs);
+    fr.appendChild(sv('path', { d: boxPath(0, 0, a.w, a.h, rad), fill: `url(#${id})`, 'fill-opacity': (a.bgop == null ? 1 : a.bgop) * op }));
+  } else if (a.bg) fr.appendChild(sv('path', { d: boxPath(0, 0, a.w, a.h, rad), fill: a.bg, 'fill-opacity': (a.bgop == null ? 1 : a.bgop) * op }));
+  if (a.border) { const bw = bdW(a); const da = bdDash(a, bw); const at = { d: boxPath(bw / 2, bw / 2, Math.max(0, a.w - bw), Math.max(0, a.h - bw), Math.max(0, rad - bw / 2)), fill: 'none', stroke: a.bc || a.color, 'stroke-width': bw, 'stroke-opacity': op }; if (da) { at['stroke-dasharray'] = da.join(' '); at['stroke-linecap'] = 'round'; } fr.appendChild(sv('path', at)); }
+  const fam = FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK;
+  const tx = (str, x, y) => { const t = sv('text', { x, y, 'font-family': fam, 'font-weight': a.bold ? 700 : 400, 'font-style': a.italic ? 'italic' : 'normal', 'font-size': a.size, fill: a.color, 'fill-opacity': op, 'xml:space': 'preserve' }); if (a.ls) t.setAttribute('letter-spacing', a.ls); t.textContent = str; fr.appendChild(t); };
+  const th = Math.max(0.5, a.size * 0.065);
+  for (const r of L.rows) {
+    const rw = r.jw || r.w;
+    if (a.hlc && r.s) fr.appendChild(sv('rect', { x: r.x - a.size * 0.05, y: r.top, width: rw + a.size * 0.1, height: L.lineBox, fill: a.hlc, 'fill-opacity': op }));
+    if (r.pre) tx(r.pre, L.pad, r.y);
+    if (r.jw) for (const w of justWords(a, r)) tx(w.w, w.x, r.y); else if (r.s) tx(r.s, r.x, r.y);
+    if (a.underline && r.s) fr.appendChild(sv('rect', { x: r.x, y: r.y + a.size * 0.1, width: rw, height: th, fill: a.color, 'fill-opacity': op }));
+    if (a.strike && r.s) fr.appendChild(sv('rect', { x: r.x, y: r.y - a.size * 0.3 - th / 2, width: rw, height: th, fill: a.color, 'fill-opacity': op }));
+  }
+}
 function annNode(a) {
   const g = sv('g', { 'data-id': a.id });
   const w = a.width || 1.5;
@@ -677,12 +762,8 @@ function annNode(a) {
     const { U, V } = UV(a.r);
     const fr = sv('g', { transform: `matrix(${U[0]} ${U[1]} ${-V[0]} ${-V[1]} ${a.ax + a.h * V[0]} ${a.ay + a.h * V[1]})` });
     if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (im) fr.appendChild(sv('image', { href: im.src, x: 0, y: 0, width: a.w, height: a.h, preserveAspectRatio: 'none' })); }
-    else if (a.t === 'text') {
-      const lines = String(a.text || '').split('\n'); const pad = tpad(a); const op = a.opacity == null ? 1 : a.opacity;
-      if (a.bg) fr.appendChild(sv('rect', { x: 0, y: 0, width: a.w, height: a.h, fill: a.bg, 'fill-opacity': op }));
-      if (a.border) { const bw = Math.max(1, a.size * 0.09); fr.appendChild(sv('rect', { x: bw / 2, y: bw / 2, width: Math.max(0, a.w - bw), height: Math.max(0, a.h - bw), fill: 'none', stroke: a.color, 'stroke-width': bw, 'stroke-opacity': op })); }
-      lines.forEach((l, i) => { const t = sv('text', { x: pad, y: pad + BASE * a.size + i * LH * a.size, 'font-family': FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, 'font-weight': a.bold ? 700 : 400, 'font-size': a.size, fill: a.color, 'fill-opacity': op, 'xml:space': 'preserve' }); t.textContent = l; fr.appendChild(t); });
-    } else {
+    else if (a.t === 'text') textSvg(fr, a);
+    else {
       const segs = a.t === 'tick' ? [TICK] : CROSS;
       for (const s of segs) fr.appendChild(sv('polyline', { points: s.map(([p, q]) => `${p * a.w},${q * a.h}`).join(' '), fill: 'none', stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     }
@@ -872,10 +953,18 @@ let drag = null, lastTap = { t: 0, id: null };
 function addTextAt(p, pt, note) {
   const g = geo(p); const size = note ? Math.min(S.style.size, 11) : S.style.size; const r = tr(p);
   const a = { id: uid('a'), t: 'text', r, text: '', size, color: note ? '#000000' : S.style.ink, w: 1, h: 1, ax: 0, ay: 0 };
+  Object.assign(a, pick(txDefaults(), TX_KEYS)); if (a.align === 'justify') a.align = 'left';
   if (note) a.bg = S.style.noteBg || '#fff3a6';
   const bx = textBox(a); a.w = bx.w; a.h = bx.h;
   const topLeftDisp = [pt[0], pt[1] - size * 0.6 - bx.pad];
   const [ax, ay] = ap(g.i, topLeftDisp[0], topLeftDisp[1] + a.h); a.ax = ax; a.ay = ay;
+  p.annots.push(a); openEditor(p, a, true);
+}
+function addTextBoxAt(p, g, L, T, W, H) {
+  const size = S.style.size; const a = Object.assign({ id: uid('a'), t: 'text', r: tr(p), text: '', size, color: S.style.ink, box: true, w: 1, h: 1, ax: 0, ay: 0 }, pick(txDefaults(), TX_KEYS), pick(bxDefaults(), BX_KEYS));
+  if (!a.bg && !a.grad) delete a.bg;
+  a.w = W || Math.min(Math.max(180, size * 14), g.w - L - 8); a.w = Math.max(a.w, size * 3); if (H) a.minH = H;
+  const bx = textBox(a); a.h = bx.h; const [ax, ay] = ap(g.i, L, T + a.h); a.ax = ax; a.ay = ay;
   p.annots.push(a); openEditor(p, a, true);
 }
 pagesEl.addEventListener('pointerdown', (e) => {
@@ -884,7 +973,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
   const p = pageById(el.dataset.id); const g = geo(p); const pt = ptFromEvent(e, el);
   const pdfPt = ap(g.i, pt[0], pt[1]);
   closeMenu();
-  if (S.editing) { closeEditor(false); if (S.tool === 'text') { return; } }
+  if (S.editing) { closeEditor(false); if (S.tool === 'text' || S.tool === 'tbox') { return; } }
   const tool = S.tool;
   if (tool === 'edittext') {
     const hit = e.target.closest('.ann'); if (hit) { const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') { e.preventDefault(); openEditor(p, a); } return; }
@@ -919,6 +1008,11 @@ pagesEl.addEventListener('pointerdown', (e) => {
     if (hitText) { openEditor(p, hitText); return; }
     addTextAt(p, pt, tool === 'note'); return;
   }
+  if (tool === 'tbox') {
+    const hitText = [...p.annots].reverse().find((a) => a.t === 'text' && (() => { const b = dispBox(a, g); return pt[0] >= b.L && pt[0] <= b.R && pt[1] >= b.T && pt[1] <= b.B; })());
+    if (hitText) { openEditor(p, hitText); return; }
+    drag = { mode: 'tbox', p, el, g, start: pt, id: e.pointerId }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return;
+  }
   if (tool === 'stamp') {
     const st = S.pendingStamp; if (!st) return; const r = tr(p);
     const a = { id: uid('a'), t: 'text', r, text: st.text, size: st.plain ? 11 : 16, color: st.color, bold: !st.plain, border: !st.plain, w: 1, h: 1, ax: 0, ay: 0 };
@@ -950,6 +1044,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
 pagesEl.addEventListener('pointermove', (e) => {
   if (!drag || e.pointerId !== drag.id) return;
   const { p, el, g, a } = drag; const pt = ptFromEvent(e, el); const pdfPt = ap(g.i, pt[0], pt[1]);
+  if (drag.mode === 'tbox') { MARQ = { pageId: p.id, L: Math.min(pt[0], drag.start[0]), T: Math.min(pt[1], drag.start[1]), R: Math.max(pt[0], drag.start[0]), B: Math.max(pt[1], drag.start[1]) }; drawOverlay(p, el); return; }
   if (drag.mode === 'crop') { drag.cur = pdfPt; const [x0, y0] = drag.startPdf; p.crop = [Math.min(x0, pdfPt[0]), Math.min(y0, pdfPt[1]), Math.max(x0, pdfPt[0]), Math.max(y0, pdfPt[1])]; drawOverlay(p, el); return; }
   if (drag.mode === 'create') {
     if (BOXES.has(a.t)) { const [x0, y0] = drag.startPdf; a.x = Math.min(x0, pdfPt[0]); a.y = Math.min(y0, pdfPt[1]); a.w = Math.abs(pdfPt[0] - x0); a.h = Math.abs(pdfPt[1] - y0); }
@@ -978,7 +1073,7 @@ pagesEl.addEventListener('pointermove', (e) => {
   else {
     const b = drag.box; const W0 = Math.max(1e-3, b.R - b.L), H0 = Math.max(1e-3, b.B - b.T);
     let sx = Math.max(0.05, (W0 + dx) / W0), sy = Math.max(0.05, (H0 + dy) / H0);
-    const uniform = ORIENTED.has(a.t) || e.shiftKey; if (uniform && !ORIENTED.has(a.t)) { const s = Math.max(sx, sy); sx = sy = s; }
+    const uniform = (ORIENTED.has(a.t) && !(a.t === 'text' && a.box)) || e.shiftKey; if (uniform && !ORIENTED.has(a.t)) { const s = Math.max(sx, sy); sx = sy = s; }
     applyT(fresh, pdfAffineFromDisplay(g, (x, y) => [b.L + (x - b.L) * sx, b.T + (y - b.T) * sy]), uniform);
     if (ORIENTED.has(a.t)) { const nb = dispBox(fresh, g); applyT(fresh, pdfAffineFromDisplay(g, (x, y) => [x + b.L - nb.L, y + b.T - nb.T])); }
   }
@@ -986,8 +1081,9 @@ pagesEl.addEventListener('pointermove', (e) => {
 });
 function endDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
-  const { p, el, a, mode, moved, group } = drag; drag = null;
+  const drag0 = drag; const { p, el, a, mode, moved, group } = drag; drag = null;
   if (mode === 'marquee') { MARQ = null; drawOverlay(p, el); refreshFormatBar(); return; }
+  if (mode === 'tbox') { const m = MARQ; MARQ = null; const g = geo(p); let L = drag0.start[0], T = drag0.start[1], W = 0, H = 0; if (m && (m.R - m.L) * S.zoom > 12) { L = m.L; T = m.T; W = m.R - m.L; H = (m.B - m.T) * S.zoom > 12 ? m.B - m.T : 0; } addTextBoxAt(p, g, L, T, W, H); return; }
   if (mode === 'move') { GUIDES = null; if (!moved && group && group.length > 1) { S.sel = { pageId: p.id, annId: a.id }; } }
   if (mode === 'crop') { const c = p.crop; const g = geo(p); if (c) { const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); if (Math.abs(d2[0] - d1[0]) * S.zoom < 20 || Math.abs(d2[1] - d1[1]) * S.zoom < 20) p.crop = null; } drawOverlay(p, el); commit(); refreshFormatBar(); return; }
   if (mode === 'create') {
@@ -1093,21 +1189,35 @@ function alignSelected(k) {
   drawOverlay(s.p); commit();
 }
 function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
-function annLabel(a) { return ({ text: a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
+function annLabel(a) { return ({ text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
 /* ---------- Text editor ---------- */
+function styleEditor(ta, a, el = pageEl(S.editing ? S.editing.pageId : ''), b) {
+  if (!el) return; const p = pageById(el.dataset.id); if (!b) b = dispBox(a, geo(p));
+  const z = S.zoom; const fs = a.size * z; const pz = tpad(a) * z; const L = layoutText(a); const bw = a.border ? bdW(a) * z : 0;
+  const bgop = a.bgop == null ? 1 : a.bgop;
+  const bg = a.grad ? `linear-gradient(${{ v: '180deg', h: '90deg', d: '135deg' }[a.grad[2]] || '180deg'}, ${hexA(a.grad[0], bgop)}, ${hexA(a.grad[1], bgop)})` : a.bg ? hexA(a.bg, bgop) : (a.cover ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.85)');
+  const dec = [a.underline ? 'underline' : '', a.strike ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
+  Object.assign(ta.style, { left: el.offsetLeft + b.L * z + 'px', top: el.offsetTop + b.T * z + 'px', fontSize: fs + 'px', color: a.color, minWidth: Math.max(40, fs * 2) + 'px', padding: Math.max(0, pz - bw) + 'px', paddingLeft: Math.max(0, pz - bw + L.ind * z) + 'px', fontWeight: a.bold ? '700' : '400', fontStyle: a.italic ? 'italic' : 'normal', textDecoration: dec, textAlign: a.align || 'left', lineHeight: String(LH * (a.lh || 1)), letterSpacing: (a.ls || 0) * z + 'px', fontFamily: FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, background: bg, borderRadius: (a.rad || 0) * z + 'px', border: a.border ? `${bw}px ${a.bds === 'dash' ? 'dashed' : a.bds === 'dot' ? 'dotted' : 'solid'} ${a.bc || a.color}` : '0', boxSizing: 'border-box', whiteSpace: a.box ? 'pre-wrap' : 'pre', overflowWrap: a.box ? 'anywhere' : 'normal', width: a.box ? a.w * z + 'px' : ta.style.width, boxShadow: a.shadow ? `${shOff(a) * z}px ${shOff(a) * z}px 0 rgba(0,0,0,.22)` : 'none' });
+  if (a.hlc) ta.style.textShadow = 'none';
+  if (ta._fit) ta._fit();
+}
 function openEditor(p, a, isNew = false) {
   closeEditor(false); setTool(S.tool);
   const el = pageEl(p.id); const g = geo(p); S.editing = { pageId: p.id, annId: a.id, isNew }; S.sel = { pageId: p.id, annId: a.id };
   drawOverlay(p, el);
   const b = dispBox(a, g); const ta = document.createElement('textarea'); ta.className = 'textedit'; ta.id = 'textEditor';
   ta.value = a.text || ''; ta.spellcheck = true; ta.setAttribute('aria-label', 'Text');
-  const fs = a.size * S.zoom; const pz = tpad(a) * S.zoom;
-  Object.assign(ta.style, { left: el.offsetLeft + b.L * S.zoom + 'px', top: el.offsetTop + b.T * S.zoom + 'px', fontSize: fs + 'px', color: a.color, minWidth: Math.max(40, fs * 2) + 'px', padding: pz + 'px', fontWeight: a.bold ? '700' : '400', fontFamily: FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, background: a.bg || (a.cover ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.85)') });
-  const fitTa = () => { ta.style.width = '0px'; ta.style.height = '0px'; ta.style.width = Math.max(fs * 2, ta.scrollWidth + fs * 0.6) + 'px'; ta.style.height = ta.scrollHeight + 'px'; };
+  styleEditor(ta, a, el, b);
+  const fitTa = () => { const fs = a.size * S.zoom; ta.style.height = '0px'; if (!a.box) { ta.style.width = '0px'; ta.style.width = Math.max(fs * 2, ta.scrollWidth + fs * 0.6) + 'px'; } ta.style.height = Math.max(ta.scrollHeight, a.box ? (a.minH || 0) * S.zoom : 0) + 'px'; };
+  ta._fit = fitTa;
   ta.addEventListener('input', fitTa);
-  ta.addEventListener('keydown', (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); closeEditor(false); } e.stopPropagation(); });
-  ta.addEventListener('blur', () => setTimeout(() => { if (S.editing && document.activeElement !== ta) closeEditor(false); }, 120));
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); closeEditor(false); }
+    else if ((e.metaKey || e.ctrlKey) && !e.altKey) { const k = e.key.toLowerCase(); const map = { b: 'bold', i: 'italic', u: 'underline' }; if (map[k]) { e.preventDefault(); fmtToggle(map[k]); } else if (e.shiftKey && k === 'x') { e.preventDefault(); fmtToggle('strike'); } else if (k === 'e' || k === 'l' || k === 'r' || k === 'j') { e.preventDefault(); fmtSet({ align: { e: 'center', l: 'left', r: 'right', j: 'justify' }[k] }); } }
+    e.stopPropagation();
+  });
+  ta.addEventListener('blur', () => setTimeout(() => { const ae = document.activeElement; if (S.editing && ae !== ta && !(ae && ae.closest && ae.closest('#fmtPanel,#formatBar'))) closeEditor(false); }, 120));
   pagesEl.appendChild(ta); fitTa(); ta.focus({ preventScroll: true }); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
   refreshFormatBar();
 }
@@ -1170,7 +1280,7 @@ function fontOf(el, item) {
   try { const st = el._tl && el._tl._styles; fam = st && st[item.fontName] ? st[item.fontName].fontFamily : ''; } catch (e) {}
   const n = name + ' ' + fam;
   const font = /courier|mono|consol|typewriter/i.test(n) ? 'cour' : /times|serif(?!.*sans)|georgia|garamond|cambria|book ?antiqua|palatino|minion/i.test(n) && !/sans/i.test(n) ? 'times' : 'helv';
-  return { font, bold: /bold|black|heavy|semibold|demi/i.test(name) };
+  return { font, bold: /bold|black|heavy|semibold|demi/i.test(name), italic: /italic|oblique/i.test(name) };
 }
 function editExistingLine(p, el, span) {
   const divs = el._tl ? el._tl.textDivs : []; const strs = el._tl ? el._tl.textContentItemsStr : [];
@@ -1202,7 +1312,7 @@ function editExistingLine(p, el, span) {
   const c1 = ap(g.i, rect.L, rect.T), c2 = ap(g.i, rect.R, rect.B);
   const cover = { id: uid('a'), t: 'white', fill: bg, x: Math.min(c1[0], c2[0]), y: Math.min(c1[1], c2[1]), w: Math.abs(c2[0] - c1[0]), h: Math.abs(c2[1] - c1[1]), edit: true };
   const ff = fontOf(el, parts[0].t);
-  const uni = needsUni(text); const a = { id: uid('a'), t: 'text', r: tr(p), text: uni ? text : sanitize(text), uni, size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, w: 1, h: 1, ax: 0, ay: 0, orig: uni ? text : sanitize(text), cover: cover.id };
+  const uni = needsUni(text); const a = { id: uid('a'), t: 'text', r: tr(p), text: uni ? text : sanitize(text), uni, size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, italic: ff.italic || undefined, w: 1, h: 1, ax: 0, ay: 0, orig: uni ? text : sanitize(text), cover: cover.id };
   const bx = textBox(a); a.w = bx.w; a.h = bx.h;
   const left = Math.min(...parts.map((c) => ap(g.t, c.t.transform[4], c.t.transform[5])[0]));
   const [ax, ay] = ap(g.i, left, base[1] - BASE * a.size + a.h); a.ax = ax; a.ay = ay;
@@ -1583,7 +1693,11 @@ $('#fileInsertImg').addEventListener('change', async (e) => {
 function placeImageItem(it) { S.imgs.set(it.id, { src: it.src, w: it.w, h: it.h, el: it.el || null }); setTool('image'); S.pendingImg = it; toast('Tap the page where the image goes'); }
 function saveStyle() { lsSet('pdfmate.style', S.style); }
 let styleCommitT;
-function applyStyleToSel(fn) { const s = selectedAnn(); if (!s) return; fn(s.a); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 350); if (S.editing) { const ta = $('#textEditor'); if (ta) { ta.style.color = s.a.color; ta.style.fontSize = s.a.size * S.zoom + 'px'; ta.dispatchEvent(new Event('input')); } } }
+function applyStyleToSel(fn) { const s = selectedAnn(); if (!s) return; fn(s.a); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 350); if (S.editing && S.editing.annId === s.a.id) { const ta = $('#textEditor'); if (ta) styleEditor(ta, s.a); } }
+function fmtBarHtml() {
+  const c = fmtCur(); const B = (k, l, t) => `<button class="tbtn fbt" data-ftg="${k}" aria-pressed="${!!c[k]}" title="${t}" aria-label="${t}">${l}</button>`;
+  return `<div class="fb-grp">${B('bold', '<b>B</b>', 'Bold')}${B('italic', '<i>I</i>', 'Italic')}${B('underline', '<u>U</u>', 'Underline')}${B('strike', '<s>S</s>', 'Strikethrough')}</div><select class="fb-font" id="fbFont" aria-label="Font">${FONT_NAMES.map(([k, n]) => `<option value="${k}" ${c.font === k ? 'selected' : ''}>${n.split(' / ')[0]}</option>`).join('')}</select>`;
+}
 function refreshFormatBar() {
   const fb = $('#formatBar');
   if (S.sel && selIds().length > 1 && S.pages.length) {
@@ -1591,24 +1705,26 @@ function refreshFormatBar() {
     fb.innerHTML = `<span class="fb-label">${n} selected</span><span class="fb-spacer"></span>${B('l', 'al', 'Align left')}${B('c', 'ac', 'Align centres')}${B('r', 'ar', 'Align right')}<span class="fb-spacer"></span>${B('t', 'at', 'Align top')}${B('m', 'am', 'Align middles')}${B('b', 'ab', 'Align bottom')}<span class="fb-spacer"></span>${B('dup', 'dup', 'Duplicate')}${B('del', 'trash', 'Delete')}`;
     fb.hidden = false;
     fb.querySelectorAll('[data-mal]').forEach((b) => b.onclick = () => { const k = b.dataset.mal; if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else alignSelected(k); });
-    return;
+    refreshFmtPanel(); return;
   }
   const s = selectedAnn();
   let kind = s ? s.a.t : S.tool;
-  if (s && s.a.t === 'text') kind = s.a.bg ? 'note' : s.a.border ? 'stampa' : 'text';
+  if (s && s.a.t === 'text') kind = s.a.box ? 'tbox' : s.a.bg ? 'note' : s.a.border ? 'stampa' : 'text';
   if (s && s.a.t === 'mark') kind = s.a.kind === 'hl' ? 'markhl' : 'markline';
-  if (!S.pages.length || kind === 'select' || kind === 'hand') { fb.hidden = true; fb.innerHTML = ''; return; }
+  if (!S.pages.length || kind === 'select' || kind === 'hand') { fb.hidden = true; fb.innerHTML = ''; refreshFmtPanel(); return; }
   const parts = [];
   const isHl = kind === 'hl' || kind === 'markhl';
   const cur = s ? s.a.color : (isHl ? S.style.hl : S.style.ink);
-  const label = { crop: 'Crop', edittext: 'Edit text', text: 'Text', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
+  const label = { crop: 'Crop', edittext: 'Edit text', text: 'Text', tbox: 'Text box', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
   parts.push(`<span class="fb-label">${label}</span>`);
   const sw = (list, c0, attr = 'data-color') => `<div class="swatches" role="group" aria-label="Colour">${list.map(([n, c]) => `<button class="sw" ${attr}="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === String(c0).toLowerCase()}"></button>`).join('')}</div>`;
   if (!['white', 'image', 'redact', 'stamp', 'edittext', 'crop'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
   if (kind === 'note') parts.push(sw(NOTE_BGS, s ? s.a.bg : (S.style.noteBg || '#fff3a6'), 'data-bg'));
-  if (['text', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
+  if (['text', 'tbox', 'note', 'stampa'].includes(kind)) parts.push(fmtBarHtml());
+  if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
   if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
-  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const al = (fmtCur().align || 'left'); parts.push(`<button class="tbtn" data-fa="1" title="Alignment: ${al}" aria-label="Alignment ${al}">${icon({ left: 'tal', center: 'tac', right: 'tar', justify: 'taj' }[al])}</button><button class="tbtn" data-fp="1" aria-pressed="${!!S.fmtOpen}" title="All text and box formatting">${icon('fmt')}<span class="tb-hide-m">Format</span></button>`); }
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
     if (s.a.t === 'text') parts.push(`<button class="tbtn" data-act="edit">${icon('edit')}<span class="tb-hide-m">Edit</span></button>`);
@@ -1618,9 +1734,14 @@ function refreshFormatBar() {
   if (kind === 'crop') { const cp = S.pages[S.current]; parts.push(`<button class="tbtn" data-act="cropall" ${cp && cp.crop ? '' : 'disabled'}>Use on all pages</button><button class="tbtn" data-act="cropclear">Remove crop</button>`); }
   if (!s && kind !== 'select') parts.push(`<button class="tbtn" data-act="done">Done</button>`);
   fb.innerHTML = parts.join(''); fb.hidden = false;
+  refreshFmtPanel();
 }
 $('#formatBar').addEventListener('pointerdown', (e) => { if (S.editing && e.target.closest('button')) e.preventDefault(); });
+$('#formatBar').addEventListener('change', (e) => { if (e.target.id === 'fbFont') fmtSet({ font: e.target.value }); });
 $('#formatBar').addEventListener('click', (e) => {
+  const ft = e.target.closest('[data-ftg]'); if (ft) { fmtToggle(ft.dataset.ftg); return; }
+  if (e.target.closest('[data-fp]')) { openFmtPanel(); return; }
+  if (e.target.closest('[data-fa]')) { const o = ['left', 'center', 'right', 'justify']; const c = fmtCur().align || 'left'; fmtSet({ align: o[(o.indexOf(c) + 1) % 4] }); return; }
   const sw = e.target.closest('.sw'); const st = e.target.closest('[data-step]'); const act = e.target.closest('[data-act]');
   const s = selectedAnn();
   if (sw && sw.dataset.bg) { const c = sw.dataset.bg; S.style.noteBg = c; saveStyle(); if (s) applyStyleToSel((a) => { a.bg = c; }); refreshFormatBar(); return; }
@@ -1644,6 +1765,158 @@ $('#formatBar').addEventListener('click', (e) => {
     else if (k === 'cropclear') { const cp = S.pages[S.current]; const any = S.pages.filter((p) => p.crop); if (!any.length) return; if (cp && cp.crop) cp.crop = null; else any.forEach((p) => { p.crop = null; }); S.pages.forEach((p) => drawOverlay(p)); commit(); refreshFormatBar(); }
   }
 });
+
+/* ---------- Word-style text formatting and text boxes ---------- */
+const TX_KEYS = ['font', 'bold', 'italic', 'underline', 'strike', 'align', 'lh', 'ls', 'hlc', 'list'];
+const BX_KEYS = ['bg', 'bgop', 'grad', 'border', 'bc', 'bdw', 'bds', 'rad', 'shadow', 'pad', 'valign'];
+const TX_DEF = { font: 'helv', align: 'left', lh: 1, ls: 0 };
+const BX_DEF = { bg: '#ffffff', border: true, bc: '#8e8e93', bdw: 1, bds: 'solid', rad: 4, pad: 6, valign: 'top' };
+const TEXT_INKS = [['Black', '#000000'], ['Dark grey', '#3a3a3c'], ['Grey', '#8e8e93'], ['White', '#ffffff'], ['Navy', '#0b1a3a'], ['Blue', '#0040dd'], ['Teal', '#0e7c86'], ['Green', '#1a7f37'], ['Orange', '#c93400'], ['Red', '#d70015'], ['Purple', '#8944ab'], ['Brown', '#7a4b1e']];
+const HL_INKS = [['Yellow', '#fff200'], ['Bright green', '#7cfc00'], ['Turquoise', '#40e0d0'], ['Pink', '#ff9ad5'], ['Orange', '#ffb340'], ['Blue', '#9ecbff'], ['Grey', '#d1d1d6']];
+const FILLS = [['White', '#ffffff'], ['Paper', '#fbf8f1'], ['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec'], ['Lavender', '#e6e0ff'], ['Light grey', '#e5e5ea'], ['Amber', '#ffd60a'], ['Teal', '#0e7c86'], ['Navy', '#0b1a3a'], ['Black', '#1c1c1e'], ['Red', '#d70015'], ['Green dark', '#1a7f37']];
+const GRADS = [['Ocean', '#0a84ff', '#64d2ff'], ['Sunset', '#ff9f0a', '#ff375f'], ['Mint', '#d4f5c9', '#a0e7e5'], ['Steel', '#f2f2f7', '#c7c7cc'], ['Night', '#1c1c3c', '#3a3a8c'], ['Sand', '#fff3d6', '#f4d7a1'], ['Rose', '#ffe1ec', '#ffb3c7'], ['Forest', '#1a7f37', '#34c759'], ['Gold', '#fff1b8', '#f5b700'], ['Sea', '#003a70', '#0e7c86']];
+const BOX_STYLES = [
+  ['Plain', { color: '#000000', bg: '#ffffff', grad: null, border: true, bc: '#8e8e93', bdw: 1, bds: 'solid', rad: 2, shadow: false }],
+  ['Card', { color: '#000000', bg: '#ffffff', grad: null, border: false, rad: 8, shadow: true }],
+  ['Info', { color: '#0b1a3a', bg: '#d6ecff', grad: null, border: true, bc: '#0040dd', bdw: 1, bds: 'solid', rad: 6, shadow: false }],
+  ['Success', { color: '#0b3d1a', bg: '#d4f5c9', grad: null, border: true, bc: '#1a7f37', bdw: 1, bds: 'solid', rad: 6, shadow: false }],
+  ['Warning', { color: '#7a2e00', bg: '#fff3d6', grad: null, border: true, bc: '#c93400', bdw: 1.5, bds: 'solid', rad: 6, shadow: false }],
+  ['Danger', { color: '#8a0010', bg: '#ffe1e1', grad: null, border: true, bc: '#d70015', bdw: 1.5, bds: 'solid', rad: 6, shadow: false }],
+  ['Dark', { color: '#ffffff', bg: '#1c1c1e', grad: null, border: false, rad: 6, shadow: false }],
+  ['Ocean', { color: '#ffffff', bg: null, grad: ['#0a84ff', '#64d2ff', 'v'], border: false, rad: 8, shadow: false }],
+  ['Sunset', { color: '#ffffff', bg: null, grad: ['#ff9f0a', '#ff375f', 'd'], border: false, rad: 8, shadow: false }],
+  ['Sticky', { color: '#000000', bg: '#fff3a6', grad: null, border: false, rad: 0, shadow: true }],
+  ['Dashed', { color: '#000000', bg: null, grad: null, border: true, bc: '#3a3a3c', bdw: 1.2, bds: 'dash', rad: 4, shadow: false }],
+  ['Clear', { bg: null, grad: null, border: false, shadow: false, rad: 0 }]
+];
+const pick = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = o[k]; return r; };
+function txDefaults() { return Object.assign({}, TX_DEF, S.style.tx || {}); }
+function bxDefaults() { return Object.assign({}, BX_DEF, S.style.bx || {}); }
+function fmtTarget() { const s = selectedAnn(); return s && s.a.t === 'text' ? s : null; }
+function fmtCur() { const s = fmtTarget(); if (s) return Object.assign({ font: 'helv', align: 'left', lh: 1, ls: 0, size: s.a.size, color: s.a.color }, s.a); return Object.assign({ size: S.style.size, color: S.style.ink }, txDefaults(), S.tool === 'tbox' ? Object.assign({ box: true }, bxDefaults()) : {}); }
+function fmtSet(o, quiet) {
+  const s = fmtTarget(); S.style.tx = S.style.tx || {}; S.style.bx = S.style.bx || {};
+  // With something selected only that item changes; with nothing selected the choice becomes the default for new text.
+  if (!s) for (const k in o) {
+    if (TX_KEYS.includes(k)) { if (o[k] == null || o[k] === false) delete S.style.tx[k]; else S.style.tx[k] = o[k]; }
+    else if (BX_KEYS.includes(k)) S.style.bx[k] = o[k];
+    else if (k === 'color' && o[k]) S.style.ink = o[k];
+    else if (k === 'size') S.style.size = o[k];
+  }
+  if (!s) saveStyle();
+  if (s) applyStyleToSel((a) => { for (const k in o) { if (o[k] == null || o[k] === false) delete a[k]; else a[k] = o[k]; } setText(a, null, null); });
+  if (!quiet) refreshFormatBar();
+}
+function fmtToggle(k) { const c = fmtCur(); fmtSet({ [k]: !c[k] }); }
+function fmtCase(mode) {
+  const s = fmtTarget(); if (!s) { toast('Select some text first'); return; }
+  const ta = S.editing && S.editing.annId === s.a.id ? $('#textEditor') : null; const src = ta ? ta.value : s.a.text || '';
+  const title = (t) => t.toLowerCase().replace(/(^|[\s\-(/"'])(\p{L})/gu, (m, a1, b1) => a1 + b1.toUpperCase());
+  const sent = (t) => t.toLowerCase().replace(/(^\s*|[.!?]\s+|\n\s*)(\p{L})/gu, (m, a1, b1) => a1 + b1.toUpperCase());
+  const out = mode === 'up' ? src.toUpperCase() : mode === 'low' ? src.toLowerCase() : mode === 'title' ? title(src) : sent(src);
+  if (ta) { ta.value = out; if (ta._fit) ta._fit(); }
+  applyStyleToSel((a) => { setText(a, out); }); refreshFormatBar();
+}
+function fmtBox(on) {
+  const s = fmtTarget(); if (!s) { setTool(on ? 'tbox' : 'text'); return; }
+  applyStyleToSel((a) => {
+    if (on) { const w = a.w; Object.assign(a, pick(bxDefaults(), BX_KEYS), { box: true }); if (a.bg == null && !a.grad) delete a.bg; a.w = Math.max(w + 12, a.size * 6); delete a.minH; }
+    else { delete a.box; delete a.minH; }
+    setText(a, null, null);
+  });
+  refreshFormatBar();
+}
+function swRow(list, cur, attr, extra = '') { return `<div class="swatches wrap" role="group">${extra}${list.map(([n, c]) => `<button class="sw" ${attr}="${c}" style="background:${c}" title="${n}" aria-label="${n}" aria-pressed="${String(cur || '').toLowerCase() === c.toLowerCase()}"></button>`).join('')}</div>`; }
+const segH = (key, opts, cur) => `<div class="seg" role="group">${opts.map(([v, l, t]) => `<button data-fk="${key}" data-fv="${v}" aria-pressed="${String(cur) === String(v)}" title="${t || ''}">${l}</button>`).join('')}</div>`;
+function fmtPanelHtml() {
+  const c = fmtCur(); const s = fmtTarget(); const isBox = !!c.box; const hasDeco = isBox || c.bg || c.grad || c.border;
+  const tog = (k, l, t) => `<button class="fbx${c[k] ? ' on' : ''}" data-tg="${k}" aria-pressed="${!!c[k]}" title="${t}">${l}</button>`;
+  const fontSel = `<select class="inp" id="fpFont" aria-label="Font">${FONT_NAMES.map(([k, n]) => `<option value="${k}" ${c.font === k ? 'selected' : ''} style="font-family:${FONT_CSS[k].replace(/"/g, "'")}">${n}</option>`).join('')}</select>`;
+  const grads = `<div class="grads">${GRADS.map(([n, a1, b1]) => `<button class="gsw" data-grad="${a1},${b1}" title="${n}" aria-label="${n} gradient" aria-pressed="${!!(c.grad && c.grad[0] === a1 && c.grad[1] === b1)}" style="background:linear-gradient(135deg,${a1},${b1})"></button>`).join('')}</div>`;
+  const styles = `<div class="bstyles">${BOX_STYLES.map(([n, st], i) => { const bg = st.grad ? `linear-gradient(135deg,${st.grad[0]},${st.grad[1]})` : st.bg || 'transparent'; const bd = st.border ? `${Math.max(1, st.bdw)}px ${st.bds === 'dash' ? 'dashed' : 'solid'} ${st.bc}` : '1px dashed var(--sep-strong)'; return `<button class="bst" data-bst="${i}" title="${n}" style="background:${bg};border:${st.border ? bd : st.bg || st.grad ? '0' : bd};border-radius:${Math.min(st.rad || 0, 8)}px;color:${st.color || 'var(--label)'};${st.shadow ? 'box-shadow:2px 2px 0 rgba(0,0,0,.2)' : ''}">Aa<small>${n}</small></button>`; }).join('')}</div>`;
+  const ink = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#000000';
+  return `<div class="fp-head"><b>Format text</b><button class="tbtn" data-fp-close aria-label="Close">${icon('close')}</button></div><div class="fp-body">
+  <div class="fp-sec"><h4>Font</h4>
+    <div class="fp-row">${fontSel}<div class="stepper"><button data-fsz="-1" aria-label="Smaller">−</button><input id="fpSize" type="number" min="4" max="300" step="0.5" value="${Math.round(c.size * 10) / 10}" aria-label="Font size"><button data-fsz="1" aria-label="Larger">+</button></div></div>
+    <div class="fp-row">${tog('bold', '<b>B</b>', 'Bold (Ctrl+B)')}${tog('italic', '<i>I</i>', 'Italic (Ctrl+I)')}${tog('underline', '<u>U</u>', 'Underline (Ctrl+U)')}${tog('strike', '<s>S</s>', 'Strikethrough (Ctrl+Shift+X)')}
+      <span class="fp-gap"></span><button class="fbx" data-case="up" title="UPPERCASE">AB</button><button class="fbx" data-case="low" title="lowercase">ab</button><button class="fbx" data-case="title" title="Capitalise Each Word">Ab</button><button class="fbx" data-case="sent" title="Sentence case">A.</button></div>
+    <label class="fp-lbl">Font colour</label>${swRow(TEXT_INKS, c.color, 'data-fc', `<label class="sw sw-pick" title="More colours" style="--c:${ink}"><input type="color" id="fpInk" value="${ink}" aria-label="Custom font colour"></label>`)}
+    <label class="fp-lbl">Text highlight</label>${swRow(HL_INKS, c.hlc, 'data-fh', `<button class="sw sw-none" data-fh="" title="No highlight" aria-pressed="${!c.hlc}"></button>`)}
+  </div>
+  <div class="fp-sec"><h4>Paragraph</h4>
+    ${segH('align', [['left', icon('tal'), 'Align left (Ctrl+L)'], ['center', icon('tac'), 'Centre (Ctrl+E)'], ['right', icon('tar'), 'Align right (Ctrl+R)'], ['justify', icon('taj'), 'Justify (Ctrl+J)']], c.align || 'left')}
+    <label class="fp-lbl">Line spacing</label>${segH('lh', [[1, '1.0'], [1.15, '1.15'], [1.5, '1.5'], [2, '2.0'], [2.5, '2.5']], c.lh || 1)}
+    <label class="fp-lbl">Character spacing</label>${segH('ls', [[-0.5, 'Tight'], [0, 'Normal'], [1, 'Wide'], [2.5, 'Wider']], c.ls || 0)}
+    <label class="fp-lbl">List</label>${segH('list', [['', 'None'], ['bullet', '• Bullets'], ['number', '1. Numbers']], c.list || '')}
+  </div>
+  <div class="fp-sec"><h4>Text box</h4>
+    <div class="fp-row"><button class="fbx wide${isBox ? ' on' : ''}" data-box="${isBox ? 0 : 1}" aria-pressed="${isBox}">${icon('tbox')} ${isBox ? 'Text box on (wraps to width)' : 'Make it a text box'}</button></div>
+    ${isBox || s ? `<label class="fp-lbl">Quick styles</label>${styles}
+    <label class="fp-lbl">Fill</label>${swRow(FILLS, c.grad ? '' : c.bg, 'data-fb', `<button class="sw sw-none" data-fb="" title="No fill" aria-pressed="${!c.bg && !c.grad}"></button><label class="sw sw-pick" title="More colours" style="--c:${/^#[0-9a-f]{6}$/i.test(c.bg || '') ? c.bg : '#ffffff'}"><input type="color" id="fpFill" value="${/^#[0-9a-f]{6}$/i.test(c.bg || '') ? c.bg : '#ffffff'}" aria-label="Custom fill"></label>`)}
+    <label class="fp-lbl">Gradient</label>${grads}
+    ${c.grad ? segH('gdir', [['v', '↓ Top to bottom'], ['h', '→ Left to right'], ['d', '↘ Diagonal']], c.grad[2]) : ''}
+    <label class="fp-lbl">Fill transparency <output id="fpBgopV">${Math.round((1 - (c.bgop == null ? 1 : c.bgop)) * 100)}%</output></label><input type="range" id="fpBgop" min="0" max="90" step="5" value="${Math.round((1 - (c.bgop == null ? 1 : c.bgop)) * 100)}">
+    <label class="fp-lbl">Border</label>${segH('bds', [['none', 'None'], ['solid', 'Solid'], ['dash', 'Dashed'], ['dot', 'Dotted']], c.border ? c.bds || 'solid' : 'none')}
+    ${c.border ? `${swRow(TEXT_INKS, c.bc || c.color, 'data-fbc')}<div class="fp-row"><span class="fp-lbl" style="margin:0">Weight</span>${segH('bdw', [[0.5, '½'], [1, '1'], [1.5, '1½'], [2.25, '2¼'], [3, '3'], [4.5, '4½']], c.bdw != null ? c.bdw : '')}</div>` : ''}
+    <label class="fp-lbl">Corners</label>${segH('rad', [[0, 'Square'], [4, 'Soft'], [10, 'Round'], [999, 'Pill']], c.rad || 0)}
+    <div class="fp-row"><button class="fbx wide${c.shadow ? ' on' : ''}" data-tg="shadow" aria-pressed="${!!c.shadow}">Shadow</button></div>
+    ${hasDeco ? `<label class="fp-lbl">Inner margin</label>${segH('pad', [[2, 'Narrow'], [6, 'Normal'], [12, 'Wide'], [20, 'Extra']], c.pad != null ? c.pad : '')}` : ''}
+    ${isBox ? `<label class="fp-lbl">Vertical alignment</label>${segH('valign', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']], c.valign || 'top')}` : ''}` : '<p class="fp-note">Pick the Text box tool, or select some text, to style its background and border.</p>'}
+  </div>
+  <div class="fp-sec"><h4>Transparency <output id="fpOpV">${Math.round((1 - (c.opacity == null ? 1 : c.opacity)) * 100)}%</output></h4><input type="range" id="fpOp" min="0" max="90" step="5" value="${Math.round((1 - (c.opacity == null ? 1 : c.opacity)) * 100)}" ${s ? '' : 'disabled'}></div></div>`;
+}
+function fmtPanelWanted() { return S.fmtOpen && S.pages.length && (fmtTarget() || ['text', 'tbox', 'note'].includes(S.tool)) && !(S.sel && selIds().length > 1); }
+function refreshFmtPanel() {
+  let pn = $('#fmtPanel');
+  const stg = $('.stage'); if (stg) stg.classList.toggle('fp-open', !!fmtPanelWanted());
+  if (!fmtPanelWanted()) { if (pn) pn.hidden = true; return; }
+  if (!pn) { pn = document.createElement('div'); pn.id = 'fmtPanel'; pn.className = 'fmtpanel'; pn.setAttribute('role', 'dialog'); pn.setAttribute('aria-label', 'Format text'); ($('.stage') || document.body).appendChild(pn); bindFmtPanel(pn); }
+  const ob = pn.querySelector('.fp-body'); const sc = ob ? ob.scrollTop : 0; pn.innerHTML = fmtPanelHtml(); pn.hidden = false; pn.querySelector('.fp-body').scrollTop = sc;
+}
+function openFmtPanel(on = !S.fmtOpen) { S.fmtOpen = on; refreshFmtPanel(); refreshFormatBar(); }
+function bindFmtPanel(pn) {
+  pn.addEventListener('pointerdown', (e) => { if (S.editing && e.target.closest('button')) e.preventDefault(); });
+  pn.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-fp-close')) { openFmtPanel(false); return; }
+    const c = fmtCur();
+    if (b.dataset.tg) fmtToggle(b.dataset.tg);
+    else if (b.dataset.case) fmtCase(b.dataset.case);
+    else if (b.dataset.fsz) { const steps = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96, 120, 160]; const v = c.size; const d = +b.dataset.fsz; let nv = d > 0 ? steps.find((x) => x > v + 0.01) : [...steps].reverse().find((x) => x < v - 0.01); if (nv == null) nv = v; fmtSize(nv); }
+    else if (b.dataset.fc != null) fmtSet({ color: b.dataset.fc });
+    else if (b.dataset.fh != null) fmtSet({ hlc: b.dataset.fh || null });
+    else if (b.dataset.fb != null) fmtSet({ bg: b.dataset.fb || null, grad: null });
+    else if (b.dataset.fbc != null) fmtSet({ bc: b.dataset.fbc });
+    else if (b.dataset.grad) { const [g1, g2] = b.dataset.grad.split(','); fmtSet({ grad: [g1, g2, (c.grad && c.grad[2]) || 'v'], bg: null }); }
+    else if (b.dataset.bst != null) { const st = BOX_STYLES[+b.dataset.bst][1]; const o = Object.assign({}, st); if (!o.border) o.border = false; fmtSet(o); }
+    else if (b.dataset.box != null) fmtBox(b.dataset.box === '1');
+    else if (b.dataset.fk) {
+      const k = b.dataset.fk; let v = b.dataset.fv;
+      if (k === 'bds') { if (v === 'none') fmtSet({ border: false }); else fmtSet({ border: true, bds: v, bc: c.bc || (c.color === '#ffffff' ? '#8e8e93' : c.color) }); return; }
+      if (k === 'gdir') { if (c.grad) fmtSet({ grad: [c.grad[0], c.grad[1], v] }); return; }
+      if (['lh', 'ls', 'bdw', 'rad', 'pad'].includes(k)) v = +v;
+      fmtSet({ [k]: v === '' ? null : v });
+    }
+  });
+  pn.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.id === 'fpFont') fmtSet({ font: t.value });
+    else if (t.id === 'fpSize') { const v = clamp(+t.value || 12, 4, 300); fmtSize(v); }
+    else if (t.id === 'fpInk') fmtSet({ color: t.value });
+    else if (t.id === 'fpFill') fmtSet({ bg: t.value, grad: null });
+    else if (t.id === 'fpOp' || t.id === 'fpBgop') refreshFormatBar();
+  });
+  pn.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.id === 'fpOp') { const v = 1 - +t.value / 100; $('#fpOpV').textContent = t.value + '%'; const s = fmtTarget(); if (s) applyStyleToSel((a) => { if (v >= 1) delete a.opacity; else a.opacity = v; }); }
+    else if (t.id === 'fpBgop') { const v = 1 - +t.value / 100; $('#fpBgopV').textContent = t.value + '%'; fmtSet({ bgop: v >= 1 ? null : v }, true); }
+    else if (t.id === 'fpInk') { t.parentElement.style.setProperty('--c', t.value); fmtSet({ color: t.value }, true); }
+    else if (t.id === 'fpFill') { t.parentElement.style.setProperty('--c', t.value); fmtSet({ bg: t.value, grad: null }, true); }
+  });
+  pn.addEventListener('keydown', (e) => { if (e.key === 'Escape') { openFmtPanel(false); } e.stopPropagation(); });
+  pn.addEventListener('focusout', () => setTimeout(() => { const ae = document.activeElement; const ta = $('#textEditor'); if (S.editing && ta && ae !== ta && !(ae && ae.closest && ae.closest('#fmtPanel,#formatBar'))) closeEditor(false); }, 150));
+}
+function fmtSize(v) { const s = fmtTarget(); if (!s) { S.style.size = v; saveStyle(); refreshFormatBar(); return; } applyStyleToSel((a) => setText(a, null, v)); refreshFormatBar(); }
 
 /* ---------- Signatures and stamps ---------- */
 function libItems() { return lsGet('pdfmate.lib', []); }
@@ -1816,7 +2089,7 @@ function fillForm(ld, doc) {
 async function buildPdf(list, onProgress, opts = {}) {
   const out = await PL.PDFDocument.create();
   out.setProducer('Meridian PDF Mate by Tango Juliet Dev'); out.setCreator('Meridian PDF Mate');
-  const fontCache = {}; const font = async (k = 'helv', b = false) => { const key = k + (b ? 'b' : ''); if (!fontCache[key]) fontCache[key] = await out.embedFont(PL.StandardFonts[(FONT_KEYS[k] || FONT_KEYS.helv)[b ? 1 : 0]]); return fontCache[key]; };
+  const fontCache = {}; const font = async (k = 'helv', b = 0) => { const i = +b || 0; const key = k + i; if (!fontCache[key]) fontCache[key] = await out.embedFont(PL.StandardFonts[(FONT_KEYS[k] || FONT_KEYS.helv)[i]]); return fontCache[key]; };
   const libs = new Map(); const imgCache = new Map();
   const libFor = async (doc) => {
     if (libs.has(doc.id)) return libs.get(doc.id); let ld = null;
@@ -1904,22 +2177,31 @@ async function drawAnn(page, a, font, embedImg) {
   else if (a.t === 'tick' || a.t === 'cross') { for (const [s, e] of markSegments(a)) seg(s, e); }
   else if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (!im) return; page.drawImage(await embedImg(a.imgId), { x: a.ax, y: a.ay, width: a.w, height: a.h, rotate: PL.degrees(a.r) }); }
   else if (a.t === 'text') {
-    const { U, V } = UV(a.r); const lines = String(a.text || '').split('\n'); const pad = tpad(a); const op = a.opacity == null ? 1 : a.opacity;
+    const { U, V } = UV(a.r); const L = layoutText(a); const op = a.opacity == null ? 1 : a.opacity; const rot = PL.degrees(a.r); const rad = a.rad || 0;
     const at = (u, v) => [a.ax + u * U[0] + v * V[0], a.ay + u * U[1] + v * V[1]];
-    if (a.bg && !a.uni) { const [x, y] = at(0, 0); page.drawRectangle({ x, y, width: a.w, height: a.h, color: hexRgb(a.bg), opacity: op, rotate: PL.degrees(a.r) }); }
-    if (a.border && !a.uni) { const bw = Math.max(1, a.size * 0.09); const [x, y] = at(bw / 2, bw / 2); page.drawRectangle({ x, y, width: Math.max(0, a.w - bw), height: Math.max(0, a.h - bw), borderColor: col, borderWidth: bw, borderOpacity: op, rotate: PL.degrees(a.r) }); }
+    const top = at(0, a.h); const path = (d, o) => page.drawSvgPath(d, Object.assign({ x: top[0], y: top[1], rotate: rot }, o));
+    const bgop = (a.bgop == null ? 1 : a.bgop) * op;
+    if (a.shadow) path(boxPath(shOff(a), shOff(a), a.w, a.h, rad), { color: PL.rgb(0, 0, 0), opacity: 0.22 * op });
+    if (a.grad) { const png = await page.doc.embedPng(dataUrlBytes(gradCanvas(a).toDataURL('image/png'))); const [x0, y0] = at(0, 0); page.drawImage(png, { x: x0, y: y0, width: a.w, height: a.h, rotate: rot, opacity: bgop }); }
+    else if (a.bg) path(boxPath(0, 0, a.w, a.h, rad), { color: hexRgb(a.bg), opacity: bgop });
+    if (a.border) { const bw = bdW(a); const da = bdDash(a, bw); const o = { borderColor: hexRgb(a.bc || a.color), borderWidth: bw, borderOpacity: op }; if (da) { o.borderDashArray = da; o.borderLineCap = PL.LineCapStyle.Round; } path(boxPath(bw / 2, bw / 2, Math.max(0, a.w - bw), Math.max(0, a.h - bw), Math.max(0, rad - bw / 2)), o); }
+    const th = Math.max(0.5, a.size * 0.065); const bar = (x, y, w, h, c) => { const [px, py] = at(x, a.h - y - h); page.drawRectangle({ x: px, y: py, width: w, height: h, color: c, opacity: op, rotate: rot }); };
+    for (const r of L.rows) { if (a.hlc && r.s) bar(r.x - a.size * 0.05, r.top, (r.jw || r.w) + a.size * 0.1, L.lineBox, hexRgb(a.hlc)); }
+    // glyph runs: [text, x, baselineY]
+    const runs = []; for (const r of L.rows) { if (r.pre) runs.push([r.pre, L.pad, r.y]); if (r.jw) for (const w of justWords(a, r)) runs.push([w.w, w.x, r.y]); else if (r.s) runs.push([r.s, r.x, r.y]); }
     if (a.uni) {
       const k = 300 / 72; const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(a.w * k)); c.height = Math.max(1, Math.ceil(a.h * k));
-      const x = c.getContext('2d'); x.scale(k, k); x.globalAlpha = op;
-      if (a.bg) { x.fillStyle = a.bg; x.fillRect(0, 0, a.w, a.h); }
-      if (a.border) { const bw = Math.max(1, a.size * 0.09); x.strokeStyle = a.color; x.lineWidth = bw; x.strokeRect(bw / 2, bw / 2, a.w - bw, a.h - bw); }
-      x.font = uniFont(a, a.size); x.fillStyle = a.color; x.textBaseline = 'alphabetic';
-      lines.forEach((l, i) => x.fillText(l, pad, pad + BASE * a.size + i * LH * a.size));
+      const x = c.getContext('2d'); x.scale(k, k); x.globalAlpha = op; x.font = uniFont(a, a.size); x.fillStyle = a.color; x.textBaseline = 'alphabetic'; if (a.ls) try { x.letterSpacing = a.ls + 'px'; } catch (e) {}
+      for (const [t, rx, ry] of runs) x.fillText(t, rx, ry);
       const png = await page.doc.embedPng(dataUrlBytes(c.toDataURL('image/png'))); const [x0, y0] = at(0, 0);
-      page.drawImage(png, { x: x0, y: y0, width: a.w, height: a.h, rotate: PL.degrees(a.r) }); return;
+      page.drawImage(png, { x: x0, y: y0, width: a.w, height: a.h, rotate: rot });
+    } else {
+      const f = await font(a.font || 'helv', fsty(a)); const col2 = col;
+      if (a.ls) page.pushOperators(PL.setCharacterSpacing(a.ls));
+      for (const [t, rx, ry] of runs) { const [x, y] = at(rx, a.h - ry); page.drawText(t, { x, y, size: a.size, font: f, color: col2, opacity: op, rotate: rot }); }
+      if (a.ls) page.pushOperators(PL.setCharacterSpacing(0));
     }
-    const f = await font(a.font || 'helv', !!a.bold);
-    lines.forEach((l, i) => { if (!l) return; const [x, y] = at(pad, a.h - pad - (BASE * a.size + i * LH * a.size)); page.drawText(l, { x, y, size: a.size, font: f, color: col, opacity: op, rotate: PL.degrees(a.r) }); });
+    for (const r of L.rows) { if (!r.s) continue; const rw = r.jw || r.w; if (a.underline) bar(r.x, r.y + a.size * 0.1, rw, th, col); if (a.strike) bar(r.x, r.y - a.size * 0.3 - th / 2, rw, th, col); }
   }
 }
 function fileName() { let n = ($('#docName').value || 'Untitled').trim().replace(/[\\/:*?"<>|]+/g, '-'); if (!/\.pdf$/i.test(n)) n += '.pdf'; return n; }
@@ -2599,6 +2881,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'd' && S.sel) { e.preventDefault(); duplicateSelected(); return; }
   if (mod && e.key === ']' && S.sel) { e.preventDefault(); reorderSelected(true); return; }
   if (mod && e.key === '[' && S.sel) { e.preventDefault(); reorderSelected(false); return; }
+  if (mod && !e.altKey && fmtTarget()) { const k = e.key.toLowerCase(); const m2 = { b: 'bold', i: 'italic', u: 'underline' }; if (m2[k]) { e.preventDefault(); fmtToggle(m2[k]); return; } if (e.shiftKey && k === 'x') { e.preventDefault(); fmtToggle('strike'); return; } }
   if (e.key === '?' && !mod) { e.preventDefault(); openShortcuts(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) { e.preventDefault(); deleteSelected(); return; }
   if (e.key === 'Escape') { if (S.sel) select(null); else if (S.tool !== 'select') setTool('select'); return; }
@@ -2606,7 +2889,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault(); const s = selAnns(); if (!s) return; const st = e.shiftKey ? 10 : 1; const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
     const T = pdfAffineFromDisplay(geo(s.p), (x, y) => [x + d[0], y + d[1]]); s.as.forEach((a) => applyT(a, T)); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 400); return;
   }
-  if (!mod && S.pages.length) { const map = { v: 'select', h: 'hand', t: 'text', d: 'edittext', n: 'note', u: 'hl', w: 'white', x: 'redact', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' }; const k = map[e.key.toLowerCase()]; if (k) setTool(k); }
+  if (!mod && S.pages.length) { const map = { v: 'select', h: 'hand', t: 'text', b: 'tbox', d: 'edittext', n: 'note', u: 'hl', w: 'white', x: 'redact', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' }; const k = map[e.key.toLowerCase()]; if (k) setTool(k); }
 });
 
 /* ---------- Shortcuts sheet ---------- */
@@ -2614,7 +2897,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function openShortcuts() {
   const K = (k) => k.split(' ').map((x) => `<kbd>${esc(x === 'Ctrl' && MAC ? '⌘' : x === 'Alt' && MAC ? '⌥' : x)}</kbd>`).join('');
   const groups = [
-    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Edit existing text', 'D'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
+    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Text box', 'B'], ['Edit existing text', 'D'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
     ['Marks', [['Add to selection', 'Shift Click'], ['Box select', 'Shift Drag'], ['Select all on page', 'Ctrl A'], ['Copy / Cut / Paste', 'Ctrl C'], ['Duplicate', 'Ctrl D'], ['Bring to front / back', 'Ctrl ]'], ['Nudge (10 pt with Shift)', '← → ↑ ↓'], ['Move without snapping', 'Alt Drag'], ['Delete', 'Del'], ['Deselect', 'Esc'], ['More actions', 'Right-click']]],
     ['Document', [['Open', 'Ctrl O'], ['Save or share', 'Ctrl S'], ['Print', 'Ctrl P'], ['Find', 'Ctrl F'], ['Go to page', 'Ctrl G'], ['Undo', 'Ctrl Z'], ['Redo', 'Ctrl Shift Z'], ['Zoom in / out', 'Ctrl + −'], ['Fit to width', 'Ctrl 0'], ['This list', '?']]],
   ];
@@ -2626,7 +2909,7 @@ function openShortcuts() {
 
 /* ---------- First-run tour ---------- */
 const TOUR = [
-  { sel: '#tools', t: 'Tools', d: 'Select, hand, text, edit existing text, notes, highlight, shapes, pen and signatures. Each has a one-letter shortcut.' },
+  { sel: '#tools', t: 'Tools', d: 'Select, hand, text, text boxes, edit existing text, notes, highlight, shapes, pen and signatures. Each has a one-letter shortcut.' },
   { sel: '#tabbar', t: 'Tabs', d: 'Keep several PDFs open at once. Drop files anywhere to open them in new tabs.' },
   { sel: '#sidebar', t: 'Pages', d: 'Drag thumbnails to reorder. Shift-click to pick several, then rotate, duplicate or delete.' },
   { sel: '#viewer', t: 'Right-click for more', d: 'Right-click a page or a mark for copy, paste, layering and align. Shift-click or Shift-drag selects several marks, and they snap to edges and centres as you drag.' },

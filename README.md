@@ -7,6 +7,8 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Open PDFs (password-protected too), photos as pages, or blank pages. Merge several files into one.
 - Fill form fields directly on the page (text, checkboxes, dropdowns, radio buttons). Values are flattened into the saved file.
 - Markup: text, whiteout, highlight, rectangle, line, arrow, freehand pen, tick, cross.
+- Word-style text formatting: font (Arial/Helvetica, Times New Roman, Courier New), size, bold, italic, underline, strikethrough, font colour, text highlight, left/centre/right/justify, line spacing, character spacing, bullets and numbering, change case. Shortcuts Ctrl+B, I, U, Shift+X, E, L, R, J.
+- Text boxes (B): drag to draw, text wraps to the box width. Quick styles, solid or custom fills, gradients, fill transparency, solid/dashed/dotted borders with colour and weight, square to pill corners, shadow, inner margin and vertical alignment. Saved as real vector text in the PDF.
 - Signatures drawn on screen and imported stamp images (with white background removal), kept in a local library.
 - Page sidebar: reorder by drag or buttons, rotate, delete, insert blank, multi-select, save selected pages only.
 - Undo and redo, keyboard shortcuts, light and dark appearance.
