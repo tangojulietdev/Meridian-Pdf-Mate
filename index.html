@@ -167,6 +167,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 .pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:22px;padding:72px max(16px,env(safe-area-inset-right,0px)) 120px max(16px,env(safe-area-inset-left,0px));min-width:min-content}
 .page{position:relative;background:#fff;box-shadow:var(--page-shadow);flex:none}
 .page canvas{position:absolute;inset:0;width:100%;height:100%}
+.page canvas.detail{inset:auto;pointer-events:none}
+.page canvas.detail[hidden]{display:none}
 .page svg.ov{position:absolute;inset:0;width:100%;height:100%;overflow:visible;touch-action:pan-x pan-y pinch-zoom}
 .viewer.drawing .page svg.ov{touch-action:none;cursor:crosshair}
 .viewer.drawing[data-tool="text"] .page svg.ov{cursor:text}

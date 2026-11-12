@@ -11,6 +11,8 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Text boxes (B): drag to draw, text wraps to the box width. Quick styles, solid or custom fills, gradients, fill transparency, solid/dashed/dotted borders with colour and weight, square to pill corners, shadow, inner margin and vertical alignment. Saved as real vector text in the PDF.
 - Signatures drawn on screen and imported stamp images (with white background removal), kept in a local library.
 - Page sidebar: reorder by drag or buttons, rotate, delete, insert blank, multi-select, save selected pages only.
+- Fast with heavy drawings: one page renders at a time (the one on screen first), zoom is instant and sharpens when you stop, rendered pages are cached for scrolling back, and at high zoom only the visible part is drawn at full resolution so large sheets stay crisp. Pages that take long to draw switch to fast view automatically.
+- Save option to flatten heavy drawing pages to 220 dpi images so the file opens fast anywhere (markup stays vector; skipped if it would make the file bigger).
 - Undo and redo, keyboard shortcuts, light and dark appearance.
 - Print with page range, one-sided, two-sided (long or short edge binding, preset in the print dialog) or manual two-sided for printers without duplex.
 - Save by download or share sheet (email, WhatsApp) on phones.

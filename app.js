@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -665,7 +665,7 @@ function renderAll() {
   if (S.fit) S.zoom = fitZoom();
   pagesEl.innerHTML = '';
   if (io) io.disconnect();
-  io = new IntersectionObserver((ents) => { for (const e of ents) { const el = e.target; el._vis = e.isIntersecting; if (e.isIntersecting) { if (!el._ov) { const pp = pageById(el.dataset.id); if (pp) { el._ov = true; drawOverlay(pp, el); drawForm(pp, el); } } paintCanvas(el); } else freeCanvas(el); } }, { root: viewer, rootMargin: '900px 0px' });
+  io = new IntersectionObserver((ents) => { for (const e of ents) { const el = e.target; el._vis = e.isIntersecting; if (e.isIntersecting) { if (!el._ov) { const pp = pageById(el.dataset.id); if (pp) { el._ov = true; drawOverlay(pp, el); drawForm(pp, el); } } queueRender(); } } }, { root: viewer, rootMargin: '900px 0px' });
   S.pages.forEach((p, i) => {
     const g = geo(p);
     const el = document.createElement('div'); el.className = 'page'; el.dataset.id = p.id;
@@ -682,30 +682,73 @@ function renderAll() {
 }
 function pageEl(id) { return pagesEl.querySelector(`.page[data-id="${id}"]`); }
 const pageById = (id) => S.pages.find((p) => p.id === id);
-function freeCanvas(el) { const c = el.querySelector('canvas'); if (el._task) { try { el._task.cancel(); } catch (e) {} el._task = null; } c.width = 0; c.height = 0; el._key = null; }
+/* ---------- Render pipeline: queued, cached, detail layer for zoomed drawings ---------- */
+const isPhone = () => innerWidth <= 760 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const BASE_MAX = () => (isPhone() ? 5e6 : 9e6);     // pixels for one whole-page canvas
+const DETAIL_MAX = () => (isPhone() ? 6e6 : 14e6);  // pixels for the sharp on-screen part
+const MEM_MAX = () => (isPhone() ? 32e6 : 96e6);    // pixels kept across all page canvases
+const HEAVY_MS = 800;
+const RQ = { busy: false, t: 0, again: false, dtask: null, lru: 0, idle: [] };
+const SNAP = new Map(); // heavy page snapshots: id|rot -> { blob, scale }
+const PSTAT = new Map(); // runtime render stats per page id, kept out of undo history
+const pst = (p) => { let o = PSTAT.get(p.id); if (!o) { o = {}; PSTAT.set(p.id, o); } return o; };
+function scales(p) { const g = geo(p); const full = S.zoom * Math.min(devicePixelRatio || 1, 2.5); const px = g.w * g.h * full * full; const cap = BASE_MAX(); return { full, base: px > cap ? full * Math.sqrt(cap / px) : full }; }
+const baseKey = (p, base) => tr(p) + '|' + base.toFixed(4);
+function needsPaint(el) { const p = pageById(el.dataset.id); if (!p) return false; const k = baseKey(p, scales(p).base); return el._key !== k && el._err !== k; }
+function pageDist(el, vr) { const r = el.getBoundingClientRect(); return r.bottom < vr.top ? vr.top - r.bottom : r.top > vr.bottom ? r.top - vr.bottom : 0; }
+function nearPages(ahead) { const vr = viewer.getBoundingClientRect(); const out = []; for (const el of $$('.page', pagesEl)) { if (!el._vis) continue; const d = pageDist(el, vr); if (d <= ahead) out.push([d, el]); } return out.sort((a, b) => a[0] - b[0]).map((x) => x[1]); }
+function queueRender(delay = 0) { clearTimeout(RQ.t); RQ.t = setTimeout(pumpRender, delay); }
+function renderIdle() { return RQ.busy || RQ.t ? new Promise((r) => RQ.idle.push(r)) : Promise.resolve(); }
+async function pumpRender() {
+  RQ.t = 0; if (RQ.busy) { RQ.again = true; return; } RQ.busy = true;
+  try {
+    for (let guard = 0; guard < 400; guard++) { const el = nearPages(viewer.clientHeight).find(needsPaint); if (!el) break; await paintCanvas(el); await new Promise((r) => setTimeout(r, 0)); }
+    for (const el of nearPages(0)) if (el._needDetail && !RQ.again) await paintDetail(el);
+  } catch (e) { console.error(e); }
+  RQ.busy = false;
+  if (RQ.again) { RQ.again = false; queueRender(); return; }
+  if (!RQ.t) { const w = RQ.idle; RQ.idle = []; w.forEach((r) => r()); }
+}
+function touchMem(el) {
+  el._lru = ++RQ.lru; let total = 0; const list = [];
+  for (const e of $$('.page', pagesEl)) { const c = e.firstElementChild; if (c && c.width) { total += c.width * c.height + (e._dc ? e._dc.width * e._dc.height : 0); list.push(e); } }
+  list.sort((a, b) => (a._lru || 0) - (b._lru || 0));
+  for (const e of list) { if (total <= MEM_MAX()) break; if (e._vis || e === el) continue; const c = e.firstElementChild; total -= c.width * c.height; freeCanvas(e); }
+}
+function freeCanvas(el) { const c = el.querySelector('canvas'); if (el._task) { try { el._task.cancel(); } catch (e) {} el._task = null; } c.width = 0; c.height = 0; el._key = null; el._scale = 0; hideDetail(el, true); }
+function hideDetail(el, free) { const d = el._dc; if (!d) return; d.hidden = true; d._key = null; if (free) { d.width = d.height = 0; } }
 async function paintCanvas(el) {
   const p = pageById(el.dataset.id); if (!p) return;
-  const key = S.zoom.toFixed(3) + '|' + tr(p);
-  if (el._key === key) return; el._key = key;
-  const g = geo(p); const c = el.querySelector('canvas');
-  let dpr = Math.min(window.devicePixelRatio || 1, 2.5); const W = g.w * S.zoom, H = g.h * S.zoom;
-  while (W * H * dpr * dpr > 14e6 && dpr > 0.6) dpr -= 0.25;
+  const { full, base } = scales(p); const rot = tr(p); const key = baseKey(p, base);
+  el._needDetail = p.kind === 'pdf' && base < full * 0.97;
+  if (el._key === key) return;
+  const c = el.querySelector('canvas'); el._lru = ++RQ.lru;
+  // Already sharp enough: exact match, or a heavy page whose image is close enough (fast view)
+  if (c.width && el._rot === rot && el._scale && (pst(p).heavy ? el._scale >= base * 0.8 : Math.abs(el._scale - base) / base < 0.02)) { el._key = key; el._needDetail = p.kind === 'pdf' && el._scale < full * 0.97; return; }
+  const sn = SNAP.get(p.id + '|' + rot);
+  if (sn && sn.scale >= base * 0.8 && (!c.width || el._scale < sn.scale)) {
+    try { const bmp = await createImageBitmap(sn.blob); c.width = bmp.width; c.height = bmp.height; c.getContext('2d').drawImage(bmp, 0, 0); if (bmp.close) bmp.close(); el._scale = sn.scale; el._rot = rot; el._key = key; el._needDetail = el._scale < full * 0.97; touchMem(el); return; } catch (e) {}
+  }
+  el._key = key;
   if (el._task) { try { el._task.cancel(); } catch (e) {} el._task = null; }
-  const off = document.createElement('canvas'); off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
-  const ctx = off.getContext('2d');
+  const g = geo(p); const off = document.createElement('canvas'); off.width = Math.max(1, Math.round(g.w * base)); off.height = Math.max(1, Math.round(g.h * base));
+  const ctx = off.getContext('2d'); const t0 = performance.now();
   try {
     if (p.kind === 'pdf') {
       const doc = S.docs.get(p.docId); const pg = await doc.pdf.getPage(p.index + 1);
       if (el._key !== key) return;
-      const vp = pg.getViewport({ scale: S.zoom * dpr, rotation: tr(p) });
+      const vp = pg.getViewport({ scale: base, rotation: rot });
       off.width = Math.round(vp.width); off.height = Math.round(vp.height);
       const task = pg.render({ canvasContext: off.getContext('2d'), viewport: vp, annotationMode: doc.fields.length ? pdfjsLib.AnnotationMode.ENABLE_FORMS : pdfjsLib.AnnotationMode.ENABLE });
       el._task = task; await task.promise; el._task = null;
-      if (!el._tl) { el._tl = true; renderTextLayer(el, p, pg); }
+      const ms = performance.now() - t0; pst(p).ms = Math.max(pst(p).ms || 0, ms);
+      if (ms > HEAVY_MS && !pst(p).heavy) markHeavy(p);
+      if (pst(p).heavy) off.toBlob((b) => { if (b) { const k2 = p.id + '|' + rot; const o = SNAP.get(k2); if (!o || o.scale <= base) SNAP.set(k2, { blob: b, scale: base }); } }, 'image/webp', 0.92);
+      if (!el._tl) { el._tl = true; renderIdle().then(() => renderTextLayer(el, p, pg)); }
     } else {
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, off.width, off.height);
       if (p.kind === 'img') {
-        const im = S.imgs.get(p.imgId); const s = S.zoom * dpr; const t = g.t;
+        const im = S.imgs.get(p.imgId); const s = base; const t = g.t;
         ctx.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s);
         const [x0, y0, x1, y1] = p.view; ctx.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1);
         ctx.drawImage(im.el, 0, 0, 1, 1);
@@ -713,10 +756,36 @@ async function paintCanvas(el) {
     }
     if (el._key !== key) return;
     if (p.kind !== 'pdf' && p.ocr && p.ocr.length && !el._ocrDone) { buildOcrLayer(el, p); el._tlReady = true; }
-    c.width = off.width; c.height = off.height; c.getContext('2d').drawImage(off, 0, 0);
-  } catch (e) { if (e && e.name !== 'RenderingCancelledException') console.error(e); el._key = null; }
+    c.width = off.width; c.height = off.height; c.getContext('2d').drawImage(off, 0, 0); off.width = off.height = 0;
+    el._scale = base; el._rot = rot; touchMem(el);
+  } catch (e) { if (e && e.name !== 'RenderingCancelledException') { console.error(e); el._err = key; } el._key = null; }
 }
-function rerenderVisible() { for (const el of $$('.page', pagesEl)) { el._key = null; if (el._vis) paintCanvas(el); } }
+const heavyToldDoc = new Set();
+function markHeavy(p) { pst(p).heavy = true; if (!heavyToldDoc.has(p.docId)) { heavyToldDoc.add(p.docId); toast('Large drawing. Fast view is on: zoom in for full detail.', { ms: 3200 }); } }
+// Sharp layer for the part of the page on screen, used when the whole page would be too big to draw at full resolution.
+async function paintDetail(el) {
+  const p = pageById(el.dataset.id); if (!p || p.kind !== 'pdf') return;
+  const z = S.zoom; const { full } = scales(p); const vr = viewer.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const vis = { L: Math.max(0, vr.left - r.left), T: Math.max(0, vr.top - r.top), R: Math.min(r.width, vr.right - r.left), B: Math.min(r.height, vr.bottom - r.top) };
+  if (vis.R <= vis.L || vis.B <= vis.T) return;
+  const d0 = el._dc; const rot = tr(p);
+  if (d0 && !d0.hidden && d0._z === z && d0._rot === rot && d0._L <= vis.L + 1 && d0._T <= vis.T + 1 && d0._R >= vis.R - 1 && d0._B >= vis.B - 1) return;
+  const mx = (vis.R - vis.L) * 0.3, my = (vis.B - vis.T) * 0.3;
+  const L = Math.max(0, vis.L - mx), T = Math.max(0, vis.T - my), R = Math.min(r.width, vis.R + mx), B = Math.min(r.height, vis.B + my);
+  let dpr = full / z; while ((R - L) * (B - T) * dpr * dpr > DETAIL_MAX() && dpr > 1) dpr -= 0.25;
+  const doc = S.docs.get(p.docId); const pg = await doc.pdf.getPage(p.index + 1);
+  const off = document.createElement('canvas'); off.width = Math.max(1, Math.round((R - L) * dpr)); off.height = Math.max(1, Math.round((B - T) * dpr));
+  const vp = pg.getViewport({ scale: z * dpr, rotation: rot });
+  const task = pg.render({ canvasContext: off.getContext('2d'), viewport: vp, transform: [1, 0, 0, 1, -Math.round(L * dpr), -Math.round(T * dpr)], annotationMode: doc.fields.length ? pdfjsLib.AnnotationMode.ENABLE_FORMS : pdfjsLib.AnnotationMode.ENABLE });
+  RQ.dtask = task;
+  try { await task.promise; } catch (e) { if (e && e.name !== 'RenderingCancelledException') console.error(e); return; } finally { if (RQ.dtask === task) RQ.dtask = null; }
+  if (S.zoom !== z || tr(p) !== rot || !el.isConnected) return;
+  let d = el._dc; if (!d) { d = document.createElement('canvas'); d.className = 'detail'; d.setAttribute('aria-hidden', 'true'); el.firstElementChild.after(d); el._dc = d; }
+  d.width = off.width; d.height = off.height; d.getContext('2d').drawImage(off, 0, 0); off.width = off.height = 0;
+  Object.assign(d.style, { left: Math.round(L * dpr) / dpr + 'px', top: Math.round(T * dpr) / dpr + 'px', width: d.width / dpr + 'px', height: d.height / dpr + 'px' });
+  Object.assign(d, { _z: z, _rot: rot, _L: L, _T: T, _R: R, _B: B }); d.hidden = false; touchMem(el);
+}
+function rerenderVisible() { if (RQ.dtask) { try { RQ.dtask.cancel(); } catch (e) {} } for (const el of $$('.page', pagesEl)) hideDetail(el); queueRender(220); }
 
 /* ---------- Overlay SVG ---------- */
 const sv = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
@@ -902,7 +971,13 @@ async function basePageBitmap(p, s) {
   if (thumbCache.has(key)) return thumbCache.get(key);
   const g = geo(p); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(g.w * s)); c.height = Math.max(1, Math.round(g.h * s));
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
-  if (p.kind === 'pdf') { const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: s, rotation: tr(p) }) }).promise; }
+  if (p.kind === 'pdf') {
+    await renderIdle(); const el = pageEl(p.id); const mc = el && el.firstElementChild;
+    const sn = SNAP.get(p.id + '|' + tr(p));
+    if (mc && mc.width && el._rot === tr(p)) { x.imageSmoothingQuality = 'high'; x.drawImage(mc, 0, 0, c.width, c.height); }
+    else if (sn) { const bmp = await createImageBitmap(sn.blob); x.imageSmoothingQuality = 'high'; x.drawImage(bmp, 0, 0, c.width, c.height); }
+    else { const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: s, rotation: tr(p) }) }).promise; }
+  }
   else if (p.kind === 'img') { const t = g.t; x.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(S.imgs.get(p.imgId).el, 0, 0, 1, 1); }
   thumbCache.set(key, c); return c;
 }
@@ -932,6 +1007,7 @@ function onScroll() {
   });
 }
 viewer.addEventListener('scroll', onScroll, { passive: true });
+viewer.addEventListener('scroll', () => { if (!S.pages.length) return; if (RQ.dtask) { try { RQ.dtask.cancel(); } catch (e) {} } queueRender(140); }, { passive: true });
 function scrollToPage(i, smooth = true) { const el = $$('.page', pagesEl)[i]; if (el) viewer.scrollTo({ top: el.offsetTop - 18, behavior: smooth ? 'smooth' : 'auto' }); }
 function setZoom(z, fit = false) {
   if (!S.pages.length) return;
@@ -2064,12 +2140,12 @@ function setSidebar(open) { $('#app').classList.toggle('no-sidebar', !open); $('
 /* ---------- Export ---------- */
 const hexRgb = (h) => { const n = parseInt(String(h || '#000').slice(1), 16); return PL.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 const dataUrlBytes = (u) => { const b = atob(u.split(',')[1]); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
-async function rasterPage(doc, index, view) {
-  const pg = await doc.pdf.getPage(index + 1); const vp = pg.getViewport({ scale: 2.2, rotation: 0 });
+async function rasterPage(doc, index, view, dpi = 158, q = 0.9) {
+  const pg = await doc.pdf.getPage(index + 1); const v1 = pg.getViewport({ scale: 1, rotation: 0 }); const vp = pg.getViewport({ scale: Math.min(dpi / 72, Math.sqrt(40e6 / (v1.width * v1.height))), rotation: 0 });
   const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
   await pg.render({ canvasContext: x, viewport: vp }).promise;
-  return dataUrlBytes(c.toDataURL('image/jpeg', 0.9));
+  const out = dataUrlBytes(c.toDataURL('image/jpeg', q)); c.width = c.height = 0; return out;
 }
 function fillForm(ld, doc) {
   const form = ld.getForm();
@@ -2085,6 +2161,13 @@ function fillForm(ld, doc) {
     } catch (e) { console.warn('field', f.name, e); }
   }
   form.flatten({ updateFieldAppearances: true });
+}
+// A page counts as heavy if it took long to draw on screen, or has a very large number of drawing operations.
+async function isHeavyPage(p) {
+  if (p.kind !== 'pdf') return false; if (pst(p).heavy) return true;
+  const doc = S.docs.get(p.docId); if (doc.widgets && doc.widgets.has && doc.widgets.has(p.index)) return false;
+  if (pst(p).ops == null) { try { const pg = await doc.pdf.getPage(p.index + 1); const ol = await pg.getOperatorList(); pst(p).ops = ol.fnArray.length; } catch (e) { pst(p).ops = 0; } }
+  return pst(p).ops > 25000;
 }
 async function buildPdf(list, onProgress, opts = {}) {
   const out = await PL.PDFDocument.create();
@@ -2117,7 +2200,11 @@ async function buildPdf(list, onProgress, opts = {}) {
       const [cp] = await out.copyPages(fd, [0]); out.addPage(cp);
       if (onProgress) onProgress((i + 1) / list.length); continue;
     }
-    if (p.kind === 'pdf') {
+    if (p.kind === 'pdf' && opts.flatHeavy && await isHeavyPage(p)) {
+      const doc = S.docs.get(p.docId); const jpg = await out.embedJpg(await rasterPage(doc, p.index, p.view, opts.flatDpi || 220, 0.9)); const [x0, y0, x1, y1] = p.view;
+      page = out.addPage([x1 - x0, y1 - y0]); page.setMediaBox(x0, y0, x1 - x0, y1 - y0);
+      page.drawImage(jpg, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }); page.setRotation(PL.degrees(tr(p)));
+    } else if (p.kind === 'pdf') {
       const doc = S.docs.get(p.docId); const ld = await libFor(doc);
       if (ld) { try { [page] = await out.copyPages(ld, [p.index]); out.addPage(page); isolate(page); } catch (e) { console.warn(e); page = null; } }
       if (!page) {
@@ -2215,11 +2302,15 @@ function openSave() {
     <div class="field"><span class="flabel">Page size</span><div class="seg" role="group"><button aria-pressed="true" data-ps="">Original</button><button aria-pressed="false" data-ps="a4">A4</button><button aria-pressed="false" data-ps="letter">Letter</button></div></div>
     <div class="field"><span class="flabel">File size</span><div class="seg" role="group"><button aria-pressed="true" data-cz="0">Original</button><button aria-pressed="false" data-cz="150">Smaller</button><button aria-pressed="false" data-cz="100">Smallest</button></div>
       <small class="sub" id="czNote" style="margin:6px 0 0;display:block">Keeps text selectable and sharp.</small></div>
+    <div class="field"><span class="flabel">Drawings</span><div class="seg" role="group"><button aria-pressed="true" data-fh="0">Keep as is</button><button aria-pressed="false" data-fh="1">Flatten heavy pages</button></div>
+      <small class="sub" id="fhNote" style="margin:6px 0 0;display:block">${S.pages.some((p) => pst(p).heavy) ? 'This file has heavy drawing pages. Flattening makes it open fast on any device.' : 'Heavy drawing pages stay as vector graphics.'}</small></div>
     <div class="progress" hidden><i></i></div>
     <div class="acts"><button class="btn" data-print>${icon('print')} Print</button>${canShare ? `<button class="btn" data-share>${icon('share')} Share</button>` : ''}<button class="btn primary" data-dl>${icon('download')} Download</button></div>`);
   sh.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { scope = b.dataset.sc; sh.querySelectorAll('[data-sc]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
   let cz = 0, ps = '';
   sh.querySelectorAll('[data-ps]').forEach((b) => b.onclick = () => { ps = b.dataset.ps; sh.querySelectorAll('[data-ps]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
+  let fh = false;
+  sh.querySelectorAll('[data-fh]').forEach((b) => b.onclick = () => { fh = b.dataset.fh === '1'; sh.querySelectorAll('[data-fh]').forEach((z) => z.setAttribute('aria-pressed', z === b)); sh.querySelector('#fhNote').textContent = fh ? 'Heavy drawing pages are saved as sharp 220 dpi images. They open instantly but text on them is no longer selectable. Your markup stays as vector.' : 'Heavy drawing pages stay as vector graphics.'; });
   sh.querySelectorAll('[data-cz]').forEach((b) => b.onclick = () => { cz = +b.dataset.cz; sh.querySelectorAll('[data-cz]').forEach((z) => z.setAttribute('aria-pressed', z === b)); sh.querySelector('#czNote').textContent = cz ? `Pages are saved as images at ${cz} dpi for email over slow connections. Text will no longer be selectable.` : 'Keeps text selectable and sharp.'; });
   const run = async (mode) => {
     const name = (() => { let n = sh.querySelector('#saveName').value.trim() || 'Untitled'; n = n.replace(/[\\/:*?"<>|]+/g, '-'); return /\.pdf$/i.test(n) ? n : n + '.pdf'; })();
@@ -2228,7 +2319,9 @@ function openSave() {
     const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i');
     try {
       const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : S.pages;
-      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps });
+      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps, flatHeavy: fh });
+      let keptVec = false;
+      if (fh) { const vec = await buildPdf(list, null, { pageSize: ps }); if (vec.length <= bytes.length) { bytes = vec; keptVec = true; } }
       if (cz) { const smaller = await rasterizePdf(bytes, cz, cz >= 150 ? 0.8 : 0.68, (f) => { bar.style.width = Math.round(50 + f * 50) + '%'; }); if (smaller.length < bytes.length) bytes = smaller; else toast('This file is already as small as it gets'); }
       const blob = new Blob([bytes], { type: 'application/pdf' });
       if (mode === 'share') {
@@ -2239,7 +2332,7 @@ function openSave() {
       closeSheet(); if (scope === 'all') { setDirty(false); scheduleSave(); }
       const flat = [...S.docs.values()].some((d) => d._flatFail);
       const sz = bytes.length >= 1048576 ? (bytes.length / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes.length / 1024)) + ' KB';
-      toast(flat ? 'Saved. Some form fields could not be flattened.' : `Saved ${name} (${sz})`);
+      toast(flat ? 'Saved. Some form fields could not be flattened.' : keptVec ? `Saved ${name} (${sz}). Drawings kept as vector, flattening would have made the file bigger.` : `Saved ${name} (${sz})`, { ms: keptVec ? 4200 : 2600 });
     } catch (e) { console.error(e); btns.forEach((b) => b.disabled = false); pr.hidden = true; toast('Could not save. ' + (e && e.message ? e.message : ''), { err: true, ms: 5000 }); }
   };
   sh.querySelector('[data-dl]').onclick = () => run('dl');
@@ -3042,4 +3135,4 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
-window.__pdfmate = { S, buildPdf, geo, vpTransform, addFiles };
+window.__pdfmate = { S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP };
