@@ -17,7 +17,9 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Print with page range, one-sided, two-sided (long or short edge binding, preset in the print dialog) or manual two-sided for printers without duplex.
 - Save by download or share sheet (email, WhatsApp) on phones.
 
-Editing the original text inside a PDF is not supported. Cover it with Whiteout and type over it.
+- Edit PDF shapes and images (O): select the original lines, shapes, curves and images inside a PDF and delete, move, resize, recolour the line or fill, or change line weight. Box select and Select similar for drawings, Tab to reach objects underneath, Reset or Restore page to undo. Changes are written into the page content itself.
+
+Original text lines can be replaced with Edit text (D); for anything else cover it with Whiteout and type over it.
 
 ## Structure
 
