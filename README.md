@@ -17,7 +17,9 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Print with page range, one-sided, two-sided (long or short edge binding, preset in the print dialog) or manual two-sided for printers without duplex.
 - Save by download or share sheet (email, WhatsApp) on phones.
 
-- Edit PDF shapes and images (O): select the original lines, shapes, curves and images inside a PDF and delete, move, resize, recolour the line or fill, or change line weight. Box select and Select similar for drawings, Tab to reach objects underneath, Reset or Restore page to undo. Changes are written into the page content itself.
+- Edit PDF contents (O): select the original text, lines, shapes, curves and images inside a PDF and move, resize, rotate (handle or 90° steps), flip, duplicate (Ctrl+D or Alt-drag), copy and paste on the page, recolour text, lines and fills, change line weight or delete. Box select, Select all, All text, All images and Select similar for drawings, Tab to reach objects underneath, Reset or Restore page to undo. Changes are written into the page content itself.
+- Free rotation for your own markup: text, text boxes, notes, stamps, images, signatures, shapes, lines and drawings, with a rotate handle (Shift snaps to 15°) and 90° buttons.
+- Zoom from 7.5% to 3600%, anchored where you scroll or pinch, with a sharp detail layer for large drawings and a zoom presets menu.
 
 Original text lines can be replaced with Edit text (D); for anything else cover it with Whiteout and type over it.
 

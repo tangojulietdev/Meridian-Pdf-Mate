@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '2.9.0';
+const VERSION = '3.0.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -95,6 +95,8 @@ const IC = {
   ocr: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8.5 15.5 11 8.5h2l2.5 7M9.5 13h5"/>',
   compare: '<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M5.5 9h3M5.5 12h3M15.5 9h3M15.5 12h3" /><path d="M15.5 15h3" stroke="#d70015"/>',
   objedit: '<path d="M4 4l6.5 16 2.3-6.7L19.5 11z"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>',
+  fliph: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7 4 12l5 5z"/><path d="M15 7l5 5-5 5z"/>',
+  flipv: '<path d="M3 12h18" stroke-dasharray="2 2"/><path d="M7 9l5-5 5 5z"/><path d="M7 15l5 5 5-5z"/>',
   tbox: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 8.5h9M12 8.5v8"/>',
   fmt: '<path d="M4 19 9.5 5h1L16 19M6.2 14h7.6"/><path d="M17 8h4M17 12h4M19 16h2"/>',
   tal: '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
@@ -126,7 +128,7 @@ const INKS = [['Black', '#000000'], ['Blue', '#0040dd'], ['Red', '#d70015'], ['G
 const HLS = [['Yellow', '#ffd60a'], ['Green', '#8be28b'], ['Pink', '#ff9ecf'], ['Blue', '#7cc7ff']];
 const TOOLS = [
   ['select', 'Select text and objects (V)', 'select'], ['hand', 'Hand: drag to move around (H, or hold Space)', 'hand'], ['sep'],
-  ['text', 'Add text (T)', 'text'], ['tbox', 'Text box (B)', 'tbox'], ['edittext', 'Edit existing text (D)', 'edit'], ['objedit', 'Edit shapes and images in the PDF (O)', 'objedit'], ['note', 'Sticky note (N)', 'note'], ['hl', 'Highlight area (U)', 'hl'], ['white', 'Whiteout (W)', 'white'], ['redact', 'Redact: remove content permanently (X)', 'redact'], ['sep'],
+  ['text', 'Add text (T)', 'text'], ['tbox', 'Text box (B)', 'tbox'], ['edittext', 'Edit existing text (D)', 'edit'], ['objedit', 'Edit PDF contents: text, shapes and images (O)', 'objedit'], ['note', 'Sticky note (N)', 'note'], ['hl', 'Highlight area (U)', 'hl'], ['white', 'Whiteout (W)', 'white'], ['redact', 'Redact: remove content permanently (X)', 'redact'], ['sep'],
   ['g:shape', 'Shapes', 'rect'], ['pen', 'Pen (P)', 'pen'], ['g:mark', 'Tick or cross', 'tick'], ['sep'],
   ['g:sign', 'Sign, stamp or insert image', 'sign']
 ];
@@ -258,8 +260,23 @@ function gradCanvas(a, k = 4) {
 /* ---------- Annotation geometry ---------- */
 const ORIENTED = new Set(['text', 'image', 'tick', 'cross']);
 const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact']);
+function rotPt(x, y, cx, cy, deg) { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); const dx = x - cx, dy = y - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c]; }
+const normDeg = (d) => { d = ((d % 360) + 360) % 360; d = Math.round(d * 1000) / 1000; return d >= 360 ? 0 : d; };
+const ROTATABLE = (a) => a.t !== 'mark';
+function annCenter(a) { let L = Infinity, B = Infinity, R = -Infinity, T = -Infinity; for (const [x, y] of corners(a)) { L = Math.min(L, x); R = Math.max(R, x); B = Math.min(B, y); T = Math.max(T, y); } return [(L + R) / 2, (B + T) / 2]; }
+// Rotate an annotation by deg (PDF space, positive is anticlockwise) about a pivot point.
+function rotateAnn(a, deg, pivot) {
+  if (!ROTATABLE(a) || !deg) return;
+  if (a.pts) { a.pts = a.pts.map(([x, y]) => rotPt(x, y, pivot[0], pivot[1], deg)); return; }
+  if (BOXES.has(a.t)) { const [cx, cy] = rotPt(a.x + a.w / 2, a.y + a.h / 2, pivot[0], pivot[1], deg); a.rot = normDeg((a.rot || 0) + deg); if (!a.rot) delete a.rot; a.x = cx - a.w / 2; a.y = cy - a.h / 2; return; }
+  if (ORIENTED.has(a.t)) {
+    const c0 = annCenter(a); const [cx, cy] = rotPt(c0[0], c0[1], pivot[0], pivot[1], deg);
+    a.r = normDeg((a.r || 0) + deg); const { U, V } = UV(a.r);
+    a.ax = cx - (a.w / 2) * U[0] - (a.h / 2) * V[0]; a.ay = cy - (a.w / 2) * U[1] - (a.h / 2) * V[1];
+  }
+}
 function corners(a) {
-  if (BOXES.has(a.t)) return [[a.x, a.y], [a.x + a.w, a.y + a.h]];
+  if (BOXES.has(a.t)) { if (!a.rot) return [[a.x, a.y], [a.x + a.w, a.y + a.h]]; const cx = a.x + a.w / 2, cy = a.y + a.h / 2; return [[a.x, a.y], [a.x + a.w, a.y], [a.x, a.y + a.h], [a.x + a.w, a.y + a.h]].map(([x, y]) => rotPt(x, y, cx, cy, a.rot)); }
   if (a.t === 'mark') return a.rects.flatMap(([x, y, w, h]) => [[x, y], [x + w, y + h]]);
   if (a.pts) return a.pts;
   const { U, V } = UV(a.r);
@@ -278,6 +295,7 @@ function pdfAffineFromDisplay(g, fn) {
 }
 function applyT(a, T, uniform) {
   const f = (x, y) => [T.kx * x + T.tx, T.ky * y + T.ty];
+  if (BOXES.has(a.t) && a.rot) { const [cx, cy] = f(a.x + a.w / 2, a.y + a.h / 2); const k = Math.abs(Math.abs(T.kx) - 1) > Math.abs(Math.abs(T.ky) - 1) ? Math.abs(T.kx) : Math.abs(T.ky); a.w *= k; a.h *= k; a.x = cx - a.w / 2; a.y = cy - a.h / 2; return; }
   if (BOXES.has(a.t)) { const [x, y] = f(a.x, a.y); a.x = x; a.y = y; a.w *= T.kx; a.h *= T.ky; return; }
   if (a.t === 'mark') { a.rects = a.rects.map(([x, y, w, h]) => { const [nx, ny] = f(x, y); return [nx, ny, w * T.kx, h * T.ky]; }); if (a.segs) a.segs = a.segs.map((sg) => sg.map(([x, y]) => f(x, y))); return; }
   if (a.pts) { a.pts = a.pts.map(([x, y]) => f(x, y)); return; }
@@ -817,6 +835,7 @@ function textSvg(fr, a) {
 function annNode(a) {
   const g = sv('g', { 'data-id': a.id });
   const w = a.width || 1.5;
+  if (a.rot && BOXES.has(a.t)) g.setAttribute('transform', `rotate(${a.rot} ${a.x + a.w / 2} ${a.y + a.h / 2})`);
   if (a.t === 'white') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: a.fill || '#ffffff' }));
   else if (a.t === 'hl') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: a.color, 'fill-opacity': 0.4, style: 'mix-blend-mode:multiply' }));
   else if (a.t === 'rect') g.appendChild(sv('rect', { x: a.x + w / 2, y: a.y + w / 2, width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), fill: 'none', stroke: a.color, 'stroke-width': w }));
@@ -843,7 +862,22 @@ function annNode(a) {
   }
   return g;
 }
-let GUIDES = null, MARQ = null, CLIP = null;
+let GUIDES = null, MARQ = null, CLIP = null, ROTLBL = null;
+function rotHandle(ui, b, pad, attr = 'data-h') {
+  const cx = (b.L + b.R) / 2, top = b.T - pad, hy = top - 24 / S.zoom, r = 6 / S.zoom;
+  ui.appendChild(sv('line', { class: 'rotline', x1: cx, y1: top, x2: cx, y2: hy + r }));
+  ui.appendChild(sv('circle', { class: 'handle-hit', [attr]: 'rot', cx, cy: hy, r: r * 2.6 }));
+  ui.appendChild(sv('circle', { class: 'handle rot', [attr]: 'rot', cx, cy: hy, r }));
+}
+const snapDeg = (deg, fine) => { if (fine) return Math.round(deg / 15) * 15; const r = Math.round(deg); const m = Math.round(r / 45) * 45; return Math.abs(r - m) <= 3 ? m : r; };
+function selPivot(list) { let L = Infinity, B = Infinity, R = -Infinity, T = -Infinity; for (const a of list) for (const [x, y] of corners(a)) { L = Math.min(L, x); R = Math.max(R, x); B = Math.min(B, y); T = Math.max(T, y); } return [(L + R) / 2, (B + T) / 2]; }
+// deg is clockwise as seen on screen
+function rotateSelected(deg) {
+  const ss = selAnns(); if (!ss) return; const list = ss.as.filter(ROTATABLE); if (!list.length) { toast('Text highlights cannot be rotated'); return; }
+  const pv = list.length === 1 ? annCenter(list[0]) : selPivot(list);
+  for (const a of list) { rotateAnn(a, -deg, pv); if (a.t === 'text') { const b = textBox(a); a.w = b.w; a.h = b.h; } }
+  drawOverlay(ss.p); commit(); refreshFormatBar();
+}
 function selIds() { return S.sel ? (S.sel.ids && S.sel.ids.length ? S.sel.ids : [S.sel.annId]) : []; }
 function selAnns() { if (!S.sel) return null; const p = pageById(S.sel.pageId); if (!p) return null; const ids = new Set(selIds()); const as = p.annots.filter((a) => ids.has(a.id)); return as.length ? { p, as } : null; }
 function unionBox(list, g) { let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity; for (const a of list) { const b = dispBox(a, g); L = Math.min(L, b.L); T = Math.min(T, b.T); R = Math.max(R, b.R); B = Math.max(B, b.B); } return { L, T, R, B }; }
@@ -876,7 +910,7 @@ function drawOverlay(p, el = pageEl(p.id)) {
   if (S.sel && S.sel.pageId === p.id && selIds().length > 1) {
     const ids = new Set(selIds()); const list = p.annots.filter((z) => ids.has(z.id)); const pad = 4 / S.zoom;
     for (const a of list) { const b = dispBox(a, g); ui.appendChild(sv('rect', { class: 'selbox', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad })); }
-    if (list.length) { const u = unionBox(list, g); ui.appendChild(sv('rect', { class: 'selgroup', x: u.L - pad * 2, y: u.T - pad * 2, width: u.R - u.L + 4 * pad, height: u.B - u.T + 4 * pad })); }
+    if (list.length) { const u = unionBox(list, g); ui.appendChild(sv('rect', { class: 'selgroup', x: u.L - pad * 2, y: u.T - pad * 2, width: u.R - u.L + 4 * pad, height: u.B - u.T + 4 * pad })); if (list.every(ROTATABLE)) rotHandle(ui, u, pad * 2); }
   } else if (S.sel && S.sel.pageId === p.id) {
     const a = p.annots.find((z) => z.id === S.sel.annId);
     if (a && !(S.editing && S.editing.annId === a.id)) {
@@ -884,8 +918,10 @@ function drawOverlay(p, el = pageEl(p.id)) {
       ui.appendChild(sv('rect', { class: 'selbox', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad }));
       ui.appendChild(sv('circle', { class: 'handle-hit', 'data-h': 'se', cx: b.R + pad, cy: b.B + pad, r: r * 2.4 }));
       ui.appendChild(sv('circle', { class: 'handle', 'data-h': 'se', cx: b.R + pad, cy: b.B + pad, r }));
+      if (ROTATABLE(a)) rotHandle(ui, b, pad);
     }
   }
+  if (ROTLBL && ROTLBL.pageId === p.id) { const t = sv('text', { class: 'rotlbl', x: ROTLBL.x, y: ROTLBL.y, 'font-size': 12 / S.zoom }); t.textContent = ROTLBL.t; ui.appendChild(t); }
   drawObjUi(p, g, ui);
   if (GUIDES && GUIDES.pageId === p.id) {
     if (GUIDES.gx != null) ui.appendChild(sv('line', { class: 'guide', x1: GUIDES.gx, y1: 0, x2: GUIDES.gx, y2: g.h }));
@@ -1013,19 +1049,28 @@ function onScroll() {
 viewer.addEventListener('scroll', onScroll, { passive: true });
 viewer.addEventListener('scroll', () => { if (!S.pages.length) return; if (RQ.dtask) { try { RQ.dtask.cancel(); } catch (e) {} } queueRender(140); }, { passive: true });
 function scrollToPage(i, smooth = true) { const el = $$('.page', pagesEl)[i]; if (el) viewer.scrollTo({ top: el.offsetTop - 18, behavior: smooth ? 'smooth' : 'auto' }); }
-function setZoom(z, fit = false) {
+const ZMIN = 0.1, ZMAX = 48; // 7.5% to 3600%
+// Page point under the anchor (client coords) stays put while zooming.
+function zoomAnchor(ax, ay) {
+  const vr = viewer.getBoundingClientRect(); if (ax == null) { ax = vr.left + vr.width / 2; ay = vr.top + vr.height / 2; }
+  for (const el of $$('.page', pagesEl)) { if (!el._vis) continue; const r = el.getBoundingClientRect(); if (ay >= r.top - 12 && ay <= r.bottom + 12) return { el, ax, ay, fx: (ax - r.left) / r.width, fy: (ay - r.top) / r.height }; }
+  return null;
+}
+function setZoom(z, fit = false, ax, ay) {
   if (!S.pages.length) return;
-  const ratio = viewer.scrollTop / Math.max(1, viewer.scrollHeight);
-  S.fit = fit; S.zoom = fit ? fitZoom() : clamp(z, 0.25, 5);
+  const ratio = viewer.scrollTop / Math.max(1, viewer.scrollHeight); const anc = zoomAnchor(ax, ay);
+  S.fit = fit; S.zoom = fit ? fitZoom() : clamp(z, ZMIN, ZMAX);
   closeEditor(false);
   S.pages.forEach((p) => { const el = pageEl(p.id); const g = geo(p); el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px'; el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom); if (el._vis) { el._ov = true; drawOverlay(p, el); drawForm(p, el); } else el._ov = false; });
   if (FIND.q) paintFind();
-  viewer.scrollTop = ratio * viewer.scrollHeight; rerenderVisible(); updateZoomLbl();
+  if (anc && anc.el.isConnected) { const r = anc.el.getBoundingClientRect(); viewer.scrollLeft += r.left + anc.fx * r.width - anc.ax; viewer.scrollTop += r.top + anc.fy * r.height - anc.ay; }
+  else viewer.scrollTop = ratio * viewer.scrollHeight;
+  rerenderVisible(); updateZoomLbl();
   if (CMP.marks.size) setTimeout(paintCmp, 60);
 }
 function updateZoomLbl() { $('#zoomLbl').textContent = Math.round(S.zoom * 75) + '%'; }
 let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.fit && S.pages.length) setZoom(0, true); }, 150); });
-viewer.addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey) || !S.pages.length) return; e.preventDefault(); setZoom(S.zoom * Math.exp(-e.deltaY * 0.0025)); }, { passive: false });
+viewer.addEventListener('wheel', (e) => { if (!(e.ctrlKey || e.metaKey) || !S.pages.length) return; e.preventDefault(); setZoom(S.zoom * Math.exp(-clamp(e.deltaY, -120, 120) * 0.0035), false, e.clientX, e.clientY); }, { passive: false });
 
 /* ---------- Pointer interaction ---------- */
 function ptFromEvent(e, el) { const r = el.getBoundingClientRect(); return [(e.clientX - r.left) / S.zoom, (e.clientY - r.top) / S.zoom]; }
@@ -1065,6 +1110,12 @@ pagesEl.addEventListener('pointerdown', (e) => {
   if (tool === 'select') {
     const h = e.target.closest('.handle, .handle-hit');
     const hit = e.target.closest('.ann');
+    if (h && h.dataset.h === 'rot' && S.sel && S.sel.pageId === p.id) {
+      const ids = selIds(); const list = p.annots.filter((z) => ids.includes(z.id) && ROTATABLE(z)); if (!list.length) return;
+      const pv = list.length === 1 ? annCenter(list[0]) : selPivot(list); const c = ap(g.t, pv[0], pv[1]);
+      drag = { mode: 'rotate', p, el, g, a: list[0], pivot: pv, c, a0: Math.atan2(pt[1] - c[1], pt[0] - c[0]), group: list.map((z) => ({ id: z.id, orig: JSON.parse(JSON.stringify(z)) })), start: pt, id: e.pointerId };
+      e.preventDefault(); el.querySelector('svg.ov').setPointerCapture(e.pointerId); return;
+    }
     if (h && S.sel && S.sel.pageId === p.id) {
       const a = p.annots.find((z) => z.id === S.sel.annId); if (!a) return;
       drag = { mode: 'resize', p, el, g, a, orig: JSON.parse(JSON.stringify(a)), box: dispBox(a, g), start: pt, id: e.pointerId };
@@ -1145,6 +1196,12 @@ pagesEl.addEventListener('pointermove', (e) => {
     const ids = [...new Set([...drag.base, ...hits])]; if (ids.length) select(p.id, null, { ids }); else { S.sel = null; drawOverlay(p, el); refreshFormatBar(); }
     return;
   }
+  if (drag.mode === 'rotate') {
+    let deg = (Math.atan2(pt[1] - drag.c[1], pt[0] - drag.c[0]) - drag.a0) * 180 / Math.PI; deg = snapDeg(((deg + 540) % 360) - 180, e.shiftKey);
+    for (const it of drag.group) { const f = JSON.parse(JSON.stringify(it.orig)); rotateAnn(f, -deg, drag.pivot); const i = p.annots.findIndex((z) => z.id === it.id); if (i >= 0) p.annots[i] = f; if (it.id === drag.a.id) drag.a = f; }
+    ROTLBL = { pageId: p.id, x: pt[0] + 14 / S.zoom, y: pt[1] - 10 / S.zoom, t: (deg > 0 ? '+' : '') + deg + '°' };
+    drawOverlay(p, el); return;
+  }
   if (drag.mode === 'move' && drag.group) {
     let mdx = dx, mdy = dy; GUIDES = null;
     if (!e.altKey) { const sn = snapMove(drag.box, dx, dy, drag.targets, 5 / S.zoom); mdx = sn.dx; mdy = sn.dy; if (sn.gx != null || sn.gy != null) GUIDES = { pageId: p.id, gx: sn.gx, gy: sn.gy }; }
@@ -1168,6 +1225,7 @@ function endDrag(e) {
   if (!drag || e.pointerId !== drag.id) return;
   const drag0 = drag; const { p, el, a, mode, moved, group } = drag; drag = null;
   if (mode === 'marquee') { MARQ = null; drawOverlay(p, el); refreshFormatBar(); return; }
+  if (mode === 'rotate') { ROTLBL = null; }
   if (mode === 'tbox') { const m = MARQ; MARQ = null; const g = geo(p); let L = drag0.start[0], T = drag0.start[1], W = 0, H = 0; if (m && (m.R - m.L) * S.zoom > 12) { L = m.L; T = m.T; W = m.R - m.L; H = (m.B - m.T) * S.zoom > 12 ? m.B - m.T : 0; } addTextBoxAt(p, g, L, T, W, H); return; }
   if (mode === 'move') { GUIDES = null; if (!moved && group && group.length > 1) { S.sel = { pageId: p.id, annId: a.id }; } }
   if (mode === 'crop') { const c = p.crop; const g = geo(p); if (c) { const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); if (Math.abs(d2[0] - d1[0]) * S.zoom < 20 || Math.abs(d2[1] - d1[1]) * S.zoom < 20) p.crop = null; } drawOverlay(p, el); commit(); refreshFormatBar(); return; }
@@ -1276,18 +1334,24 @@ function alignSelected(k) {
 function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
 function annLabel(a) { return ({ text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
-/* ---------- Edit PDF objects: shapes, lines and images inside the page content ---------- */
+/* ---------- Edit PDF objects: text, shapes, lines and images inside the page content ---------- */
 // The original content stream is parsed once per page. Edits are kept per object index and applied by
 // rewriting that stream: deleted objects are cut out, changed ones are wrapped in q <matrix> cm <colour> ... Q.
+// Duplicates are stored as extra records ('d1', 'd2' ...) that repeat the source object's operators under a new matrix.
 const EDK = '\u0001objedits';
-const OBJ = { cache: new Map(), loading: new Map(), lib: new Map() };
-let OSEL = null, OHOV = null, ODRAG = null, OBOX = false;
+const OBJ = { cache: new Map(), loading: new Map(), lib: new Map(), opdf: new Map() };
+let OSEL = null, OHOV = null, ODRAG = null, OBOX = false, OCLIP = null;
 const docEdits = (d) => d.values[EDK] || (d.values[EDK] = {});
 const I6 = [1, 0, 0, 1, 0, 0];
 const mul6 = (a, b) => [a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3], a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3], a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5]];
 function latin1(u8) { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; }
 function unlatin1(s) { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; }
 async function origLib(doc) { if (!OBJ.lib.has(doc.id)) OBJ.lib.set(doc.id, PL.PDFDocument.load(doc.bytes, { updateMetadata: false })); return OBJ.lib.get(doc.id); }
+// pdf.js copy of the untouched file, used to measure the original text positions
+async function origPdf(doc) { if (!OBJ.opdf.has(doc.id)) OBJ.opdf.set(doc.id, doc.ebytes ? pdfjsLib.getDocument({ ...PDFJS_OPTS, data: doc.bytes.slice(), password: doc.password || undefined }).promise : Promise.resolve(doc.pdf)); return OBJ.opdf.get(doc.id); }
+const bbOf = (pts) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let k = 0; k < pts.length; k += 2) { const x = pts[k], y = pts[k + 1]; if (x !== x) continue; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } return [x0, y0, x1, y1]; };
+const cutBB = (b, clip) => (clip ? [Math.max(b[0], clip[0]), Math.max(b[1], clip[1]), Math.min(b[2], clip[2]), Math.min(b[3], clip[3])] : b);
+const okBB = (b) => isFinite(b[0]) && b[2] >= b[0] && b[3] >= b[1];
 function pageObjs(doc, pi) {
   const key = doc.id + '|' + pi; if (OBJ.cache.has(key)) return OBJ.cache.get(key);
   if (!OBJ.loading.has(key)) OBJ.loading.set(key, (async () => {
@@ -1296,42 +1360,64 @@ function pageObjs(doc, pi) {
       if (c instanceof PL.PDFArray) { for (let i = 0; i < c.size(); i++) list.push(c.lookup(i)); } else if (c) list.push(c);
       let src = ''; for (const st of list) { if (!st) continue; const b = st instanceof PL.PDFRawStream ? PL.decodePDFRawStream(st).decode() : st.getContents(); src += latin1(b) + '\n'; }
       const res = node.Resources(); const xo = res ? res.lookup(PL.PDFName.of('XObject')) : null;
-      OBJ.cache.set(key, parseContent(src, xo));
+      const parsed = parseContent(src, xo);
+      if (parsed.objs.some((o) => o.k === 'text')) { try { await measureText(doc, pi, parsed); } catch (e) { console.warn('text bounds', e); } }
+      for (const o of parsed.objs) if (o.k === 'text') o.bb = cutBB(o.bb, o.clip);
+      parsed.objs = parsed.objs.filter((o) => okBB(o.bb));
+      OBJ.cache.set(key, parsed);
     } catch (e) { console.warn('objects', e); OBJ.cache.set(key, { src: '', objs: [], err: true }); }
     OBJ.loading.delete(key); const p = S.pages.find((z) => z.docId === doc.id && z.index === pi); if (p) { drawOverlay(p); refreshFormatBar(); }
   })());
   return null;
 }
+// Tighten text block bounds with pdf.js' measured glyph runs from the original file
+async function measureText(doc, pi, parsed) {
+  const pdf = await origPdf(doc); const pg = await pdf.getPage(pi + 1); const tc = await pg.getTextContent({ disableNormalization: true });
+  const items = tc.items.filter((it) => it.str && it.transform).map((it) => { const t = it.transform; const sx = Math.hypot(t[0], t[1]) || 1, sy = Math.hypot(t[2], t[3]) || 1; const ux = [t[0] / sx, t[1] / sx], uy = [t[2] / sy, t[3] / sy]; const w = it.width || 0, h = it.height || sy; const o = [t[4], t[5]]; const at = (u, v) => [o[0] + u * ux[0] + v * uy[0], o[1] + u * ux[1] + v * uy[1]]; const pts = [...at(0, -0.25 * h), ...at(w, -0.25 * h), ...at(0, h), ...at(w, h)]; return { x: o[0], y: o[1], h, pts, used: false }; });
+  for (const o of parsed.objs) {
+    if (o.k !== 'text') continue; const pts = [];
+    for (const r of o.runs) { const tol = Math.max(1.5, r.fs * 0.45); let hit = false; for (const it of items) { if (Math.abs(it.x - r.x) <= tol && Math.abs(it.y - r.y) <= tol) { pts.push(...it.pts); hit = true; } } if (!hit) pts.push(...r.pts); }
+    if (pts.length) o.bb = bbOf(pts);
+  }
+}
 function parseContent(src, xo) {
   const n = src.length; let i = 0; const objs = []; let ctm = I6.slice(), lw = 1, clip = null; const stk = []; let ops = [], opStart = -1, path = null;
+  // text state
+  let fs = 10, TL = 0, Tz = 100, Ts = 0, Tm = I6, Tlm = I6, tb = null;
   const isWS = (c) => c === 32 || c === 10 || c === 13 || c === 9 || c === 12 || c === 0;
   const isDel = (c) => c === 40 || c === 41 || c === 60 || c === 62 || c === 91 || c === 93 || c === 123 || c === 125 || c === 47 || c === 37;
   const skipStr = () => { let d = 0; for (; i < n; i++) { const c = src.charCodeAt(i); if (c === 92) { i++; continue; } if (c === 40) d++; else if (c === 41) { d--; if (!d) { i++; return; } } } };
-  const skipArr = () => { let d = 0; while (i < n) { const c = src.charCodeAt(i); if (c === 40) { skipStr(); continue; } if (c === 91) d++; else if (c === 93) { d--; if (!d) { i++; return; } } i++; } };
+  const skipArr = () => { let d = 0, len = 0; while (i < n) { const c = src.charCodeAt(i); if (c === 40) { const a = i; skipStr(); len += Math.max(0, i - a - 2); continue; } if (c === 60 && src.charCodeAt(i + 1) !== 60) { const a = i; while (i < n && src.charCodeAt(i) !== 62) i++; i++; len += Math.max(0, (i - a - 2) / 2); continue; } if (c === 91) d++; else if (c === 93) { d--; if (!d) { i++; return len; } } i++; } return len; };
   const skipDict = () => { let d = 0; while (i < n) { if (src.charCodeAt(i) === 40) { skipStr(); continue; } if (src.startsWith('<<', i)) { d++; i += 2; continue; } if (src.startsWith('>>', i)) { d--; i += 2; if (!d) return; continue; } i++; } };
-  const bbOf = (pts) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let k = 0; k < pts.length; k += 2) { const x = pts[k], y = pts[k + 1]; if (x !== x) continue; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } return [x0, y0, x1, y1]; };
   const unit = (m) => { const pts = []; for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) pts.push(u * m[0] + v * m[2] + m[4], u * m[1] + v * m[3] + m[5]); return pts; };
   const addPt = (x, y) => { path.pts.push(x * ctm[0] + y * ctm[2] + ctm[4], x * ctm[1] + y * ctm[3] + ctm[5]); };
   const num = (k) => +ops[ops.length - k];
-  const cut = (b) => (clip ? [Math.max(b[0], clip[0]), Math.max(b[1], clip[1]), Math.min(b[2], clip[2]), Math.min(b[3], clip[3])] : b);
-  const okB = (b) => b[2] >= b[0] && b[3] >= b[1];
+  const cut = (b) => cutBB(b, clip);
+  const td = (tx, ty) => { Tlm = mul6([1, 0, 0, 1, tx, ty], Tlm); Tm = Tlm; };
+  const show = (len) => {
+    if (!tb) return; const M = mul6(mul6([fs * Tz / 100, 0, 0, fs, 0, Ts], Tm), ctm); const wE = Math.max(0.3, len * 0.52);
+    const at = (u, v) => [u * M[0] + v * M[2] + M[4], u * M[1] + v * M[3] + M[5]];
+    const scl = Math.sqrt(Math.abs(M[0] * M[3] - M[1] * M[2])) || fs;
+    tb.runs.push({ x: M[4], y: M[5], fs: scl, pts: [...at(0, -0.22), ...at(wE, -0.22), ...at(0, 0.8), ...at(wE, 0.8)] });
+    Tm = mul6([1, 0, 0, 1, wE * fs * Tz / 100, 0], Tm);
+  };
   while (i < n) {
-    let c = src.charCodeAt(i);
+    const c = src.charCodeAt(i);
     if (isWS(c)) { i++; continue; }
     if (c === 37) { while (i < n && src.charCodeAt(i) !== 10 && src.charCodeAt(i) !== 13) i++; continue; }
     const t0 = i; if (opStart < 0) opStart = t0;
-    if (c === 40) { skipStr(); ops.push('()'); continue; }
-    if (c === 91) { skipArr(); ops.push('[]'); continue; }
-    if (c === 60) { if (src.charCodeAt(i + 1) === 60) skipDict(); else { while (i < n && src.charCodeAt(i) !== 62) i++; i++; } ops.push('<>'); continue; }
+    if (c === 40) { skipStr(); ops.push({ len: Math.max(0, i - t0 - 2) }); continue; }
+    if (c === 91) { const len = skipArr(); ops.push({ len }); continue; }
+    if (c === 60) { if (src.charCodeAt(i + 1) === 60) { skipDict(); ops.push('<<>>'); } else { while (i < n && src.charCodeAt(i) !== 62) i++; i++; ops.push({ len: Math.max(0, (i - t0 - 2) / 2) }); } continue; }
     if (c === 47) { i++; while (i < n && !isWS(src.charCodeAt(i)) && !isDel(src.charCodeAt(i))) i++; ops.push(src.slice(t0, i)); continue; }
     if (c === 41 || c === 62 || c === 93 || c === 123 || c === 125) { i++; continue; }
     while (i < n && !isWS(src.charCodeAt(i)) && !isDel(src.charCodeAt(i))) i++;
     const tk = src.slice(t0, i);
     if (/^[+\-.\d]/.test(tk)) { ops.push(tk); continue; }
-    const s = opStart, e = i;
+    const s = opStart, e = i; const last = ops[ops.length - 1];
     switch (tk) {
-      case 'q': stk.push([ctm, lw, clip]); break;
-      case 'Q': if (stk.length) [ctm, lw, clip] = stk.pop(); break;
+      case 'q': stk.push([ctm, lw, clip, fs, TL, Tz, Ts]); break;
+      case 'Q': if (stk.length) [ctm, lw, clip, fs, TL, Tz, Ts] = stk.pop(); break;
       case 'cm': if (ops.length >= 6) ctm = mul6([num(6), num(5), num(4), num(3), num(2), num(1)], ctm); break;
       case 'w': lw = num(1) || 0; break;
       case 'm': case 'l': if (!path) path = { s, pts: [], lw, ctm }; if (tk === 'm' && path.pts.length) path.pts.push(NaN, NaN); addPt(num(2), num(1)); break;
@@ -1342,22 +1428,38 @@ function parseContent(src, xo) {
       case 'W': case 'W*': if (path) path.clip = true; break;
       case 'S': case 's': case 'f': case 'F': case 'f*': case 'B': case 'B*': case 'b': case 'b*': case 'n':
         if (path && path.clip && path.pts.length) clip = cut(bbOf(path.pts));
-        if (path && !path.clip && tk !== 'n' && path.pts.length && okB(cut(bbOf(path.pts)))) {
+        if (path && !path.clip && tk !== 'n' && path.pts.length && okBB(cut(bbOf(path.pts)))) {
           const sc = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2])) || 1;
           objs.push({ k: 'path', s: path.s, e, bb: cut(bbOf(path.pts)), pts: Float32Array.from(path.pts), ctm: path.ctm, lw0: path.lw, lw: path.lw * sc, st: /^[SsBb]/.test(tk), fi: /^[fFBb]/.test(tk) });
         }
         path = null; break;
+      case 'sh': if (clip) objs.push({ k: 'shade', s, e, bb: clip.slice(), ctm }); break;
       case 'Do': {
-        const nm = ops[ops.length - 1]; let k = 'form', bb = null;
-        try { const x = xo && nm ? xo.lookup(PL.PDFName.of(nm.slice(1))) : null; const dict = x && x.dict ? x.dict : x; const sub = dict && dict.get(PL.PDFName.of('Subtype')); if (sub && String(sub) === '/Image') { k = 'img'; bb = bbOf(unit(ctm)); } else if (dict) { const B = dict.lookup(PL.PDFName.of('BBox')); const M = dict.lookup(PL.PDFName.of('Matrix')); const m = M ? M.asArray().map((z) => z.asNumber()) : I6; const b = B ? B.asArray().map((z) => z.asNumber()) : [0, 0, 1, 1]; const mm = mul6(m, ctm); const pts = []; for (const [u, v] of [[b[0], b[1]], [b[2], b[1]], [b[0], b[3]], [b[2], b[3]]]) pts.push(u * mm[0] + v * mm[2] + mm[4], u * mm[1] + v * mm[3] + mm[5]); bb = bbOf(pts); } } catch (err) {}
-        if (bb && isFinite(bb[0]) && okB(cut(bb))) objs.push({ k, s, e, bb: cut(bb), ctm });
+        const nm = last; let k = 'form', bb = null;
+        try { const x = xo && nm ? xo.lookup(PL.PDFName.of(String(nm).slice(1))) : null; const dict = x && x.dict ? x.dict : x; const sub = dict && dict.get(PL.PDFName.of('Subtype')); if (sub && String(sub) === '/Image') { k = 'img'; bb = bbOf(unit(ctm)); } else if (dict) { const B = dict.lookup(PL.PDFName.of('BBox')); const M = dict.lookup(PL.PDFName.of('Matrix')); const m = M ? M.asArray().map((z) => z.asNumber()) : I6; const b = B ? B.asArray().map((z) => z.asNumber()) : [0, 0, 1, 1]; const mm = mul6(m, ctm); const pts = []; for (const [u, v] of [[b[0], b[1]], [b[2], b[1]], [b[0], b[3]], [b[2], b[3]]]) pts.push(u * mm[0] + v * mm[2] + mm[4], u * mm[1] + v * mm[3] + mm[5]); bb = bbOf(pts); } } catch (err) {}
+        if (bb && okBB(cut(bb))) objs.push({ k, s, e, bb: cut(bb), ctm });
         break;
       }
       case 'BI': {
         const id = src.indexOf('ID', i); if (id < 0) { i = n; break; }
         const re = /\sEI(?=[\s%]|$)/g; re.lastIndex = id + 3; const m = re.exec(src); const end = m ? m.index + m[0].length : n; i = end;
-        { const ib = cut(bbOf(unit(ctm))); if (okB(ib)) objs.push({ k: 'img', s: t0, e: end, bb: ib, ctm, inl: true }); } break;
+        { const ib = cut(bbOf(unit(ctm))); if (okBB(ib)) objs.push({ k: 'img', s: t0, e: end, bb: ib, ctm, inl: true }); } break;
       }
+      // text objects
+      case 'BT': tb = { s: t0, runs: [], col: [], ctm, clip }; Tm = Tlm = I6; break;
+      case 'ET': if (tb) { if (tb.runs.length) { const pts = []; tb.runs.forEach((r) => pts.push(...r.pts)); objs.push({ k: 'text', s: tb.s, e, bb: bbOf(pts), runs: tb.runs, col: tb.col, ctm: tb.ctm, clip: tb.clip }); } tb = null; } break;
+      case 'Tf': fs = num(1) || fs; break;
+      case 'TL': TL = num(1) || 0; break;
+      case 'Tz': Tz = num(1) || 100; break;
+      case 'Ts': Ts = num(1) || 0; break;
+      case 'Td': td(num(2) || 0, num(1) || 0); break;
+      case 'TD': TL = -(num(1) || 0); td(num(2) || 0, num(1) || 0); break;
+      case 'Tm': if (ops.length >= 6) { Tlm = [num(6), num(5), num(4), num(3), num(2), num(1)]; Tm = Tlm; } break;
+      case 'T*': td(0, -TL); break;
+      case 'Tj': case 'TJ': show(last && last.len != null ? last.len : 1); break;
+      case "'": td(0, -TL); show(last && last.len != null ? last.len : 1); break;
+      case '"': td(0, -TL); show(last && last.len != null ? last.len : 1); break;
+      case 'g': case 'rg': case 'k': case 'sc': case 'scn': case 'cs': if (tb) tb.col.push([s, e]); break;
       default: break;
     }
     ops = []; opStart = -1;
@@ -1365,6 +1467,15 @@ function parseContent(src, xo) {
   return { src, objs };
 }
 const objRec = (doc, pi, id) => { const ed = doc.values[EDK]; return ed && ed[pi] && ed[pi][id]; };
+const isDupId = (id) => typeof id === 'string' && id[0] === 'd';
+// Every live object on a page, originals and duplicates: [{ id, o, r }]
+function objList(doc, pi, parsed) {
+  const ed = (doc.values[EDK] || {})[pi] || {}; const out = [];
+  parsed.objs.forEach((o, id) => { const r = ed[id]; if (!(r && r.del)) out.push({ id, o, r }); });
+  for (const k in ed) { if (!isDupId(k)) continue; const r = ed[k]; const o = parsed.objs[r.src]; if (o && !r.del) out.push({ id: k, o, r }); }
+  return out;
+}
+const objOf = (c, id) => (isDupId(id) ? c.parsed.objs[(objRec(c.doc, c.pi, id) || {}).src] : c.parsed.objs[id]);
 function objBox(o, r) {
   const b = o.bb; if (!r || !r.A) return b; const A = r.A; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of [[b[0], b[1]], [b[2], b[1]], [b[0], b[3]], [b[2], b[3]]]) { const X = x * A[0] + y * A[2] + A[4], Y = x * A[1] + y * A[3] + A[5]; x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); }
@@ -1381,32 +1492,44 @@ function segDist(px, py, pts) {
 }
 // All objects under a PDF point, best match first.
 function objHits(doc, pi, parsed, x, y, tol) {
-  const out = []; const ed = (doc.values[EDK] || {})[pi] || {};
-  for (let id = 0; id < parsed.objs.length; id++) {
-    const o = parsed.objs[id]; const r = ed[id]; if (r && r.del) continue;
+  const out = [];
+  for (const { id, o, r } of objList(doc, pi, parsed)) {
     let qx = x, qy = y; if (r && r.A) { const iv = inv(r.A); qx = x * iv[0] + y * iv[2] + iv[4]; qy = x * iv[1] + y * iv[3] + iv[5]; }
     const pad = tol + (o.lw || 0) / 2; const b = o.bb;
     if (qx < b[0] - pad || qx > b[2] + pad || qy < b[1] - pad || qy > b[3] + pad) continue;
     const area = Math.max(1, (b[2] - b[0]) * (b[3] - b[1]));
     if (o.k === 'path' && !o.fi) { if (segDist(qx, qy, o.pts) > pad) continue; out.push([area * 0.2, id]); }
+    else if (o.k === 'text') out.push([area * 0.5, id]);
+    else if (o.k === 'shade') out.push([area * 4, id]);
     else out.push([area, id]);
   }
   return out.sort((a, b) => a[0] - b[0]).map((z) => z[1]);
 }
 function editedContent(parsed, recs) {
-  const ids = Object.keys(recs).map(Number).filter((k) => parsed.objs[k]).sort((a, b) => a - b); const src = parsed.src; let out = '', pos = 0;
-  const f = (v) => String(Math.round(v * 1e6) / 1e6);
+  const src = parsed.src; const f = (v) => String(Math.round(v * 1e6) / 1e6);
   const rgb = (h) => { const c = hexRgb(h); return [c.red, c.green, c.blue].map(f).join(' '); };
-  for (const id of ids) {
-    const o = parsed.objs[id], r = recs[id]; if (o.s < pos) continue;
-    out += src.slice(pos, o.s); pos = o.e;
-    if (r.del) { out += ' '; continue; }
+  const dups = new Map(); for (const k in recs) { if (!isDupId(k)) continue; const r = recs[k]; if (r.del || !parsed.objs[r.src]) continue; if (!dups.has(r.src)) dups.set(r.src, []); dups.get(r.src).push(r); }
+  const ids = [...new Set([...Object.keys(recs).filter((k) => !isDupId(k)).map(Number), ...dups.keys()])].filter((k) => parsed.objs[k]).sort((a, b) => a - b);
+  const body = (o, r) => {
+    let txt = src.slice(o.s, o.e);
+    if (o.k === 'text' && r && r.fc) { let t = ''; let p = o.s; for (const [a, b] of o.col) { t += src.slice(p, a); p = b; } t += src.slice(p, o.e); txt = t.replace(/^BT/, 'BT ' + rgb(r.fc) + ' rg '); }
+    return txt;
+  };
+  const wrap = (o, r) => {
+    if (!r || (!r.A && !r.sc && !r.fc && !r.wm)) return ' q ' + body(o, r) + ' Q ';
     let pre = ' q ';
     if (r.A) { const M = mul6(mul6(o.ctm, r.A), inv(o.ctm)); pre += M.map(f).join(' ') + ' cm '; }
     if (r.sc && o.k === 'path') pre += rgb(r.sc) + ' RG ';
     if (r.fc && o.k === 'path') pre += rgb(r.fc) + ' rg ';
     if (r.wm && o.k === 'path') pre += f(Math.max(0.01, (o.lw0 || 1) * r.wm)) + ' w ';
-    out += pre + src.slice(o.s, o.e) + ' Q ';
+    return pre + body(o, r) + ' Q ';
+  };
+  let out = '', pos = 0;
+  for (const id of ids) {
+    const o = parsed.objs[id], r = recs[id]; if (o.s < pos) continue;
+    out += src.slice(pos, o.s); pos = o.e;
+    if (r && r.del) out += ' '; else if (r) out += wrap(o, r); else out += src.slice(o.s, o.e);
+    for (const d of dups.get(id) || []) out += wrap(o, d);
   }
   return out + src.slice(pos);
 }
@@ -1420,6 +1543,7 @@ async function rebuildDoc(doc) {
         const pis = Object.keys(ed).filter((k) => Object.keys(ed[k]).length);
         let bytes = null;
         if (pis.length) {
+          if (!OBJ.opdf.has(doc.id)) OBJ.opdf.set(doc.id, Promise.resolve(doc.pdf));
           const ld = await PL.PDFDocument.load(doc.bytes, { updateMetadata: false });
           for (const k of pis) { const pi = +k; let parsed = OBJ.cache.get(doc.id + '|' + pi); if (!parsed) { pageObjs(doc, pi); await OBJ.loading.get(doc.id + '|' + pi); parsed = OBJ.cache.get(doc.id + '|' + pi); } if (!parsed || parsed.err) continue; const st = ld.context.flateStream(unlatin1(editedContent(parsed, ed[k]))); ld.getPage(pi).node.set(PL.PDFName.of('Contents'), ld.context.register(st)); }
           bytes = await ld.save({ useObjectStreams: false });
@@ -1427,7 +1551,7 @@ async function rebuildDoc(doc) {
         if (doc._rbAgain) continue;
         const old = doc.pdf; doc.ebytes = bytes;
         doc.pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: (bytes || doc.bytes).slice(), password: doc.password || undefined }).promise;
-        refreshDocPages(doc); setTimeout(() => { try { old.destroy(); } catch (e) {} }, 4000);
+        refreshDocPages(doc); const keep = OBJ.opdf.get(doc.id); setTimeout(() => { keep && keep.then((kp) => { if (kp === old) return; try { old.destroy(); } catch (e) {} }); if (!keep) { try { old.destroy(); } catch (e) {} } }, 4000);
       } while (doc._rbAgain);
     } catch (e) { console.error(e); toast('Could not apply that change to this PDF', { err: true }); }
     clearTimeout(tt); if (t) t.remove(); doc._rb = null;
@@ -1447,29 +1571,34 @@ function refreshDocPages(doc) {
 function syncEditsAfterRestore() { for (const d of S.docs.values()) { const j = JSON.stringify(d.values[EDK] || {}); if (j !== (d._edJ || '{}')) rebuildDoc(d); } OSEL = null; }
 function objCtx(p) { if (!p || p.kind !== 'pdf') return null; const doc = S.docs.get(p.docId); if (!doc || doc.encrypted) return null; const parsed = pageObjs(doc, p.index); return parsed ? { doc, parsed, pi: p.index } : null; }
 function osel() { if (!OSEL) return null; const p = pageById(OSEL.pageId); const c = objCtx(p); if (!c) return null; return Object.assign({ p, ids: OSEL.ids }, c); }
-function objSelBoxes(c, g) { return c.ids.map((id) => { const o = c.parsed.objs[id]; const b = objBox(o, objRec(c.doc, c.pi, id)); const d1 = ap(g.t, b[0], b[1]), d2 = ap(g.t, b[2], b[3]); return { L: Math.min(d1[0], d2[0]), T: Math.min(d1[1], d2[1]), R: Math.max(d1[0], d2[0]), B: Math.max(d1[1], d2[1]) }; }); }
+function objDispBox(c, g, id) { const o = objOf(c, id); if (!o) return null; const b = objBox(o, objRec(c.doc, c.pi, id)); const d1 = ap(g.t, b[0], b[1]), d2 = ap(g.t, b[2], b[3]); return { L: Math.min(d1[0], d2[0]), T: Math.min(d1[1], d2[1]), R: Math.max(d1[0], d2[0]), B: Math.max(d1[1], d2[1]) }; }
+function objSelBoxes(c, g) { return c.ids.map((id) => objDispBox(c, g, id)).filter(Boolean); }
 function drawObjUi(p, g, ui) {
   if (S.tool !== 'objedit') return;
   const pad = 2 / S.zoom;
-  if (OHOV && OHOV.pageId === p.id && !(OSEL && OSEL.pageId === p.id && OSEL.ids.includes(OHOV.id))) { const c = objCtx(p); const o = c && c.parsed.objs[OHOV.id]; if (o) { const [b] = objSelBoxes(Object.assign({ ids: [OHOV.id] }, c), g); ui.appendChild(sv('rect', { class: 'objhov', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad })); } }
+  if (OHOV && OHOV.pageId === p.id && !(OSEL && OSEL.pageId === p.id && OSEL.ids.includes(OHOV.id))) { const c = objCtx(p); const b = c && objDispBox(c, g, OHOV.id); if (b) ui.appendChild(sv('rect', { class: 'objhov', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad })); }
   const c = osel(); if (!c || c.p.id !== p.id || !c.ids.length) return;
   const gr = sv('g', {}); if (ODRAG && ODRAG.D) gr.setAttribute('transform', `matrix(${ODRAG.D.join(' ')})`);
-  const bs = objSelBoxes(c, g); let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+  const bs = objSelBoxes(c, g); if (!bs.length) return; let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
   for (const b of bs.length > 400 ? [] : bs) gr.appendChild(sv('rect', { class: 'objsel', x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad }));
   for (const b of bs) { L = Math.min(L, b.L); T = Math.min(T, b.T); R = Math.max(R, b.R); B = Math.max(B, b.B); }
   const p2 = 5 / S.zoom, r = 7 / S.zoom;
   gr.appendChild(sv('rect', { class: 'selgroup', x: L - p2, y: T - p2, width: R - L + 2 * p2, height: B - T + 2 * p2 }));
   gr.appendChild(sv('circle', { class: 'handle-hit', 'data-oh': 'se', cx: R + p2, cy: B + p2, r: r * 2.4 }));
   gr.appendChild(sv('circle', { class: 'handle', 'data-oh': 'se', cx: R + p2, cy: B + p2, r }));
+  rotHandle(gr, { L, T, R, B }, p2, 'data-oh');
   ui.appendChild(gr); OSEL.box = { L, T, R, B };
+  if (ROTLBL && ROTLBL.pageId === p.id) { const t = sv('text', { class: 'rotlbl', x: ROTLBL.x, y: ROTLBL.y, 'font-size': 12 / S.zoom }); t.textContent = ROTLBL.t; ui.appendChild(t); }
 }
+const rotD = (deg, cx, cy) => { const r = deg * Math.PI / 180, co = Math.cos(r), si = Math.sin(r); return [co, si, -si, co, cx - cx * co + cy * si, cy - cx * si - cy * co]; };
 function objPointerDown(e, p, el, g, pt) {
   const c = objCtx(p);
-  if (!c) { if (p.kind !== 'pdf') toast('This page is an image or blank page. Only PDF pages have shapes to edit.'); else if (S.docs.get(p.docId).encrypted) toast('This PDF is protected, so its contents cannot be edited.'); else toast('Reading the shapes on this page'); return; }
+  if (!c) { if (p.kind !== 'pdf') toast('This page is an image or blank page. Only PDF pages have contents to edit.'); else if (S.docs.get(p.docId).encrypted) toast('This PDF is protected, so its contents cannot be edited.'); else toast('Reading the contents of this page'); return; }
   if (c.parsed.err) { toast('This page could not be read for editing'); return; }
   const pdfPt = ap(g.i, pt[0], pt[1]); const tol = 4 / S.zoom;
   const onHandle = e.target.closest('[data-oh]'); const b = OSEL && OSEL.pageId === p.id && OSEL.box;
-  if (onHandle && b) { ODRAG = { mode: 'scale', p, el, g, start: pt, box: b, id: e.pointerId }; }
+  if (onHandle && b && onHandle.dataset.oh === 'rot') { const cx = (b.L + b.R) / 2, cy = (b.T + b.B) / 2; ODRAG = { mode: 'rot', p, el, g, start: pt, c: [cx, cy], a0: Math.atan2(pt[1] - cy, pt[0] - cx), id: e.pointerId }; }
+  else if (onHandle && b) { ODRAG = { mode: 'scale', p, el, g, start: pt, box: b, id: e.pointerId }; }
   else {
     const hits = OBOX && !(b && pt[0] >= b.L && pt[0] <= b.R && pt[1] >= b.T && pt[1] <= b.B) ? [] : objHits(c.doc, c.pi, c.parsed, pdfPt[0], pdfPt[1], tol);
     const inSel = b && pt[0] >= b.L && pt[0] <= b.R && pt[1] >= b.T && pt[1] <= b.B && OSEL.ids.length > 1;
@@ -1477,7 +1606,7 @@ function objPointerDown(e, p, el, g, pt) {
     if (inSel || (hits.length && OSEL && OSEL.pageId === p.id && OSEL.ids.includes(hits[0]))) { /* keep selection */ }
     else if (hits.length) OSEL = { pageId: p.id, ids: [hits[0]], hits, hi: 0 };
     else { const keep = (e.shiftKey || OBOX) && OSEL && OSEL.pageId === p.id ? OSEL.ids.slice() : []; OSEL = null; ODRAG = { mode: 'marq', p, el, g, start: pt, id: e.pointerId, base: keep }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); drawOverlay(p, el); refreshFormatBar(); return; }
-    ODRAG = { mode: 'move', p, el, g, start: pt, id: e.pointerId };
+    ODRAG = { mode: 'move', p, el, g, start: pt, id: e.pointerId, alt: e.altKey };
   }
   el.querySelector('svg.ov').setPointerCapture(e.pointerId); drawOverlay(p, el); refreshFormatBar();
 }
@@ -1486,45 +1615,79 @@ function objPointerMove(e) {
   const { p, el, start } = ODRAG; const pt = ptFromEvent(e, el); const dx = pt[0] - start[0], dy = pt[1] - start[1];
   if (!ODRAG.moved && Math.hypot(dx, dy) * S.zoom < 3) return true; ODRAG.moved = true;
   if (ODRAG.mode === 'marq') { MARQ = { pageId: p.id, L: Math.min(pt[0], start[0]), T: Math.min(pt[1], start[1]), R: Math.max(pt[0], start[0]), B: Math.max(pt[1], start[1]) }; }
-  else if (ODRAG.mode === 'move') ODRAG.D = [1, 0, 0, 1, dx, dy];
-  else { const b = ODRAG.box; const W0 = Math.max(1e-3, b.R - b.L), H0 = Math.max(1e-3, b.B - b.T); let sx = Math.max(0.05, (W0 + dx) / W0), sy = Math.max(0.05, (H0 + dy) / H0); const c = osel(); const uni = e.shiftKey || (c && c.ids.every((id) => c.parsed.objs[id].k !== 'path')); if (uni) sx = sy = Math.max(sx, sy); ODRAG.D = [sx, 0, 0, sy, b.L - b.L * sx, b.T - b.T * sy]; }
+  else if (ODRAG.mode === 'move') { let mx = dx, my = dy; if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) my = 0; else mx = 0; } ODRAG.D = [1, 0, 0, 1, mx, my]; }
+  else if (ODRAG.mode === 'rot') { const [cx, cy] = ODRAG.c; let deg = (Math.atan2(pt[1] - cy, pt[0] - cx) - ODRAG.a0) * 180 / Math.PI; deg = snapDeg(((deg + 540) % 360) - 180, e.shiftKey); ODRAG.D = rotD(deg, cx, cy); ROTLBL = { pageId: p.id, x: pt[0] + 14 / S.zoom, y: pt[1] - 10 / S.zoom, t: (deg > 0 ? '+' : '') + deg + '°' }; }
+  else { const b = ODRAG.box; const W0 = Math.max(1e-3, b.R - b.L), H0 = Math.max(1e-3, b.B - b.T); let sx = Math.max(0.05, (W0 + dx) / W0), sy = Math.max(0.05, (H0 + dy) / H0); const c = osel(); const uni = e.shiftKey || (c && c.ids.every((id) => { const o = objOf(c, id); return o && o.k !== 'path'; })); if (uni) sx = sy = Math.max(sx, sy); ODRAG.D = [sx, 0, 0, sy, b.L - b.L * sx, b.T - b.T * sy]; }
   drawOverlay(p, el); return true;
 }
 function objPointerUp(e) {
   if (!ODRAG || e.pointerId !== ODRAG.id) return false;
-  const d = ODRAG; ODRAG = null; const { p, el, g } = d;
+  const d = ODRAG; ODRAG = null; ROTLBL = null; const { p, el, g } = d;
   if (d.mode === 'marq') {
     const m = MARQ; MARQ = null; const c = objCtx(p);
-    if (m && c) { const ed = (c.doc.values[EDK] || {})[c.pi] || {}; const ids = []; c.parsed.objs.forEach((o, id) => { const r = ed[id]; if (r && r.del) return; const bb = objSelBoxes({ ids: [id], parsed: c.parsed, doc: c.doc, pi: c.pi }, g)[0]; if (bb.L >= m.L && bb.R <= m.R && bb.T >= m.T && bb.B <= m.B) ids.push(id); }); if (d.base && d.base.length) { const st = new Set(d.base); for (const id of ids) st.add(id); ids.length = 0; ids.push(...st); } OSEL = ids.length ? { pageId: p.id, ids } : null; if (ids.length > 1) toast(`${ids.length} objects selected`); }
+    if (m && c) { const ids = []; for (const { id } of objList(c.doc, c.pi, c.parsed)) { const bb = objDispBox(c, g, id); if (bb && bb.L >= m.L && bb.R <= m.R && bb.T >= m.T && bb.B <= m.B) ids.push(id); } if (d.base && d.base.length) { const st = new Set(d.base); for (const id of ids) st.add(id); ids.length = 0; ids.push(...st); } OSEL = ids.length ? { pageId: p.id, ids } : null; if (ids.length > 1) toast(`${ids.length} objects selected`); }
     drawOverlay(p, el); refreshFormatBar(); return true;
   }
-  if (d.D && d.moved) { const A = mul6(mul6(g.t, d.D), g.i); objEdit((r) => { r.A = mul6(r.A || I6, A); }); }
-  else drawOverlay(p, el);
+  if (d.D && d.moved) {
+    const A = mul6(mul6(g.t, d.D), g.i);
+    if (d.mode === 'move' && d.alt) objDuplicate(A); // Alt-drag leaves a copy behind
+    else objEdit((r) => { r.A = mul6(r.A || I6, A); });
+  } else drawOverlay(p, el);
   return true;
 }
 function objEdit(fn, keepSel = true) {
   const c = osel(); if (!c || !c.ids.length) return; const ed = docEdits(c.doc); const recs = ed[c.pi] || (ed[c.pi] = {});
-  for (const id of c.ids) { const r = recs[id] || (recs[id] = {}); fn(r, c.parsed.objs[id]); if (!Object.keys(r).length) delete recs[id]; }
+  for (const id of c.ids) { const r = recs[id] || (recs[id] = {}); fn(r, objOf(c, id)); if (!Object.keys(r).length) delete recs[id]; }
   if (!Object.keys(recs).length) delete ed[c.pi];
   if (!keepSel) OSEL = null; drawOverlay(c.p); refreshFormatBar(); commit(); rebuildDoc(c.doc);
 }
-function objDelete() { const c = osel(); if (!c) return; const n = c.ids.length; objEdit((r) => { for (const k in r) delete r[k]; r.del = true; }, false); toast(n > 1 ? `Deleted ${n} objects` : 'Deleted'); }
+function objDelete() { const c = osel(); if (!c) return; const n = c.ids.length; objEdit((r) => { const src = r.src; for (const k in r) delete r[k]; r.del = true; if (src != null) r.src = src; }, false); toast(n > 1 ? `Deleted ${n} objects` : 'Deleted'); }
 function objNudge(dx, dy) { const c = osel(); if (!c) return; const g = geo(c.p); objEdit((r) => { r.A = mul6(r.A || I6, mul6(mul6(g.t, [1, 0, 0, 1, dx, dy]), g.i)); }); }
-function objSelectAll(p) { const c = objCtx(p); if (!c) return; const ed = (c.doc.values[EDK] || {})[c.pi] || {}; const ids = c.parsed.objs.map((o, id) => id).filter((id) => !(ed[id] && ed[id].del)); OSEL = ids.length ? { pageId: p.id, ids } : null; drawOverlay(p); refreshFormatBar(); }
-function objSelectSimilar() { const c = osel(); if (!c) return; const o0 = c.parsed.objs[c.ids[0]]; const ed = (c.doc.values[EDK] || {})[c.pi] || {}; const ids = c.parsed.objs.map((o, id) => id).filter((id) => { const o = c.parsed.objs[id]; return !(ed[id] && ed[id].del) && o.k === o0.k && (o.k !== 'path' || (o.st === o0.st && o.fi === o0.fi && Math.abs((o.lw || 0) - (o0.lw || 0)) < 0.05)); }); OSEL = { pageId: c.p.id, ids }; drawOverlay(c.p); refreshFormatBar(); toast(`${ids.length} similar objects selected`); }
+// Display-space transform about the selection centre
+function objTransformSel(D) { const c = osel(); if (!c || !OSEL.box) return; const g = geo(c.p); const A = mul6(mul6(g.t, D), g.i); objEdit((r) => { r.A = mul6(r.A || I6, A); }); }
+function objRotate(deg) { const b = OSEL && OSEL.box; if (!b) return; objTransformSel(rotD(deg, (b.L + b.R) / 2, (b.T + b.B) / 2)); }
+function objFlip(h) { const b = OSEL && OSEL.box; if (!b) return; const cx = (b.L + b.R) / 2, cy = (b.T + b.B) / 2; objTransformSel(h ? [-1, 0, 0, 1, 2 * cx, 0] : [1, 0, 0, -1, 0, 2 * cy]); }
+// Copies of the selected objects on the same page, moved by A (page space)
+function objDuplicate(A, items) {
+  const c = osel(); if (!c) return; const ed = docEdits(c.doc); const recs = ed[c.pi] || (ed[c.pi] = {});
+  let n = 1; while (recs['d' + n]) n++; const ids = [];
+  const src = items || c.ids.map((id) => { const r = objRec(c.doc, c.pi, id) || {}; return { src: isDupId(id) ? r.src : id, A: r.A, sc: r.sc, fc: r.fc, wm: r.wm }; });
+  for (const it of src) { if (!c.parsed.objs[it.src]) continue; while (recs['d' + n]) n++; const k = 'd' + n; const r = { src: it.src, A: mul6(it.A || I6, A) }; for (const q of ['sc', 'fc', 'wm']) if (it[q] != null) r[q] = it[q]; recs[k] = r; ids.push(k); }
+  if (!ids.length) return; OSEL = { pageId: c.p.id, ids }; drawOverlay(c.p); refreshFormatBar(); commit(); rebuildDoc(c.doc);
+  toast(ids.length > 1 ? `${ids.length} copies made` : 'Copy made');
+}
+function objDupOffset() { const c = osel(); if (!c) return; const g = geo(c.p); objDuplicate(mul6(mul6(g.t, [1, 0, 0, 1, 12, 12]), g.i)); }
+function objCopy() { const c = osel(); if (!c) return; OCLIP = { key: c.doc.id + '|' + c.pi, items: c.ids.map((id) => { const r = objRec(c.doc, c.pi, id) || {}; return { src: isDupId(id) ? r.src : id, A: r.A, sc: r.sc, fc: r.fc, wm: r.wm }; }), n: 0 }; toast(c.ids.length > 1 ? `${c.ids.length} objects copied` : 'Copied'); }
+function objPaste() {
+  if (!OCLIP) return; const c = osel() || (() => { const p = S.pages[S.current]; const cc = objCtx(p); return cc ? Object.assign({ p, ids: [] }, cc) : null; })();
+  if (!c || c.doc.id + '|' + c.pi !== OCLIP.key) { toast('PDF objects can be pasted on the page they came from. Use Duplicate, or the Select tool for your own markup.'); return; }
+  OSEL = { pageId: c.p.id, ids: [] }; OCLIP.n++; const g = geo(c.p); objDuplicate(mul6(mul6(g.t, [1, 0, 0, 1, 12 * OCLIP.n, 12 * OCLIP.n]), g.i), OCLIP.items);
+}
+function objSelectAll(p, kind) { const c = objCtx(p); if (!c) return; const ids = objList(c.doc, c.pi, c.parsed).filter(({ o }) => !kind || o.k === kind || (kind === 'img' && o.k === 'form')).map((x) => x.id); OSEL = ids.length ? { pageId: p.id, ids } : null; drawOverlay(p); refreshFormatBar(); if (kind) toast(ids.length ? `${ids.length} selected` : 'None on this page'); }
+function objSelectSimilar() { const c = osel(); if (!c) return; const o0 = objOf(c, c.ids[0]); const ids = objList(c.doc, c.pi, c.parsed).filter(({ o }) => o.k === o0.k && (o.k !== 'path' || (o.st === o0.st && o.fi === o0.fi && Math.abs((o.lw || 0) - (o0.lw || 0)) < 0.05))).map((x) => x.id); OSEL = { pageId: c.p.id, ids }; drawOverlay(c.p); refreshFormatBar(); toast(`${ids.length} similar objects selected`); }
 function objRestorePage(p) { const c = objCtx(p); if (!c) return; const ed = c.doc.values[EDK]; if (!ed || !ed[c.pi]) { toast('Nothing changed on this page'); return; } delete ed[c.pi]; OSEL = null; drawOverlay(p); refreshFormatBar(); commit(); rebuildDoc(c.doc); toast('Page contents restored'); }
 function objBarHtml() {
   const c = osel(); const parts = [];
-  if (!c || !c.ids.length) { parts.push('<span class="fb-label">Edit PDF shapes and images</span><span class="fb-spacer"></span><span class="fb-hint">Click to select. Box select or drag on empty space for many. Tab: next one underneath.</span>'); const cp = S.pages[S.current]; parts.push(`<button class="tbtn" data-oa="box" aria-pressed="${OBOX}" title="Drag a box to select everything inside it, even over a dense drawing">Box select</button><button class="tbtn" data-oa="all">Select all on page</button><button class="tbtn" data-oa="restore">Restore page</button><button class="tbtn" data-oa="done">Done</button>`); return parts.join(''); }
-  const kinds = new Set(c.ids.map((id) => c.parsed.objs[id].k)); const paths = kinds.has('path');
-  const nm = c.ids.length > 1 ? `${c.ids.length} objects` : ({ path: c.parsed.objs[c.ids[0]].fi ? 'Shape' : 'Line', img: 'Image', form: 'Graphic group' })[c.parsed.objs[c.ids[0]].k];
+  const sel = (k, t) => `<button class="tbtn" data-oa="${k}">${t}</button>`;
+  if (!c || !c.ids.length) {
+    parts.push('<span class="fb-label">Edit PDF contents</span><span class="fb-spacer"></span><span class="fb-hint">Click text, a line, shape or image. Box select or drag on empty space for many. Tab: next one underneath.</span>');
+    parts.push(`<button class="tbtn" data-oa="box" aria-pressed="${OBOX}" title="Drag a box to select everything inside it, even over a dense drawing">Box select</button>${sel('all', 'Select all')}${sel('alltext', 'All text')}${sel('allimg', 'All images')}${OCLIP ? sel('paste', 'Paste') : ''}${sel('restore', 'Restore page')}${sel('done', 'Done')}`);
+    return parts.join('');
+  }
+  const objs = c.ids.map((id) => objOf(c, id)).filter(Boolean); const kinds = new Set(objs.map((o) => o.k)); const paths = kinds.has('path'); const texts = kinds.has('text');
+  const o0 = objs[0]; const nm = c.ids.length > 1 ? `${c.ids.length} objects` : ({ path: o0.fi ? 'Shape' : 'Line', img: 'Image', form: 'Graphic group', text: 'Text', shade: 'Gradient' })[o0.k];
   parts.push(`<span class="fb-label">${nm}</span>`);
   const sw = (attr, t) => `<div class="swatches" role="group" aria-label="${t}">${TEXT_INKS.slice(0, 10).filter((z) => z[1] !== '#3a3a3c').map(([n, col]) => `<button class="sw" ${attr}="${col}" style="background:${col}" title="${t}: ${n}" aria-label="${t} ${n}"></button>`).join('')}</div>`;
-  if (paths) { parts.push(`<span class="fb-label">Line</span>${sw('data-osc', 'Line colour')}`); if ([...c.ids].some((id) => c.parsed.objs[id].fi)) parts.push(`<span class="fb-label">Fill</span>${sw('data-ofc', 'Fill colour')}`); parts.push('<div class="stepper" role="group" aria-label="Line weight"><button data-ow="0.67" aria-label="Thinner">−</button><output>Weight</output><button data-ow="1.5" aria-label="Thicker">+</button></div>'); }
+  if (texts && !paths) parts.push(`<span class="fb-label">Colour</span>${sw('data-ofc', 'Text colour')}`);
+  if (paths) { parts.push(`<span class="fb-label">Line</span>${sw('data-osc', 'Line colour')}`); if (objs.some((o) => o.fi || o.k === 'text')) parts.push(`<span class="fb-label">Fill</span>${sw('data-ofc', 'Fill colour')}`); parts.push('<div class="stepper" role="group" aria-label="Line weight"><button data-ow="0.67" aria-label="Thinner">−</button><output>Weight</output><button data-ow="1.5" aria-label="Thicker">+</button></div>'); }
   parts.push('<span class="fb-spacer"></span>');
+  const ib = (k, ic, t) => `<button class="tbtn" data-oa="${k}" title="${t}" aria-label="${t}">${icon(ic)}</button>`;
+  parts.push(ib('rotl', 'rotl', 'Rotate 90° left') + ib('rotr', 'rotr', 'Rotate 90° right') + ib('fliph', 'fliph', 'Flip left to right') + ib('flipv', 'flipv', 'Flip top to bottom'));
+  parts.push('<span class="fb-spacer"></span>');
+  parts.push(`<button class="tbtn" data-oa="dup" title="Duplicate (Ctrl+D). Alt-drag also leaves a copy">${icon('dup')}<span class="tb-hide-m">Duplicate</span></button>${ib('copy', 'copy', 'Copy (Ctrl+C)')}${OCLIP ? ib('paste', 'paste', 'Paste (Ctrl+V)') : ''}`);
   parts.push(`<button class="tbtn" data-oa="box" aria-pressed="${OBOX}" title="Drag a box to add more objects">Box select</button>`);
-  if (c.ids.length === 1) parts.push(`<button class="tbtn" data-oa="similar" title="Select every object like this one on the page">Select similar</button>`);
-  if (c.ids.some((id) => objRec(c.doc, c.pi, id))) parts.push(`<button class="tbtn" data-oa="reset" title="Undo changes to the selected objects">Reset</button>`);
+  if (c.ids.length === 1) parts.push(sel('similar', 'Select similar'));
+  if (c.ids.some((id) => { const r = objRec(c.doc, c.pi, id); return r && (r.A || r.sc || r.fc || r.wm); })) parts.push(`<button class="tbtn" data-oa="reset" title="Undo changes to the selected objects">Reset</button>`);
   parts.push(`<button class="tbtn" data-oa="del" style="color:var(--danger)">${icon('trash')}<span class="tb-hide-m">Delete</span></button>`);
   return parts.join('');
 }
@@ -1533,9 +1696,15 @@ function objBarClick(e) {
   if (b.dataset.osc) objEdit((r) => { r.sc = b.dataset.osc; });
   else if (b.dataset.ofc) objEdit((r) => { r.fc = b.dataset.ofc; });
   else if (b.dataset.ow) objEdit((r) => { r.wm = clamp((r.wm || 1) * +b.dataset.ow, 0.05, 40); });
-  else { const k = b.dataset.oa; const p = OSEL ? pageById(OSEL.pageId) : S.pages[S.current];
-    if (k === 'box') { OBOX = !OBOX; refreshFormatBar(); } else if (k === 'del') objDelete(); else if (k === 'all') objSelectAll(p); else if (k === 'similar') objSelectSimilar(); else if (k === 'restore') objRestorePage(p); else if (k === 'done') { OSEL = null; setTool('select'); }
-    else if (k === 'reset') objEdit((r) => { for (const z in r) delete r[z]; }); }
+  else {
+    const k = b.dataset.oa; const p = OSEL ? pageById(OSEL.pageId) : S.pages[S.current];
+    if (k === 'box') { OBOX = !OBOX; refreshFormatBar(); }
+    else if (k === 'del') objDelete(); else if (k === 'all') objSelectAll(p); else if (k === 'alltext') objSelectAll(p, 'text'); else if (k === 'allimg') objSelectAll(p, 'img');
+    else if (k === 'similar') objSelectSimilar(); else if (k === 'restore') objRestorePage(p); else if (k === 'done') { OSEL = null; setTool('select'); }
+    else if (k === 'rotl') objRotate(-90); else if (k === 'rotr') objRotate(90); else if (k === 'fliph') objFlip(true); else if (k === 'flipv') objFlip(false);
+    else if (k === 'dup') objDupOffset(); else if (k === 'copy') objCopy(); else if (k === 'paste') objPaste();
+    else if (k === 'reset') objEdit((r) => { const src = r.src; for (const z in r) delete r[z]; if (src != null) r.src = src; });
+  }
   return true;
 }
 
@@ -1922,13 +2091,13 @@ viewer.addEventListener('touchstart', (e) => {
 }, { passive: true });
 viewer.addEventListener('touchmove', (e) => {
   if (!pinch || e.touches.length !== 2) return; e.preventDefault();
-  pinch.s = clamp(tdist(e.touches) / pinch.d, 0.25 / pinch.z, 5 / pinch.z); pagesEl.style.transform = `scale(${pinch.s})`;
+  pinch.s = clamp(tdist(e.touches) / pinch.d, ZMIN / pinch.z, ZMAX / pinch.z); pagesEl.style.transform = `scale(${pinch.s})`;
 }, { passive: false });
 viewer.addEventListener('touchend', (e) => {
   if (!pinch || e.touches.length >= 2) return; const { s, z, cx, cy, mx, my } = pinch; pinch = null;
   pagesEl.style.transform = ''; pagesEl.style.transformOrigin = '';
   if (Math.abs(s - 1) < 0.02) return;
-  const nz = clamp(z * s, 0.25, 5); const k = nz / z; S.fit = false; S.zoom = nz;
+  const nz = clamp(z * s, ZMIN, ZMAX); const k = nz / z; S.fit = false; S.zoom = nz;
   closeEditor(false);
   S.pages.forEach((p) => { const el = pageEl(p.id); const g = geo(p); el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px'; el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom); drawOverlay(p, el); drawForm(p, el); });
   viewer.scrollLeft = cx * k - mx; viewer.scrollTop = cy * k - my; rerenderVisible(); updateZoomLbl(); if (FIND.q) paintFind();
@@ -2052,9 +2221,9 @@ function refreshFormatBar() {
   const fb = $('#formatBar');
   if (S.sel && selIds().length > 1 && S.pages.length) {
     const n = selIds().length; const B = (k, ic, t) => `<button class="tbtn" data-mal="${k}" title="${t}" aria-label="${t}">${icon(ic)}</button>`;
-    fb.innerHTML = `<span class="fb-label">${n} selected</span><span class="fb-spacer"></span>${B('l', 'al', 'Align left')}${B('c', 'ac', 'Align centres')}${B('r', 'ar', 'Align right')}<span class="fb-spacer"></span>${B('t', 'at', 'Align top')}${B('m', 'am', 'Align middles')}${B('b', 'ab', 'Align bottom')}<span class="fb-spacer"></span>${B('dup', 'dup', 'Duplicate')}${B('del', 'trash', 'Delete')}`;
+    fb.innerHTML = `<span class="fb-label">${n} selected</span><span class="fb-spacer"></span>${B('l', 'al', 'Align left')}${B('c', 'ac', 'Align centres')}${B('r', 'ar', 'Align right')}<span class="fb-spacer"></span>${B('t', 'at', 'Align top')}${B('m', 'am', 'Align middles')}${B('b', 'ab', 'Align bottom')}<span class="fb-spacer"></span>${B('rotl', 'rotl', 'Rotate 90° left')}${B('rotr', 'rotr', 'Rotate 90° right')}<span class="fb-spacer"></span>${B('dup', 'dup', 'Duplicate')}${B('del', 'trash', 'Delete')}`;
     fb.hidden = false;
-    fb.querySelectorAll('[data-mal]').forEach((b) => b.onclick = () => { const k = b.dataset.mal; if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else alignSelected(k); });
+    fb.querySelectorAll('[data-mal]').forEach((b) => b.onclick = () => { const k = b.dataset.mal; if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90); else alignSelected(k); });
     refreshFmtPanel(); return;
   }
   if (S.tool === 'objedit' && S.pages.length) { fb.innerHTML = objBarHtml(); fb.hidden = false; refreshFmtPanel(); return; }
@@ -2079,6 +2248,7 @@ function refreshFormatBar() {
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
     if (s.a.t === 'text') parts.push(`<button class="tbtn" data-act="edit">${icon('edit')}<span class="tb-hide-m">Edit</span></button>`);
+    if (ROTATABLE(s.a)) parts.push(`<button class="tbtn" data-act="rotl" title="Rotate 90° left" aria-label="Rotate left">${icon('rotl')}</button><button class="tbtn" data-act="rotr" title="Rotate 90° right" aria-label="Rotate right">${icon('rotr')}</button>`);
     parts.push(`<button class="tbtn" data-act="allpages" aria-label="Copy to other pages" title="Copy to other pages">${icon('dup')}<span class="tb-hide-m">All pages</span></button>`);
     parts.push(`<button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}<span class="tb-hide-m">Duplicate</span></button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}<span class="tb-hide-m">Delete</span></button>`);
   } else if (hints[kind]) parts.push(`<span class="fb-hint">${hints[kind]}</span>`);
@@ -2112,6 +2282,7 @@ $('#formatBar').addEventListener('click', (e) => {
     if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else if (k === 'edit' && s) openEditor(s.p, s.a);
     else if (k === 'done') { closeEditor(false); setTool('select'); }
     else if (k === 'allpages') openCopyToPages();
+    else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90);
     else if (k === 'cropall') { const src = S.pages.find((p) => p.crop && p === S.pages[S.current]) || S.pages.find((p) => p.crop); if (!src) return; const g1 = geo(src); const c = src.crop; const d1 = ap(g1.t, c[0], c[1]), d2 = ap(g1.t, c[2], c[3]); const f = [Math.min(d1[0], d2[0]) / g1.w, Math.min(d1[1], d2[1]) / g1.h, Math.max(d1[0], d2[0]) / g1.w, Math.max(d1[1], d2[1]) / g1.h];
       for (const p2 of S.pages) { const g2 = geo(p2); const a1 = ap(g2.i, f[0] * g2.w, f[1] * g2.h), a2 = ap(g2.i, f[2] * g2.w, f[3] * g2.h); p2.crop = [Math.min(a1[0], a2[0]), Math.min(a1[1], a2[1]), Math.max(a1[0], a2[0]), Math.max(a1[1], a2[1])]; drawOverlay(p2); } commit(); toast(`Cropped ${S.pages.length} pages`); }
     else if (k === 'cropclear') { const cp = S.pages[S.current]; const any = S.pages.filter((p) => p.crop); if (!any.length) return; if (cp && cp.crop) cp.crop = null; else any.forEach((p) => { p.crop = null; }); S.pages.forEach((p) => drawOverlay(p)); commit(); refreshFormatBar(); }
@@ -2526,11 +2697,13 @@ async function fitPagesTo(src, [TW0, TH0]) {
 async function drawAnn(page, a, font, embedImg) {
   const col = hexRgb(a.color); const w = a.width || 1.5; const RC = PL.LineCapStyle.Round;
   const seg = (s, e) => page.drawLine({ start: { x: s[0], y: s[1] }, end: { x: e[0], y: e[1] }, thickness: w, color: col, lineCap: RC });
-  if (a.t === 'white') page.drawRectangle({ x: a.x, y: a.y, width: a.w, height: a.h, color: a.fill ? hexRgb(a.fill) : PL.rgb(1, 1, 1) });
-  else if (a.t === 'hl') page.drawRectangle({ x: a.x, y: a.y, width: a.w, height: a.h, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
-  else if (a.t === 'rect') page.drawRectangle({ x: a.x + w / 2, y: a.y + w / 2, width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), borderColor: col, borderWidth: w });
-  else if (a.t === 'ellipse') page.drawEllipse({ x: a.x + a.w / 2, y: a.y + a.h / 2, xScale: Math.max(0.1, a.w / 2 - w / 2), yScale: Math.max(0.1, a.h / 2 - w / 2), borderColor: col, borderWidth: w });
-  else if (a.t === 'redact') page.drawRectangle({ x: a.x, y: a.y, width: a.w, height: a.h, color: PL.rgb(0, 0, 0) });
+  const bc = BOXES.has(a.t) ? [a.x + a.w / 2, a.y + a.h / 2] : null; const brot = PL.degrees(a.rot || 0);
+  const RB = (x, y) => { const [px, py] = a.rot ? rotPt(x, y, bc[0], bc[1], a.rot) : [x, y]; return { x: px, y: py, rotate: brot }; };
+  if (a.t === 'white') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: a.fill ? hexRgb(a.fill) : PL.rgb(1, 1, 1) });
+  else if (a.t === 'hl') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
+  else if (a.t === 'rect') page.drawRectangle({ ...RB(a.x + w / 2, a.y + w / 2), width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), borderColor: col, borderWidth: w });
+  else if (a.t === 'ellipse') page.drawEllipse({ x: bc[0], y: bc[1], rotate: brot, xScale: Math.max(0.1, a.w / 2 - w / 2), yScale: Math.max(0.1, a.h / 2 - w / 2), borderColor: col, borderWidth: w });
+  else if (a.t === 'redact') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: PL.rgb(0, 0, 0) });
   else if (a.t === 'mark') {
     if (a.kind === 'hl') for (const [x, y, rw, rh] of a.rects) page.drawRectangle({ x, y, width: rw, height: rh, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
     else for (const [s0, s1] of a.segs || []) page.drawLine({ start: { x: s0[0], y: s0[1] }, end: { x: s1[0], y: s1[1] }, thickness: a.width || 1, color: col });
@@ -3160,8 +3333,11 @@ function updateChrome() {
 }
 $('#btnSidebar').addEventListener('click', () => setSidebar($('#app').classList.contains('no-sidebar')));
 $('#btnUndo').addEventListener('click', undo); $('#btnRedo').addEventListener('click', redo);
-$('#zoomIn').addEventListener('click', () => setZoom(S.zoom * 1.2)); $('#zoomOut').addEventListener('click', () => setZoom(S.zoom / 1.2));
-$('#zoomLbl').addEventListener('click', () => setZoom(0, true));
+$('#zoomIn').addEventListener('click', () => setZoom(S.zoom * 1.25)); $('#zoomOut').addEventListener('click', () => setZoom(S.zoom / 1.25));
+$('#zoomLbl').addEventListener('click', (e) => {
+  const pct = (v) => ({ label: v + '%', icon: Math.abs(S.zoom * 75 - v) < 0.6 ? 'check' : 'zin', run: () => setZoom(v / 75) });
+  openMenu(e.currentTarget, [{ label: 'Fit width', icon: 'fit', run: () => setZoom(0, true) }, { label: 'Whole page', icon: 'fitpage', run: () => { const p = S.pages[S.current]; if (!p) return; const g = geo(p); setZoom(Math.min((viewer.clientWidth - 40) / g.w, (viewer.clientHeight - 60) / g.h)); scrollToPage(S.current, false); } }, '-', ...[50, 100, 150, 200, 400, 800, 1600, 3600].map(pct)]);
+});
 $('#btnOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#tabNew').addEventListener('click', () => $('#fileOpen').click());
 $('#tabList').addEventListener('click', (e) => { const x = e.target.closest('[data-x]'); if (x) { e.stopPropagation(); closeTab(+x.dataset.x); return; } const t = e.target.closest('.dtab'); if (t) switchTab(+t.dataset.k); });
@@ -3240,10 +3416,22 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); return; }
   if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); openGoto(); return; }
   if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('#fileOpen').click(); return; }
-  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(S.zoom * 1.2); return; }
-  if (mod && e.key === '-') { e.preventDefault(); setZoom(S.zoom / 1.2); return; }
+  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(S.zoom * 1.25); return; }
+  if (mod && e.key === '-') { e.preventDefault(); setZoom(S.zoom / 1.25); return; }
   if (mod && e.key === '0') { e.preventDefault(); setZoom(0, true); return; }
   if (inField || $('#layer .scrim')) return;
+  if (S.tool === 'objedit' && S.pages.length) {
+    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); objSelectAll(OSEL ? pageById(OSEL.pageId) : S.pages[S.current]); return; }
+    if (mod && e.key.toLowerCase() === 'v' && OCLIP) { e.preventDefault(); objPaste(); return; }
+    if (OSEL) {
+      if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); objCopy(); return; }
+      if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); objDupOffset(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); objDelete(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); const pp = pageById(OSEL.pageId); OSEL = null; if (pp) drawOverlay(pp); refreshFormatBar(); return; }
+      const ar = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (ar) { e.preventDefault(); const k = e.shiftKey ? 10 : 1; objNudge(ar[0] * k, ar[1] * k); return; }
+      if (e.key === 'Tab' && OSEL.hits && OSEL.hits.length > 1) { e.preventDefault(); OSEL.hi = ((OSEL.hi || 0) + (e.shiftKey ? -1 : 1) + OSEL.hits.length) % OSEL.hits.length; OSEL.ids = [OSEL.hits[OSEL.hi]]; drawOverlay(pageById(OSEL.pageId)); refreshFormatBar(); return; }
+    }
+  }
   if (mod && e.key.toLowerCase() === 'a' && S.pages.length && !String(getSelection() || '')) { e.preventDefault(); selectAllOnPage(); return; }
   if (mod && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x') && S.sel && !String(getSelection() || '')) { e.preventDefault(); copySelected(e.key.toLowerCase() === 'x'); return; }
   if (mod && e.key.toLowerCase() === 'v' && CLIP && S.pages.length) { e.preventDefault(); pasteClip(); return; }
@@ -3252,15 +3440,6 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === '[' && S.sel) { e.preventDefault(); reorderSelected(false); return; }
   if (mod && !e.altKey && fmtTarget()) { const k = e.key.toLowerCase(); const m2 = { b: 'bold', i: 'italic', u: 'underline' }; if (m2[k]) { e.preventDefault(); fmtToggle(m2[k]); return; } if (e.shiftKey && k === 'x') { e.preventDefault(); fmtToggle('strike'); return; } }
   if (e.key === '?' && !mod) { e.preventDefault(); openShortcuts(); return; }
-  if (S.tool === 'objedit' && S.pages.length) {
-    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); objSelectAll(OSEL ? pageById(OSEL.pageId) : S.pages[S.current]); return; }
-    if (OSEL) {
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); objDelete(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); const pp = pageById(OSEL.pageId); OSEL = null; if (pp) drawOverlay(pp); refreshFormatBar(); return; }
-      const ar = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (ar) { e.preventDefault(); const k = e.shiftKey ? 10 : 1; objNudge(ar[0] * k, ar[1] * k); return; }
-      if (e.key === 'Tab' && OSEL.hits && OSEL.hits.length > 1) { e.preventDefault(); OSEL.hi = ((OSEL.hi || 0) + (e.shiftKey ? -1 : 1) + OSEL.hits.length) % OSEL.hits.length; OSEL.ids = [OSEL.hits[OSEL.hi]]; drawOverlay(pageById(OSEL.pageId)); refreshFormatBar(); return; }
-    }
-  }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) { e.preventDefault(); deleteSelected(); return; }
   if (e.key === 'Escape') { if (S.sel) select(null); else if (S.tool !== 'select') setTool('select'); return; }
   if (S.sel && e.key.startsWith('Arrow')) {
@@ -3275,7 +3454,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function openShortcuts() {
   const K = (k) => k.split(' ').map((x) => `<kbd>${esc(x === 'Ctrl' && MAC ? '⌘' : x === 'Alt' && MAC ? '⌥' : x)}</kbd>`).join('');
   const groups = [
-    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Text box', 'B'], ['Edit existing text', 'D'], ['Edit PDF shapes and images', 'O'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
+    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Text box', 'B'], ['Edit existing text', 'D'], ['Edit PDF contents (text, shapes, images)', 'O'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
     ['Marks', [['Add to selection', 'Shift Click'], ['Box select', 'Shift Drag'], ['Select all on page', 'Ctrl A'], ['Copy / Cut / Paste', 'Ctrl C'], ['Duplicate', 'Ctrl D'], ['Bring to front / back', 'Ctrl ]'], ['Nudge (10 pt with Shift)', '← → ↑ ↓'], ['Move without snapping', 'Alt Drag'], ['Delete', 'Del'], ['Deselect', 'Esc'], ['More actions', 'Right-click']]],
     ['Document', [['Open', 'Ctrl O'], ['Save or share', 'Ctrl S'], ['Print', 'Ctrl P'], ['Find', 'Ctrl F'], ['Go to page', 'Ctrl G'], ['Undo', 'Ctrl Z'], ['Redo', 'Ctrl Shift Z'], ['Zoom in / out', 'Ctrl + −'], ['Fit to width', 'Ctrl 0'], ['This list', '?']]],
   ];
