@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.0.0';
+const VERSION = '3.0.1';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -1716,6 +1716,8 @@ function styleEditor(ta, a, el = pageEl(S.editing ? S.editing.pageId : ''), b) {
   const bg = a.grad ? `linear-gradient(${{ v: '180deg', h: '90deg', d: '135deg' }[a.grad[2]] || '180deg'}, ${hexA(a.grad[0], bgop)}, ${hexA(a.grad[1], bgop)})` : a.bg ? hexA(a.bg, bgop) : (a.cover ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.85)');
   const dec = [a.underline ? 'underline' : '', a.strike ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
   Object.assign(ta.style, { left: el.offsetLeft + b.L * z + 'px', top: el.offsetTop + b.T * z + 'px', fontSize: fs + 'px', color: a.color, minWidth: Math.max(40, fs * 2) + 'px', padding: Math.max(0, pz - bw) + 'px', paddingLeft: Math.max(0, pz - bw + L.ind * z) + 'px', fontWeight: a.bold ? '700' : '400', fontStyle: a.italic ? 'italic' : 'normal', textDecoration: dec, textAlign: a.align || 'left', lineHeight: String(LH * (a.lh || 1)), letterSpacing: (a.ls || 0) * z + 'px', fontFamily: FONT_CSS[a.font || 'helv'] + ', ' + UNI_FALLBACK, background: bg, borderRadius: (a.rad || 0) * z + 'px', border: a.border ? `${bw}px ${a.bds === 'dash' ? 'dashed' : a.bds === 'dot' ? 'dotted' : 'solid'} ${a.bc || a.color}` : '0', boxSizing: 'border-box', whiteSpace: a.box ? 'pre-wrap' : 'pre', overflowWrap: a.box ? 'anywhere' : 'normal', width: a.box ? a.w * z + 'px' : ta.style.width, boxShadow: a.shadow ? `${shOff(a) * z}px ${shOff(a) * z}px 0 rgba(0,0,0,.22)` : 'none' });
+  { const g2 = geo(p); const { U: U2, V: V3 } = UV(a.r || 0); const o0 = ap(g2.t, a.ax + a.h * V3[0], a.ay + a.h * V3[1]); const o1 = ap(g2.t, a.ax + a.h * V3[0] + U2[0], a.ay + a.h * V3[1] + U2[1]); const phi = Math.atan2(o1[1] - o0[1], o1[0] - o0[0]);
+    if (Math.abs(phi) > 0.004) Object.assign(ta.style, { left: el.offsetLeft + o0[0] * z + 'px', top: el.offsetTop + o0[1] * z + 'px', transform: `rotate(${phi}rad)`, transformOrigin: '0 0' }); else ta.style.transform = ''; }
   if (a.hlc) ta.style.textShadow = 'none';
   if (ta._fit) ta._fit();
 }
@@ -1806,33 +1808,41 @@ function editExistingLine(p, el, span) {
   const idx = divs.indexOf(span); if (idx < 0) return;
   const items = el._items; if (!items) { pageItems(el, p).then(() => editExistingLine(p, el, span)); return; }
   const it = items[idx]; if (!it) return;
-  const fs = Math.hypot(it.transform[2], it.transform[3]);
-  const ang = Math.atan2(...(() => { const t = it.transform; const a = ap(g.t, t[4] + t[0], t[5] + t[1]), o = ap(g.t, t[4], t[5]); return [a[1] - o[1], a[0] - o[0]]; })());
-  if (Math.abs(ang) > 0.02) { toast('Only straight horizontal text can be edited. Use Whiteout and Text for this line.'); return; }
-  const base = ap(g.t, it.transform[4], it.transform[5]);
-  // gather the rest of the line: same baseline and size, side by side
+  // Work in the text's own direction (PDF space), so vertical and angled lines work like horizontal ones
+  const t0 = it.transform; const fs = Math.hypot(t0[2], t0[3]) || Math.hypot(t0[0], t0[1]);
+  const ul = Math.hypot(t0[0], t0[1]) || 1; const u = [t0[0] / ul, t0[1] / ul]; const v = [-u[1], u[0]]; const o = [t0[4], t0[5]];
+  const theta = normDeg(Math.atan2(u[1], u[0]) * 180 / Math.PI);
+  const dot = (x, y, w) => x * w[0] + y * w[1];
   const cand = [];
-  divs.forEach((d, i) => { const t = items[i]; if (!t || !t.str || !d.isConnected) return; const b0 = ap(g.t, t.transform[4], t.transform[5]); const f2 = Math.hypot(t.transform[2], t.transform[3]); if (Math.abs(b0[1] - base[1]) < fs * 0.3 && Math.abs(f2 - fs) < fs * 0.25) cand.push({ d, t, b: box(d), x: b0[0] }); });
-  cand.sort((a, b) => a.b.L - b.b.L);
+  divs.forEach((d, i) => {
+    const t = items[i]; if (!t || !t.str || !d.isConnected) return; const tl = Math.hypot(t.transform[0], t.transform[1]) || 1;
+    if (Math.abs(t.transform[0] / tl * u[0] + t.transform[1] / tl * u[1] - 1) > 0.002) return;
+    const f2 = Math.hypot(t.transform[2], t.transform[3]) || tl; if (Math.abs(f2 - fs) > fs * 0.25) return;
+    const dx = t.transform[4] - o[0], dy = t.transform[5] - o[1]; if (Math.abs(dot(dx, dy, v)) > fs * 0.3) return;
+    const s0 = dot(dx, dy, u); cand.push({ d, t, s: s0, e: s0 + Math.max(t.width || 0, 0.1) });
+  });
+  cand.sort((x, y) => x.s - y.s);
   const k0 = cand.findIndex((c) => c.d === span); if (k0 < 0) return;
   let lo = k0, hi = k0;
-  while (lo > 0 && cand[lo].b.L - cand[lo - 1].b.R < fs * 1.2) lo--;
-  while (hi < cand.length - 1 && cand[hi + 1].b.L - cand[hi].b.R < fs * 1.2) hi++;
+  while (lo > 0 && cand[lo].s - cand[lo - 1].e < fs * 1.2) lo--;
+  while (hi < cand.length - 1 && cand[hi + 1].s - cand[hi].e < fs * 1.2) hi++;
   const parts = cand.slice(lo, hi + 1); let text = '';
-  parts.forEach((c, i) => { if (i && c.b.L - parts[i - 1].b.R > fs * 0.18 && !/\s$/.test(text) && !/^\s/.test(c.t.str)) text += ' '; text += c.t.str; });
+  parts.forEach((c, i) => { if (i && c.s - parts[i - 1].e > fs * 0.18 && !/\s$/.test(text) && !/^\s/.test(c.t.str)) text += ' '; text += c.t.str; });
   text = text.replace(/\s+$/, '');
-  const L = Math.min(...parts.map((c) => c.b.L)), R = Math.max(...parts.map((c) => c.b.R));
-  const T = Math.min(base[1] - fs * 0.95, ...parts.map((c) => c.b.T)), B = Math.max(base[1] + fs * 0.28, ...parts.map((c) => c.b.B));
-  const padX = fs * 0.06, padY = fs * 0.04;
-  const rect = { L: L - padX, T: T - padY, R: R + padX, B: B + padY };
+  const L = Math.min(...parts.map((c) => c.s)), R = Math.max(...parts.map((c) => c.e));
+  const padX = fs * 0.06, padY = fs * 0.04; const lo2 = -0.28 * fs - padY, hi2 = 0.95 * fs + padY;
+  const W = R - L + 2 * padX, H = hi2 - lo2; const mid = [(L + R) / 2, (lo2 + hi2) / 2];
+  const cx = o[0] + u[0] * mid[0] + v[0] * mid[1], cy = o[1] + u[1] * mid[0] + v[1] * mid[1];
+  // display box around the (possibly rotated) area, for colour sampling
+  const wc = [[L - padX, lo2], [R + padX, lo2], [L - padX, hi2], [R + padX, hi2]].map(([s1, s2]) => ap(g.t, o[0] + u[0] * s1 + v[0] * s2, o[1] + u[1] * s1 + v[1] * s2));
+  const rect = { L: Math.min(...wc.map((q) => q[0])), T: Math.min(...wc.map((q) => q[1])), R: Math.max(...wc.map((q) => q[0])), B: Math.max(...wc.map((q) => q[1])) };
   const { bg, fg } = sampleColors(el, rect);
-  const c1 = ap(g.i, rect.L, rect.T), c2 = ap(g.i, rect.R, rect.B);
-  const cover = { id: uid('a'), t: 'white', fill: bg, x: Math.min(c1[0], c2[0]), y: Math.min(c1[1], c2[1]), w: Math.abs(c2[0] - c1[0]), h: Math.abs(c2[1] - c1[1]), edit: true };
+  const cover = { id: uid('a'), t: 'white', fill: bg, x: cx - W / 2, y: cy - H / 2, w: W, h: H, edit: true }; if (theta) cover.rot = theta;
   const ff = fontOf(el, parts[0].t);
-  const uni = needsUni(text); const a = { id: uid('a'), t: 'text', r: tr(p), text: uni ? text : sanitize(text), uni, size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, italic: ff.italic || undefined, w: 1, h: 1, ax: 0, ay: 0, orig: uni ? text : sanitize(text), cover: cover.id };
+  const uni = needsUni(text); const a = { id: uid('a'), t: 'text', r: theta, text: uni ? text : sanitize(text), uni, size: Math.round(fs * 100) / 100, color: fg, font: ff.font, bold: ff.bold, italic: ff.italic || undefined, w: 1, h: 1, ax: 0, ay: 0, orig: uni ? text : sanitize(text), cover: cover.id };
   const bx = textBox(a); a.w = bx.w; a.h = bx.h;
-  const left = Math.min(...parts.map((c) => ap(g.t, c.t.transform[4], c.t.transform[5])[0]));
-  const [ax, ay] = ap(g.i, left, base[1] - BASE * a.size + a.h); a.ax = ax; a.ay = ay;
+  const { V: V2 } = UV(theta); const sx = o[0] + u[0] * L, sy = o[1] + u[1] * L; const up = BASE * a.size - a.h;
+  a.ax = sx + V2[0] * up; a.ay = sy + V2[1] * up;
   p.annots.push(cover, a); openEditor(p, a, true);
   const ta = $('#textEditor'); if (ta) { ta.select(); ta.addEventListener('input', () => { a.touched = true; }, { once: true }); }
 }
@@ -2243,7 +2253,7 @@ function refreshFormatBar() {
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) parts.push(fmtBarHtml());
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
   if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
-  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const al = (fmtCur().align || 'left'); parts.push(`<button class="tbtn" data-fa="1" title="Alignment: ${al}" aria-label="Alignment ${al}">${icon({ left: 'tal', center: 'tac', right: 'tar', justify: 'taj' }[al])}</button><button class="tbtn" data-fp="1" aria-pressed="${!!S.fmtOpen}" title="All text and box formatting">${icon('fmt')}<span class="tb-hide-m">Format</span></button>`); }
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {

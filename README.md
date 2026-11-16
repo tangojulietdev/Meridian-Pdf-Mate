@@ -21,7 +21,7 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Free rotation for your own markup: text, text boxes, notes, stamps, images, signatures, shapes, lines and drawings, with a rotate handle (Shift snaps to 15°) and 90° buttons.
 - Zoom from 7.5% to 3600%, anchored where you scroll or pinch, with a sharp detail layer for large drawings and a zoom presets menu.
 
-Original text lines can be replaced with Edit text (D); for anything else cover it with Whiteout and type over it.
+Original text lines, horizontal, vertical or at any angle, can be replaced with Edit text (D); for anything else cover it with Whiteout and type over it.
 
 ## Structure
 
