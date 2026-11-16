@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.0.1';
+const VERSION = '3.0.2';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -305,7 +305,7 @@ function applyT(a, T, uniform) {
   // anchor: keep the corner that maps to the same relative position
   const [ax, ay] = f(a.ax, a.ay); a.ax = ax; a.ay = ay;
   if (a.t === 'text' && a.box) { if (Math.abs(su - 1) > 1e-6) a.w = Math.max(a.size * 2, a.w * Math.abs(su)); if (Math.abs(sv - 1) > 1e-6) a.minH = Math.max(0, a.h * Math.abs(sv)); const b = textBox(a); a.h = b.h; }
-  else if (a.t === 'text') { a.size = clamp(a.size * Math.abs(sv), 4, 300); const b = textBox(a); a.w = b.w; a.h = b.h; }
+  else if (a.t === 'text') { a.size = clamp(a.size * Math.abs(sv), 0.25, 300); const b = textBox(a); a.w = b.w; a.h = b.h; }
   else { a.w = Math.max(2, a.w * su); a.h = Math.max(2, a.h * sv); }
 }
 function arrowHead(a) {
@@ -2251,7 +2251,7 @@ function refreshFormatBar() {
   if (!['white', 'image', 'redact', 'stamp', 'edittext', 'crop'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
   if (kind === 'note') parts.push(sw(NOTE_BGS, s ? s.a.bg : (S.style.noteBg || '#fff3a6'), 'data-bg'));
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) parts.push(fmtBarHtml());
-  if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
+  if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 100) / 100} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
   if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
   const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const al = (fmtCur().align || 'left'); parts.push(`<button class="tbtn" data-fa="1" title="Alignment: ${al}" aria-label="Alignment ${al}">${icon({ left: 'tal', center: 'tac', right: 'tar', justify: 'taj' }[al])}</button><button class="tbtn" data-fp="1" aria-pressed="${!!S.fmtOpen}" title="All text and box formatting">${icon('fmt')}<span class="tb-hide-m">Format</span></button>`); }
@@ -2284,7 +2284,7 @@ $('#formatBar').addEventListener('click', (e) => {
     refreshFormatBar();
   } else if (st) {
     const d = +st.dataset.d;
-    if (st.dataset.step === 'size') { const steps = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72]; const v = s ? s.a.size : S.style.size; const i = steps.findIndex((x) => x >= v - 0.01); const ni = clamp((i < 0 ? steps.length - 1 : i) + d, 0, steps.length - 1); const nv = steps[ni]; if (!s) { S.style.size = nv; saveStyle(); } else applyStyleToSel((a) => setText(a, null, nv)); }
+    if (st.dataset.step === 'size') { const steps = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96, 120, 160, 200, 300]; const v = s ? s.a.size : S.style.size; const i = steps.findIndex((x) => x >= v - 0.01); const ni = clamp((i < 0 ? steps.length - 1 : i) + d, 0, steps.length - 1); const nv = steps[ni]; if (!s) { S.style.size = nv; saveStyle(); } else applyStyleToSel((a) => setText(a, null, nv)); }
     else { const steps = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12]; const v = s ? s.a.width : S.style.width; const i = steps.findIndex((x) => x >= v - 0.01); const nv = steps[clamp((i < 0 ? steps.length - 1 : i) + d, 0, steps.length - 1)]; S.style.width = nv; saveStyle(); if (s) applyStyleToSel((a) => { a.width = nv; }); }
     refreshFormatBar();
   } else if (act) {
@@ -2370,7 +2370,7 @@ function fmtPanelHtml() {
   const ink = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#000000';
   return `<div class="fp-head"><b>Format text</b><button class="tbtn" data-fp-close aria-label="Close">${icon('close')}</button></div><div class="fp-body">
   <div class="fp-sec"><h4>Font</h4>
-    <div class="fp-row">${fontSel}<div class="stepper"><button data-fsz="-1" aria-label="Smaller">−</button><input id="fpSize" type="number" min="4" max="300" step="0.5" value="${Math.round(c.size * 10) / 10}" aria-label="Font size"><button data-fsz="1" aria-label="Larger">+</button></div></div>
+    <div class="fp-row">${fontSel}<div class="stepper"><button data-fsz="-1" aria-label="Smaller">−</button><input id="fpSize" type="number" min="0.25" max="300" step="0.25" value="${Math.round(c.size * 100) / 100}" aria-label="Font size"><button data-fsz="1" aria-label="Larger">+</button></div></div>
     <div class="fp-row">${tog('bold', '<b>B</b>', 'Bold (Ctrl+B)')}${tog('italic', '<i>I</i>', 'Italic (Ctrl+I)')}${tog('underline', '<u>U</u>', 'Underline (Ctrl+U)')}${tog('strike', '<s>S</s>', 'Strikethrough (Ctrl+Shift+X)')}
       <span class="fp-gap"></span><button class="fbx" data-case="up" title="UPPERCASE">AB</button><button class="fbx" data-case="low" title="lowercase">ab</button><button class="fbx" data-case="title" title="Capitalise Each Word">Ab</button><button class="fbx" data-case="sent" title="Sentence case">A.</button></div>
     <label class="fp-lbl">Font colour</label>${swRow(TEXT_INKS, c.color, 'data-fc', `<label class="sw sw-pick" title="More colours" style="--c:${ink}"><input type="color" id="fpInk" value="${ink}" aria-label="Custom font colour"></label>`)}
@@ -2415,7 +2415,7 @@ function bindFmtPanel(pn) {
     const c = fmtCur();
     if (b.dataset.tg) fmtToggle(b.dataset.tg);
     else if (b.dataset.case) fmtCase(b.dataset.case);
-    else if (b.dataset.fsz) { const steps = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96, 120, 160]; const v = c.size; const d = +b.dataset.fsz; let nv = d > 0 ? steps.find((x) => x > v + 0.01) : [...steps].reverse().find((x) => x < v - 0.01); if (nv == null) nv = v; fmtSize(nv); }
+    else if (b.dataset.fsz) { const steps = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96, 120, 160, 200, 300]; const v = c.size; const d = +b.dataset.fsz; let nv = d > 0 ? steps.find((x) => x > v + 0.01) : [...steps].reverse().find((x) => x < v - 0.01); if (nv == null) nv = v; fmtSize(nv); }
     else if (b.dataset.fc != null) fmtSet({ color: b.dataset.fc });
     else if (b.dataset.fh != null) fmtSet({ hlc: b.dataset.fh || null });
     else if (b.dataset.fb != null) fmtSet({ bg: b.dataset.fb || null, grad: null });
@@ -2434,7 +2434,7 @@ function bindFmtPanel(pn) {
   pn.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'fpFont') fmtSet({ font: t.value });
-    else if (t.id === 'fpSize') { const v = clamp(+t.value || 12, 4, 300); fmtSize(v); }
+    else if (t.id === 'fpSize') { const v = clamp(Math.round((+t.value || 12) * 100) / 100, 0.25, 300); fmtSize(v); }
     else if (t.id === 'fpInk') fmtSet({ color: t.value });
     else if (t.id === 'fpFill') fmtSet({ bg: t.value, grad: null });
     else if (t.id === 'fpOp' || t.id === 'fpBgop') refreshFormatBar();
