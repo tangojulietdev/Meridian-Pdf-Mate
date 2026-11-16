@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.0.2';
+const VERSION = '3.1.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -1771,7 +1771,7 @@ async function pageText(p) {
   const k = p.docId + ':' + p.index; if (textCache.has(k)) return textCache.get(k);
   const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1);
   const tc = await pg.getTextContent({ disableNormalization: true });
-  const str = tc.items.map((it) => it.str || '').join(''); textCache.set(k, str); return str;
+  const str = tc.items.map((it) => (it.str || '') + (it.hasEOL ? '\n' : '')).join(''); textCache.set(k, str); return str;
 }
 
 /* Edit existing text: cover the original line and type a replacement in the same place and style */
@@ -2114,37 +2114,63 @@ viewer.addEventListener('touchend', (e) => {
 });
 
 /* ---------- Find in document ---------- */
-const FIND = { q: '', hits: [], i: -1 };
+const FIND = { q: '', hits: [], i: -1, re: null, cs: !!lsGet('pdfmate.find.cs', false), ww: !!lsGet('pdfmate.find.ww', false), sel: -1 };
+const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function findRe(q) { if (!q) return null; let src = escRe(q); if (FIND.ww) src = '(?<![\\p{L}\\p{N}_])' + src + '(?![\\p{L}\\p{N}_])'; try { return new RegExp(src, 'gu' + (FIND.cs ? '' : 'i')); } catch (e) { return new RegExp(escRe(q), 'g' + (FIND.cs ? '' : 'i')); } }
+const tsEl = () => $('#tsearch');
 function openFind() {
-  if (!S.pages.length) return;
-  let bar = $('#findbar');
-  if (!bar) {
-    bar = document.createElement('div'); bar.id = 'findbar'; bar.className = 'findbar'; bar.setAttribute('role', 'search');
-    bar.innerHTML = `${icon('search')}<input id="findInput" type="search" placeholder="Find in document" aria-label="Find in document" autocomplete="off" spellcheck="false"><span id="findCount" class="fcount"></span><button class="tbtn" id="findPrev" aria-label="Previous match" title="Previous (Shift+Enter)">${icon('up')}</button><button class="tbtn" id="findNext" aria-label="Next match" title="Next (Enter)">${icon('down')}</button><button class="tbtn" id="findClose" aria-label="Close find" title="Close (Esc)">${icon('close')}</button>`;
-    $('.stage').appendChild(bar);
-    let t; const inp = bar.querySelector('#findInput');
-    inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => runFind(inp.value), 220); });
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } else if (e.key === 'Escape') { e.preventDefault(); closeFind(); } e.stopPropagation(); });
-    bar.querySelector('#findPrev').onclick = () => stepFind(-1); bar.querySelector('#findNext').onclick = () => stepFind(1); bar.querySelector('#findClose').onclick = closeFind;
-  }
-  bar.hidden = false; const inp = $('#findInput'); inp.focus(); inp.select();
+  if (!S.pages.length) return; const ts = tsEl(); ts.classList.add('open');
+  const inp = $('#findInput'); inp.disabled = false; inp.focus(); inp.select(); if (FIND.hits.length) showResults(true);
 }
-function closeFind() { const bar = $('#findbar'); if (bar) bar.hidden = true; FIND.q = ''; FIND.hits = []; FIND.i = -1; $$('.findlayer', pagesEl).forEach((f) => f.innerHTML = ''); }
+function closeFind() { FIND.q = ''; FIND.hits = []; FIND.i = -1; FIND.re = null; FIND.sel = -1; const inp = $('#findInput'); if (inp) inp.value = ''; const ts = tsEl(); if (ts) ts.classList.remove('has-q'); const c = $('#findCount'); if (c) c.textContent = ''; showResults(false); $$('.findlayer', pagesEl).forEach((f) => f.innerHTML = ''); }
+function showResults(on) {
+  const box = $('#tsRes'); if (!box) return; if (!on || !FIND.q) { box.hidden = true; return; }
+  const max = 300; const h = FIND.hits; const esc2 = (t) => esc(t);
+  let html = `<div class="tr-h"><span>${h.length ? h.length + (h.length === 1 ? ' match' : ' matches') + ' in ' + new Set(h.map((x) => x.page)).size + (new Set(h.map((x) => x.page)).size === 1 ? ' page' : ' pages') : 'No matches'}</span><span>${[FIND.cs ? 'Match case' : '', FIND.ww ? 'Whole words' : ''].filter(Boolean).join(' · ')}</span></div>`;
+  html += h.slice(0, max).map((x, k) => `<button class="tr${k === FIND.i ? ' on' : ''}" role="option" data-k="${k}" aria-selected="${k === FIND.i}"><b>p. ${x.page + 1}</b><span>${esc2(x.pre)}<mark>${esc2(x.m)}</mark>${esc2(x.post)}</span></button>`).join('');
+  if (h.length > max) html += `<div class="tr-more">${h.length - max} more. Use Enter to keep going.</div>`;
+  box.innerHTML = html; box.hidden = false;
+  const on2 = box.querySelector('.tr.on'); if (on2) on2.scrollIntoView({ block: 'nearest' });
+}
 async function runFind(q) {
-  q = q.trim(); FIND.q = q.toLowerCase(); FIND.hits = []; FIND.i = -1;
-  const cnt = $('#findCount');
-  if (!q) { cnt.textContent = ''; $$('.findlayer', pagesEl).forEach((f) => f.innerHTML = ''); return; }
-  cnt.textContent = '…';
+  q = q.trim(); FIND.q = q; FIND.hits = []; FIND.i = -1; FIND.re = findRe(q);
+  const cnt = $('#findCount'); tsEl().classList.toggle('has-q', !!q);
+  if (!q) { cnt.textContent = ''; showResults(false); $$('.findlayer', pagesEl).forEach((f) => f.innerHTML = ''); return; }
+  cnt.textContent = '…'; const myRe = FIND.re;
   for (let i = 0; i < S.pages.length; i++) {
-    const str = (await pageText(S.pages[i])).toLowerCase(); if (FIND.q !== q.toLowerCase()) return;
-    let k = 0, n = 0; while ((k = str.indexOf(FIND.q, k)) >= 0) { FIND.hits.push({ page: i, n: n++ }); k += FIND.q.length; }
+    const str = await pageText(S.pages[i]); if (FIND.re !== myRe) return;
+    const re = new RegExp(myRe.source, myRe.flags); let m, n = 0;
+    while ((m = re.exec(str))) { if (!m[0].length) { re.lastIndex++; continue; } const k = m.index; FIND.hits.push({ page: i, n: n++, m: m[0], pre: (k > 22 ? '…' : '') + str.slice(Math.max(0, k - 22), k).replace(/\s+/g, ' '), post: str.slice(k + m[0].length, k + m[0].length + 70).replace(/\s+/g, ' ') }); if (FIND.hits.length > 20000) break; }
   }
-  if (!FIND.hits.length) { cnt.textContent = 'No matches'; paintFind(); return; }
+  if (!FIND.hits.length) { cnt.textContent = 'None'; paintFind(); if (document.activeElement === $('#findInput')) showResults(true); return; }
   const startAt = FIND.hits.findIndex((h) => h.page >= S.current); FIND.i = startAt < 0 ? 0 : startAt; showHit();
+  if (document.activeElement === $('#findInput')) showResults(true);
 }
-function stepFind(d) { if (!FIND.hits.length) return; FIND.i = (FIND.i + d + FIND.hits.length) % FIND.hits.length; showHit(); }
+(function initSearch() {
+  const ts = tsEl(); if (!ts) return; const inp = $('#findInput'); let t;
+  inp.addEventListener('input', () => { tsEl().classList.toggle('has-q', !!inp.value.trim()); clearTimeout(t); t = setTimeout(() => runFind(inp.value), 220); });
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); if (FIND.q !== inp.value.trim()) { clearTimeout(t); runFind(inp.value); } else stepFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (FIND.hits.length) { e.preventDefault(); stepFind(e.key === 'ArrowDown' ? 1 : -1); } }
+    else if (e.key === 'Escape') { e.preventDefault(); if (!$('#tsRes').hidden) showResults(false); else { closeFind(); inp.blur(); ts.classList.remove('open'); } }
+    e.stopPropagation();
+  });
+  inp.addEventListener('focus', () => { if (FIND.q) showResults(true); });
+  ts.addEventListener('focusout', () => setTimeout(() => { if (!ts.contains(document.activeElement)) { showResults(false); if (!FIND.q) ts.classList.remove('open'); } }, 160));
+  $('#tsIc').addEventListener('click', () => (ts.classList.contains('open') && document.activeElement === inp ? null : openFind()));
+  $('#findPrev').onclick = () => { stepFind(-1); inp.focus(); }; $('#findNext').onclick = () => { stepFind(1); inp.focus(); };
+  $('#findClose').onclick = () => { closeFind(); inp.focus(); };
+  $('#findOpts').onclick = (e) => {
+    const tog = (k, key) => { FIND[k] = !FIND[k]; lsSet(key, FIND[k]); $('#findOpts').classList.toggle('on', FIND.cs || FIND.ww); if (inp.value.trim()) runFind(inp.value); inp.focus(); };
+    openMenu(e.currentTarget, [{ h: 'Search options' }, { label: 'Match case', icon: FIND.cs ? 'check' : 'none', run: () => tog('cs', 'pdfmate.find.cs') }, { label: 'Whole words only', icon: FIND.ww ? 'check' : 'none', run: () => tog('ww', 'pdfmate.find.ww') }]);
+  };
+  $('#findOpts').classList.toggle('on', FIND.cs || FIND.ww);
+  $('#tsRes').addEventListener('pointerdown', (e) => e.preventDefault());
+  $('#tsRes').addEventListener('click', (e) => { const b = e.target.closest('.tr'); if (!b) return; FIND.i = +b.dataset.k; showHit(); showResults(true); });
+})();
+function stepFind(d) { if (!FIND.hits.length) return; FIND.i = (FIND.i + d + FIND.hits.length) % FIND.hits.length; showHit(); if (!$('#tsRes').hidden) showResults(true); }
 function showHit() {
-  const h = FIND.hits[FIND.i]; $('#findCount').textContent = `${FIND.i + 1} of ${FIND.hits.length}`;
+  const h = FIND.hits[FIND.i]; $('#findCount').textContent = `${FIND.i + 1}/${FIND.hits.length}`;
   const el = $$('.page', pagesEl)[h.page]; if (!el) return;
   paintFind();
   const cur = el.querySelector('.findlayer .cur');
@@ -2157,17 +2183,18 @@ function paintFind(only) {
     const fl = el.querySelector('.findlayer'); if (!fl) continue; fl.innerHTML = '';
     if (!FIND.q || !el._tlReady) continue;
     const idx = $$('.page', pagesEl).indexOf(el); const curN = FIND.hits[FIND.i] && FIND.hits[FIND.i].page === idx ? FIND.hits[FIND.i].n : -1;
-    const spans = $$('.textLayer span:not(.markedContent)', el).filter((sp) => sp.firstChild && sp.firstChild.nodeType === 3);
-    const nodes = []; let full = '';
-    for (const sp of spans) { nodes.push({ node: sp.firstChild, start: full.length }); full += sp.firstChild.data; }
-    const low = full.toLowerCase(); let k = 0, n = 0; const pr = el.getBoundingClientRect();
+    const tl = el.querySelector('.textLayer'); const nodes = []; let full = '';
+    if (tl) { const w = document.createTreeWalker(tl, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT); for (let nd = w.nextNode(); nd; nd = w.nextNode()) { if (nd.nodeType === 3) { if (nd.parentElement && nd.parentElement.tagName === 'SPAN' && !nd.parentElement.classList.contains('markedContent')) { nodes.push({ node: nd, start: full.length }); full += nd.data; } } else if (nd.tagName === 'BR') full += '\n'; } }
+    if (!FIND.re || !nodes.length) continue; const pr = el.getBoundingClientRect(); let n = 0;
     const locate = (off) => { let lo = 0; for (let i = 0; i < nodes.length; i++) if (nodes[i].start <= off) lo = i; else break; return [nodes[lo].node, off - nodes[lo].start]; };
-    while ((k = low.indexOf(FIND.q, k)) >= 0) {
+    const re = new RegExp(FIND.re.source, FIND.re.flags); let m;
+    while ((m = re.exec(full))) {
+      if (!m[0].length) { re.lastIndex++; continue; } const k = m.index, L = m[0].length;
       try {
-        const rg = document.createRange(); const [sn, so] = locate(k); const [en, eo] = locate(k + FIND.q.length - 1); rg.setStart(sn, so); rg.setEnd(en, Math.min(en.data.length, eo + 1));
+        const rg = document.createRange(); const [sn, so] = locate(k); const [en, eo] = locate(k + L - 1); rg.setStart(sn, so); rg.setEnd(en, Math.min(en.data.length, eo + 1));
         for (const r of rg.getClientRects()) { const d = document.createElement('i'); if (n === curN) d.className = 'cur'; Object.assign(d.style, { left: r.left - pr.left + 'px', top: r.top - pr.top + 'px', width: r.width + 'px', height: r.height + 'px' }); fl.appendChild(d); }
       } catch (e) {}
-      k += FIND.q.length; n++;
+      n++;
     }
   }
 }
@@ -2178,8 +2205,8 @@ const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d
 function buildTools() {
   $('#tools').innerHTML = '<div class="tgroup" role="group">' + TOOLS.map(([k, label, ic]) => {
     if (k === 'sep') return '</div><div class="tgroup" role="group">';
-    if (k.startsWith('g:')) { const g = k.slice(2); const cur = g === 'sign' ? 'sign' : (GROUPS[g].find((v) => v[0] === lastInGroup[g]) || GROUPS[g][0])[2]; return `<button class="tool grp" data-group="${g}" aria-haspopup="menu" aria-label="${label}" title="${label}">${icon(cur)}${CHEV}</button>`; }
-    return `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${label}" title="${label}">${icon(ic)}</button>`;
+    if (k.startsWith('g:')) { const g = k.slice(2); const cur = g === 'sign' ? 'sign' : (GROUPS[g].find((v) => v[0] === lastInGroup[g]) || GROUPS[g][0])[2]; return `<button class="tool grp" data-group="${g}" aria-haspopup="menu" aria-label="${label}" data-tip="${label}">${icon(cur)}${CHEV}</button>`; }
+    return `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${label}" data-tip="${label}">${icon(ic)}</button>`;
   }).join('') + '</div>';
 }
 function setTool(t) {
@@ -3338,6 +3365,7 @@ function updateChrome() {
   const has = S.pages.length > 0;
   $('#btnSave').disabled = !has; $('#btnPrint').disabled = !has; $('#tools').hidden = !has; $('#btnUndo').disabled = !S.hist.length; $('#btnRedo').disabled = !S.fut.length;
   $('#zoomIn').disabled = $('#zoomOut').disabled = $('#zoomLbl').disabled = !has;
+  { const fi = $('#findInput'); if (fi) fi.disabled = !has; const vd = $('#viewDock'); if (vd) vd.classList.toggle('nodoc', !has); if (!has) { const ts = $('#tsearch'); if (ts) ts.classList.remove('open'); } }
   $$('#sbFoot .tbtn').forEach((b) => b.disabled = !has);
   updateMeta();
 }
@@ -3533,6 +3561,7 @@ function boot() {
   $('#btnSidebar').innerHTML = icon('sidebar'); $('#btnUndo').innerHTML = icon('undo'); $('#btnRedo').innerHTML = icon('redo');
   $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('more'); $('#saveIc').outerHTML = icon('share');
   $('#zoomIn').innerHTML = icon('zin'); $('#zoomOut').innerHTML = icon('zout');
+  for (const b of $$('.toolbar .tbtn[title], #tsIc[title]')) { b.dataset.tip = b.getAttribute('title'); b.removeAttribute('title'); }
   const fi = { rotl: 'rotl', rotr: 'rotr', up: 'up', down: 'down', blank: 'blank', del: 'trash' };
   $$('#sbFoot [data-pa]').forEach((b) => { if (fi[b.dataset.pa]) b.innerHTML = icon(fi[b.dataset.pa]); });
   $('#emptyIc').innerHTML = `<svg viewBox="0 0 76 92" width="76" height="92" aria-hidden="true"><defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eef0f5"/></linearGradient></defs><path d="M10 2h40l24 24v58a6 6 0 0 1-6 6H10a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6z" fill="url(#eg)" stroke="rgba(0,0,0,.14)"/><path d="M50 2v18a6 6 0 0 0 6 6h18" fill="#e3e6ee" stroke="rgba(0,0,0,.14)"/><rect x="14" y="40" width="40" height="4" rx="2" fill="#d1d5df"/><rect x="14" y="50" width="48" height="4" rx="2" fill="#d1d5df"/><rect x="14" y="60" width="30" height="4" rx="2" fill="#d1d5df"/><path d="M16 78c5 0 7-10 11-10s2 10 7 10 4-5 7-5 3 4 8 3" fill="none" stroke="#007aff" stroke-width="2.4" stroke-linecap="round"/><rect x="4" y="10" width="26" height="14" rx="4" fill="#ff3b30"/><text x="17" y="20.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="-apple-system,Inter,sans-serif">PDF</text></svg>`;
