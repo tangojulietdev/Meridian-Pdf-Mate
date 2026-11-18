@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.4.0';
+const VERSION = '3.5.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -81,6 +81,7 @@ const IC = {
   hand: '<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 11.5V6a1.5 1.5 0 0 1 3 0v6"/><path d="M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.6-2.2L4.6 15.6a1.6 1.6 0 0 1 2.4-2.1L8 14.5"/>',
   note: '<path d="M5 4h14a1 1 0 0 1 1 1v10l-5 5H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M15 20v-4a1 1 0 0 1 1-1h4"/><path d="M8 9h8M8 12.5h5"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
+  shapes: '<circle cx="8" cy="8" r="5"/><path d="M13.5 13.5h7v7h-7z"/><path d="m8 14.5 4.2 6.5H3.8z"/>',
   redact: '<rect x="3" y="7" width="18" height="10" rx="1.5" fill="currentColor"/><path d="M3 4h7M14 20h7"/>',
   pagenum: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10.5 15.5h3M12 13v5" stroke-width="1.5"/>',
   watermark: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m8.5 17 7-7" stroke-dasharray="2 2"/>',
@@ -131,6 +132,7 @@ const S = {
   fit: true,
   dirty: false,
   hist: [], fut: [], last: '[]',
+  shapeKind: lsGet('pdfmate.shape', 'rrect'),
   style: lsGet('pdfmate.style', { ink: '#000000', hl: '#ffd60a', size: 12, width: 1.5 })
 };
 const INKS = [['Black', '#000000'], ['Blue', '#0040dd'], ['Red', '#d70015'], ['Green', '#1a7f37'], ['Orange', '#c93400']];
@@ -146,8 +148,10 @@ const GROUPS = {
   mark: [['tick', 'Tick', 'tick'], ['cross', 'Cross', 'cross']]
 };
 const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#0040dd'], ['CHECKED', '#1a7f37'], ['ORIGINAL', '#0040dd'], ['COPY', '#c93400'], ['REJECTED', '#d70015'], ['VOID', '#d70015'], ['CONFIDENTIAL', '#d70015'], ['URGENT', '#d70015']];
+const SHP_FILLS = [['No fill', 'none'], ['White', '#ffffff'], ['Light yellow', '#fff3a6'], ['Light blue', '#d6ecff'], ['Light green', '#d4f5c9'], ['Light pink', '#ffd9ec'], ['Light grey', '#e5e5ea'], ['See-through, line colour', 'tint']];
+const c0eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'darrow', 'shape', 'pen', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -268,7 +272,7 @@ function gradCanvas(a, k = 4) {
 
 /* ---------- Annotation geometry ---------- */
 const ORIENTED = new Set(['text', 'image', 'tick', 'cross']);
-const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact', 'cloud']);
+const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact', 'cloud', 'shape']);
 function rotPt(x, y, cx, cy, deg) { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); const dx = x - cx, dy = y - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c]; }
 const normDeg = (d) => { d = ((d % 360) + 360) % 360; d = Math.round(d * 1000) / 1000; return d >= 360 ? 0 : d; };
 const ROTATABLE = (a) => a.t !== 'mark';
@@ -317,14 +321,186 @@ function applyT(a, T, uniform) {
   else if (a.t === 'text') { a.size = clamp(a.size * Math.abs(sv), 0.25, 300); const b = textBox(a); a.w = b.w; a.h = b.h; }
   else { a.w = Math.max(2, a.w * su); a.h = Math.max(2, a.h * sv); }
 }
-function arrowHead(a) {
-  const [p0, p1] = a.pts; const dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy) || 1;
+function arrowHead(a) { const r = arrowHead1(a, a.pts[0], a.pts[1]); return a.both ? r.concat(arrowHead1(a, a.pts[1], a.pts[0])) : r; }
+function arrowHead1(a, p0, p1) {
+  const dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len, hl = Math.max(7, (a.width || 1.5) * 4.5), ang = 0.5;
   const c = Math.cos(ang), s = Math.sin(ang);
   const l = [p1[0] - hl * (ux * c - uy * s), p1[1] - hl * (uy * c + ux * s)];
   const r = [p1[0] - hl * (ux * c + uy * s), p1[1] - hl * (uy * c - ux * s)];
   return [[l, p1], [r, p1]];
 }
+/* ---------- Shapes gallery (3.5) ---------- */
+// Each shape is drawn in its own box: x to the right and y down from the top left corner, w wide and h high.
+function SP() {
+  const subs = []; let cur = null, px = 0, py = 0;
+  const o = {
+    subs,
+    M(x, y) { cur = { c: [['M', x, y]], open: true }; subs.push(cur); px = x; py = y; return o; },
+    L(x, y) { if (!cur) return o.M(x, y); if (Math.abs(x - px) > 1e-9 || Math.abs(y - py) > 1e-9) cur.c.push(['L', x, y]); px = x; py = y; return o; },
+    C(a, b, c, d, x, y) { cur.c.push(['C', a, b, c, d, x, y]); px = x; py = y; return o; },
+    Q(cx, cy, x, y) { return o.C(px + 2 / 3 * (cx - px), py + 2 / 3 * (cy - py), x + 2 / 3 * (cx - x), y + 2 / 3 * (cy - y), x, y); },
+    // Elliptical arc between two angles in degrees (y down, so 90 is the bottom).
+    A(cx, cy, rx, ry, t0, t1) {
+      const R = Math.PI / 180; o.L(cx + rx * Math.cos(t0 * R), cy + ry * Math.sin(t0 * R));
+      const n = Math.max(1, Math.ceil(Math.abs(t1 - t0) / 90)); const d = (t1 - t0) / n * R; const k = 4 / 3 * Math.tan(d / 4); let t = t0 * R;
+      for (let i = 0; i < n; i++) { const t2 = t + d, c1 = Math.cos(t), s1 = Math.sin(t), c2 = Math.cos(t2), s2 = Math.sin(t2); o.C(cx + rx * (c1 - k * s1), cy + ry * (s1 + k * c1), cx + rx * (c2 + k * s2), cy + ry * (s2 - k * c2), cx + rx * c2, cy + ry * s2); t = t2; }
+      return o;
+    },
+    P(pts) { pts.forEach(([x, y], i) => (i ? o.L(x, y) : o.M(x, y))); return o.Z(); },
+    Z() { if (cur) { cur.c.push(['Z']); cur.open = false; } cur = null; return o; },
+    O() { cur = null; return o; }
+  };
+  return o;
+}
+const rrPath = (p, x, y, w, h, r) => { r = Math.max(0, Math.min(r, w / 2, h / 2)); return p.A(x + w - r, y + r, r, r, -90, 0).A(x + w - r, y + h - r, r, r, 0, 90).A(x + r, y + h - r, r, r, 90, 180).A(x + r, y + r, r, r, 180, 270).Z(); };
+function fitPts(pts, w, h) { const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys); return pts.map(([x, y]) => [(x - x0) / ((x1 - x0) || 1) * w, (y - y0) / ((y1 - y0) || 1) * h]); }
+function regPts(n, w, h, start = -90, inner = 0) { const m = inner ? 2 * n : n, pts = []; for (let i = 0; i < m; i++) { const t = (start + i * 360 / m) * Math.PI / 180, r = inner && i % 2 ? inner : 1; pts.push([r * Math.cos(t), r * Math.sin(t)]); } return fitPts(pts, w, h); }
+const unitPts = (pts, w, h) => pts.map(([x, y]) => [x * w, y * h]);
+// Block arrow pointing right, u along the arrow (length L) and v across it (thickness T).
+const arrowPts = (L, T, both) => { const hl = Math.min(both ? L * 0.32 : L * 0.5, T * 0.5); return both ? [[0, T / 2], [hl, 0], [hl, T / 4], [L - hl, T / 4], [L - hl, 0], [L, T / 2], [L - hl, T], [L - hl, T * 0.75], [hl, T * 0.75], [hl, T]] : [[0, T / 4], [L - hl, T / 4], [L - hl, 0], [L, T / 2], [L - hl, T], [L - hl, T * 0.75], [0, T * 0.75]]; };
+const SHAPE_DEFS = {
+  rrect: ['Rounded rectangle', (p, w, h) => rrPath(p, 0, 0, w, h, Math.min(w, h) * 0.16)],
+  snip: ['Snipped rectangle', (p, w, h) => { const c = Math.min(w, h) * 0.22; p.P([[0, 0], [w - c, 0], [w, c], [w, h], [0, h]]); }],
+  snip2: ['Snipped corners', (p, w, h) => { const c = Math.min(w, h) * 0.2; p.P([[c, 0], [w - c, 0], [w, c], [w, h - c], [w - c, h], [c, h], [0, h - c], [0, c]]); }],
+  frame: ['Frame', (p, w, h) => { const t = Math.min(w, h) * 0.12; p.P([[0, 0], [w, 0], [w, h], [0, h]]); p.P([[t, t], [t, h - t], [w - t, h - t], [w - t, t]]); }],
+  triangle: ['Triangle', (p, w, h) => p.P([[w / 2, 0], [w, h], [0, h]])],
+  rtriangle: ['Right triangle', (p, w, h) => p.P([[0, 0], [w, h], [0, h]])],
+  diamond: ['Diamond', (p, w, h) => p.P([[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2]])],
+  para: ['Parallelogram', (p, w, h) => { const o = Math.min(w * 0.25, h * 0.6); p.P([[o, 0], [w, 0], [w - o, h], [0, h]]); }],
+  trap: ['Trapezoid', (p, w, h) => { const o = Math.min(w * 0.22, h * 0.6); p.P([[o, 0], [w - o, 0], [w, h], [0, h]]); }],
+  pentagon: ['Pentagon', (p, w, h) => p.P(regPts(5, w, h))],
+  hexagon: ['Hexagon', (p, w, h) => { const o = Math.min(w * 0.25, h * 0.29); p.P([[o, 0], [w - o, 0], [w, h / 2], [w - o, h], [o, h], [0, h / 2]]); }],
+  heptagon: ['Heptagon', (p, w, h) => p.P(regPts(7, w, h))],
+  octagon: ['Octagon', (p, w, h) => { const c = Math.min(w, h) * 0.29; p.P([[c, 0], [w - c, 0], [w, c], [w, h - c], [w - c, h], [c, h], [0, h - c], [0, c]]); }],
+  decagon: ['Decagon', (p, w, h) => p.P(regPts(10, w, h, 0))],
+  plus: ['Plus', (p, w, h) => { const a = w * 0.33, b = h * 0.33; p.P([[a, 0], [w - a, 0], [w - a, b], [w, b], [w, h - b], [w - a, h - b], [w - a, h], [a, h], [a, h - b], [0, h - b], [0, b], [a, b]]); }],
+  donut: ['Ring', (p, w, h) => { const t = Math.min(w, h) * 0.22; p.A(w / 2, h / 2, w / 2, h / 2, 0, 360).Z(); p.A(w / 2, h / 2, w / 2 - t, h / 2 - t, 360, 0).Z(); }],
+  noentry: ['No symbol', (p, w, h) => { const t = Math.min(w, h) * 0.17; p.A(w / 2, h / 2, w / 2, h / 2, 0, 360).Z(); p.A(w / 2, h / 2, w / 2 - t, h / 2 - t, 360, 0).Z(); const r1 = w / 2 - t, r2 = h / 2 - t, k = 0.35; p.P([[w / 2 - r1 * 0.62, h / 2 - r2 * 0.62 + k * t], [w / 2 - r1 * 0.62 + k * t, h / 2 - r2 * 0.62], [w / 2 + r1 * 0.62, h / 2 + r2 * 0.62 - k * t], [w / 2 + r1 * 0.62 - k * t, h / 2 + r2 * 0.62]]); }],
+  cylinder: ['Cylinder', (p, w, h) => { const r = Math.min(h * 0.14, w * 0.3); p.M(0, r).A(w / 2, r, w / 2, r, 180, 360).L(w, h - r).A(w / 2, h - r, w / 2, r, 0, 180).Z(); p.O().A(w / 2, r, w / 2, r, 180, 0).O(); }],
+  cube: ['Cube', (p, w, h) => { const d = Math.min(w, h) * 0.25; p.P([[d, 0], [w, 0], [w, h - d], [w - d, h], [0, h], [0, d]]); p.M(0, d).L(w - d, d).L(w, 0).O(); p.M(w - d, d).L(w - d, h).O(); }],
+  heart: ['Heart', (p, w, h) => { p.M(0.5 * w, 0.27 * h).C(0.5 * w, 0.1 * h, 0.36 * w, 0, 0.24 * w, 0).C(0.08 * w, 0, 0, 0.13 * h, 0, 0.3 * h).C(0, 0.58 * h, 0.3 * w, 0.76 * h, 0.5 * w, h).C(0.7 * w, 0.76 * h, w, 0.58 * h, w, 0.3 * h).C(w, 0.13 * h, 0.92 * w, 0, 0.76 * w, 0).C(0.64 * w, 0, 0.5 * w, 0.1 * h, 0.5 * w, 0.27 * h).Z(); }],
+  lightning: ['Lightning bolt', (p, w, h) => p.P(unitPts([[0.38, 0], [0.62, 0.29], [0.53, 0.33], [0.8, 0.58], [0.71, 0.62], [1, 1], [0.37, 0.69], [0.47, 0.65], [0.2, 0.44], [0.31, 0.4], [0, 0.13]], w, h))],
+  moon: ['Moon', (p, w, h) => { p.M(w, 0).C(0.45 * w, 0, 0, 0.22 * h, 0, 0.5 * h).C(0, 0.78 * h, 0.45 * w, h, w, h).C(0.62 * w, 0.86 * h, 0.4 * w, 0.7 * h, 0.4 * w, 0.5 * h).C(0.4 * w, 0.3 * h, 0.62 * w, 0.14 * h, w, 0).Z(); }],
+  smiley: ['Smiley face', (p, w, h) => { p.A(w / 2, h / 2, w / 2, h / 2, 0, 360).Z(); const ex = w * 0.06, ey = h * 0.08; p.A(w * 0.34, h * 0.36, ex, ey, 0, 360).Z(); p.A(w * 0.66, h * 0.36, ex, ey, 0, 360).Z(); p.O().A(w / 2, h * 0.5, w * 0.28, h * 0.24, 30, 150).O(); }],
+  teardrop: ['Teardrop', (p, w, h) => { p.M(w, 0).L(w, h / 2).A(w / 2, h / 2, w / 2, h / 2, 0, 270).Z(); }],
+  pie: ['Pie', (p, w, h) => { p.M(w / 2, h / 2).A(w / 2, h / 2, w / 2, h / 2, 0, 270).Z(); }],
+  lbracket: ['Left bracket', (p, w, h) => { const r = Math.min(w, h * 0.1); p.M(w, 0).Q(0, 0, 0, r).L(0, h - r).Q(0, h, w, h).O(); }],
+  rbracket: ['Right bracket', 'lbracket'],
+  lbrace: ['Left brace', (p, w, h) => { p.M(w, 0).Q(w / 2, 0, w / 2, h * 0.08).L(w / 2, h * 0.42).Q(w / 2, h / 2, 0, h / 2).Q(w / 2, h / 2, w / 2, h * 0.58).L(w / 2, h * 0.92).Q(w / 2, h, w, h).O(); }],
+  rbrace: ['Right brace', 'lbrace'],
+  arrR: ['Right arrow', (p, w, h) => p.P(arrowPts(w, h))],
+  arrL: ['Left arrow', (p, w, h) => p.P(arrowPts(w, h).map(([u, v]) => [w - u, v]))],
+  arrU: ['Up arrow', (p, w, h) => p.P(arrowPts(h, w).map(([u, v]) => [v, h - u]))],
+  arrD: ['Down arrow', (p, w, h) => p.P(arrowPts(h, w).map(([u, v]) => [v, u]))],
+  arrLR: ['Left and right arrow', (p, w, h) => p.P(arrowPts(w, h, true))],
+  arrUD: ['Up and down arrow', (p, w, h) => p.P(arrowPts(h, w, true).map(([u, v]) => [v, u]))],
+  arr4: ['Four way arrow', (p, w, h) => { const m = Math.min(w, h), cx = w / 2, cy = h / 2, s = m * 0.09, hh = m * 0.19, hl = m * 0.2; p.P([[cx, 0], [cx + hh, hl], [cx + s, hl], [cx + s, cy - s], [w - hl, cy - s], [w - hl, cy - hh], [w, cy], [w - hl, cy + hh], [w - hl, cy + s], [cx + s, cy + s], [cx + s, h - hl], [cx + hh, h - hl], [cx, h], [cx - hh, h - hl], [cx - s, h - hl], [cx - s, cy + s], [hl, cy + s], [hl, cy + hh], [0, cy], [hl, cy - hh], [hl, cy - s], [cx - s, cy - s], [cx - s, hl], [cx - hh, hl]]); }],
+  notched: ['Notched right arrow', (p, w, h) => { const q = arrowPts(w, h); const n = Math.min(w * 0.18, h * 0.3); p.P([...q, [n, h / 2]]); }],
+  chevron: ['Chevron', (p, w, h) => { const d = Math.min(w * 0.45, h * 0.5); p.P([[0, 0], [w - d, 0], [w, h / 2], [w - d, h], [0, h], [d, h / 2]]); }],
+  homeplate: ['Pentagon arrow', (p, w, h) => { const d = Math.min(w * 0.45, h * 0.5); p.P([[0, 0], [w - d, 0], [w, h / 2], [w - d, h], [0, h]]); }],
+  uturn: ['U-turn arrow', (p, w, h) => { const t = Math.min(w, h) * 0.2, hw = Math.min(w * 0.22, h * 0.2), r = Math.min(w * 0.4, h * 0.42); const xr = w - hw - t / 2; p.M(0, h).L(0, r).A(r, r, r, r, 180, 270).L(xr - r + t / 2, 0).A(xr - r + t / 2, r, r, r, 270, 360).L(xr + t / 2, h * 0.62).L(w, h * 0.62).L(xr, h * 0.98).L(xr - hw - t / 2, h * 0.62).L(xr - t / 2, h * 0.62).L(xr - t / 2, r).A(xr - r + t / 2, r, r - t, r - t, 360, 270).L(r, t).A(r, r, r - t, r - t, 270, 180).L(t, h).Z(); }],
+  circArrow: ['Curved arrow', (p, w, h) => { const t = Math.min(w, h) * 0.16, cx = w / 2, cy = h * 0.58, rx = w / 2 - t * 0.9, ry = h * 0.58 - t; p.A(cx, cy, rx + t / 2, ry + t / 2, 180, 335).L(cx + (rx + t * 1.4) * Math.cos(335 * Math.PI / 180), cy + (ry + t * 1.4) * Math.sin(335 * Math.PI / 180)).L(w, cy).L(cx + (rx - t * 1.4) * Math.cos(335 * Math.PI / 180), cy + (ry - t * 1.4) * Math.sin(335 * Math.PI / 180)).L(cx + (rx - t / 2) * Math.cos(335 * Math.PI / 180), cy + (ry - t / 2) * Math.sin(335 * Math.PI / 180)).A(cx, cy, rx - t / 2, ry - t / 2, 335, 180).Z(); }],
+  fdecision: ['Decision', 'diamond'], fdata: ['Data', 'para'], fterm: ['Terminator', (p, w, h) => rrPath(p, 0, 0, w, h, Math.min(w, h) / 2)],
+  falt: ['Alternate process', (p, w, h) => rrPath(p, 0, 0, w, h, Math.min(w, h) * 0.12)],
+  fpredef: ['Predefined process', (p, w, h) => { p.P([[0, 0], [w, 0], [w, h], [0, h]]); const a = Math.min(w * 0.12, h * 0.3); p.M(a, 0).L(a, h).O(); p.M(w - a, 0).L(w - a, h).O(); }],
+  fdoc: ['Document', (p, w, h) => { p.M(0, 0).L(w, 0).L(w, h * 0.8).C(w * 0.72, h * 0.62, w * 0.3, h * 1.06, 0, h * 0.86).Z(); }],
+  fprep: ['Preparation', (p, w, h) => { const o = Math.min(w * 0.2, h * 0.5); p.P([[o, 0], [w - o, 0], [w, h / 2], [w - o, h], [o, h], [0, h / 2]]); }],
+  finput: ['Manual input', (p, w, h) => p.P([[0, h * 0.25], [w, 0], [w, h], [0, h]])],
+  fmanual: ['Manual operation', (p, w, h) => p.P([[0, 0], [w, 0], [w * 0.8, h], [w * 0.2, h]])],
+  foffpage: ['Off-page connector', (p, w, h) => p.P([[0, 0], [w, 0], [w, h * 0.78], [w / 2, h], [0, h * 0.78]])],
+  fcard: ['Card', (p, w, h) => { const c = Math.min(w, h) * 0.25; p.P([[c, 0], [w, 0], [w, h], [0, h], [0, c]]); }],
+  fdelay: ['Delay', (p, w, h) => { p.M(0, 0).L(w / 2, 0).A(w / 2, h / 2, w / 2, h / 2, -90, 90).L(0, h).Z(); }],
+  fmerge: ['Merge', (p, w, h) => p.P([[0, 0], [w, 0], [w / 2, h]])],
+  fextract: ['Extract', 'triangle'], fdb: ['Database', 'cylinder'],
+  fdisplay: ['Display', (p, w, h) => { const a = w * 0.16; p.M(a, 0).L(w * 0.82, 0).A(w * 0.82, h / 2, w * 0.18, h / 2, -90, 90).L(a, h).L(0, h / 2).Z(); }],
+  fsum: ['Summing junction', (p, w, h) => { p.A(w / 2, h / 2, w / 2, h / 2, 0, 360).Z(); const k = 0.7071; p.M(w / 2 - w / 2 * k, h / 2 - h / 2 * k).L(w / 2 + w / 2 * k, h / 2 + h / 2 * k).O(); p.M(w / 2 + w / 2 * k, h / 2 - h / 2 * k).L(w / 2 - w / 2 * k, h / 2 + h / 2 * k).O(); }],
+  star4: ['4-point star', (p, w, h) => p.P(regPts(4, w, h, -90, 0.34))],
+  star5: ['5-point star', (p, w, h) => p.P(regPts(5, w, h, -90, 0.382))],
+  star6: ['6-point star', (p, w, h) => p.P(regPts(6, w, h, -90, 0.577))],
+  star7: ['7-point star', (p, w, h) => p.P(regPts(7, w, h, -90, 0.56))],
+  star8: ['8-point star', (p, w, h) => p.P(regPts(8, w, h, -90, 0.7))],
+  star10: ['10-point star', (p, w, h) => p.P(regPts(10, w, h, -90, 0.75))],
+  star12: ['12-point star', (p, w, h) => p.P(regPts(12, w, h, -90, 0.78))],
+  star16: ['16-point star', (p, w, h) => p.P(regPts(16, w, h, -90, 0.82))],
+  burst: ['Explosion', (p, w, h) => p.P(unitPts([[0.5, 0], [0.6, 0.24], [0.83, 0.1], [0.76, 0.34], [1, 0.36], [0.82, 0.52], [0.98, 0.72], [0.72, 0.66], [0.7, 0.93], [0.56, 0.75], [0.42, 1], [0.37, 0.75], [0.13, 0.87], [0.22, 0.62], [0, 0.56], [0.19, 0.44], [0.03, 0.23], [0.29, 0.29], [0.29, 0.05], [0.43, 0.23]], w, h))],
+  wave: ['Wave banner', (p, w, h) => { const a = h * 0.14; p.M(0, a).C(w * 0.3, -a, w * 0.6, a * 3, w, a).L(w, h - a).C(w * 0.7, h + a, w * 0.4, h - a * 3, 0, h - a).Z(); }],
+  ribbon: ['Ribbon', (p, w, h) => { const e = w * 0.16, n = w * 0.06, t = h * 0.2; p.P([[0, t], [e, t], [e, 0], [w - e, 0], [w - e, t], [w, t], [w - n, (h + t) / 2], [w, h], [w - e * 1.4, h], [w - e, h - t], [e, h - t], [e * 1.4, h], [0, h], [n, (h + t) / 2]]); }],
+  plaque: ['Plaque', (p, w, h) => { const r = Math.min(w, h) * 0.18; p.M(r, 0).L(w - r, 0).A(w, 0, r, r, 180, 90).L(w, h - r).A(w, h, r, r, 270, 180).L(r, h).A(0, h, r, r, 360, 270).L(0, r).A(0, 0, r, r, 90, 0).Z(); }],
+  callRect: ['Rectangle callout', (p, w, h) => p.P([[0, 0], [w, 0], [w, h * 0.72], [w * 0.42, h * 0.72], [w * 0.16, h], [w * 0.24, h * 0.72], [0, h * 0.72]])],
+  callRound: ['Rounded callout', (p, w, h) => { const b = h * 0.72, r = Math.min(w, b) * 0.18; p.A(w - r, r, r, r, -90, 0).A(w - r, b - r, r, r, 0, 90).L(w * 0.42, b).L(w * 0.16, h).L(w * 0.25, b).A(r, b - r, r, r, 90, 180).A(r, r, r, r, 180, 270).Z(); }],
+  callOval: ['Oval callout', (p, w, h) => { const cx = w / 2, cy = h * 0.38; p.A(cx, cy, w / 2, h * 0.38, 128, 460).L(w * 0.1, h).Z(); }],
+  callCloud: ['Thought bubble', (p, w, h) => { const cx = w / 2, cy = h * 0.4, rx = w * 0.44, ry = h * 0.33, N = 11, R = Math.PI / 180; const pt = (k) => { const t = (-90 + k * 360 / N) * R; return [cx + rx * Math.cos(t), cy + ry * Math.sin(t)]; }; p.M(...pt(0)); for (let k = 0; k < N; k++) { const a = pt(k), b = pt(k + 1); const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; p.Q(cx + (mx - cx) * 1.38, cy + (my - cy) * 1.38, b[0], b[1]); } p.Z(); p.A(w * 0.22, h * 0.86, w * 0.065, h * 0.055, 0, 360).Z(); p.A(w * 0.1, h * 0.96, w * 0.035, h * 0.035, 0, 360).Z(); }],
+  callLine: ['Line callout', (p, w, h) => { p.P([[w * 0.3, 0], [w, 0], [w, h * 0.55], [w * 0.3, h * 0.55]]); p.M(w * 0.3, h * 0.42).L(0, h).O(); }]
+};
+const MIRROR_X = new Set(['rbracket', 'rbrace']);
+function shapeSubs(kind, w, h) {
+  let def = SHAPE_DEFS[kind] || SHAPE_DEFS.rrect; let fn = def[1]; while (typeof fn === 'string') fn = (SHAPE_DEFS[fn] || SHAPE_DEFS.rrect)[1];
+  const p = SP(); fn(p, Math.max(w, 0.01), Math.max(h, 0.01)); p.Z();
+  if (MIRROR_X.has(kind)) for (const s of p.subs) for (const c of s.c) for (let i = 1; i < c.length; i += 2) c[i] = w - c[i];
+  return p.subs;
+}
+function subD(sub, map) { let d = ''; for (const c of sub.c) { if (c[0] === 'Z') { d += 'Z'; continue; } d += c[0]; for (let i = 1; i < c.length; i += 2) { const q = map(c[i], c[i + 1]); d += (i > 1 ? ' ' : '') + (Math.round(q[0] * 1000) / 1000) + ' ' + (Math.round(q[1] * 1000) / 1000); } } return d; }
+const shapeLabel = (k) => (SHAPE_DEFS[k] || ['Shape'])[0];
+function shapeSvgNodes(g, a) {
+  const w = a.width || 1.5; const fill = a.fill || 'none';
+  for (const s of shapeSubs(a.kind, a.w, a.h)) g.appendChild(sv('path', { d: subD(s, (x, y) => [a.x + x, a.y + a.h - y]), fill: s.open ? 'none' : fill, 'fill-opacity': a.fop == null ? 1 : a.fop, stroke: a.color, 'stroke-width': w, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+}
+// Gallery: [header, [[label, tool, kind, thumbW, thumbH], ...]]
+const SHAPE_GALLERY = [
+  ['Lines', [['Line', 'line'], ['Arrow', 'arrow'], ['Double arrow', 'darrow'], ['Freehand', 'pen']]],
+  ['Rectangles', [['Rectangle', 'rect'], ['Rounded rectangle', 'shape', 'rrect'], ['Snipped rectangle', 'shape', 'snip'], ['Snipped corners', 'shape', 'snip2'], ['Frame', 'shape', 'frame']]],
+  ['Basic shapes', [['Ellipse', 'ellipse'], ['Triangle', 'shape', 'triangle', 18, 16], ['Right triangle', 'shape', 'rtriangle', 18, 16], ['Diamond', 'shape', 'diamond', 18, 18], ['Parallelogram', 'shape', 'para'], ['Trapezoid', 'shape', 'trap'], ['Pentagon', 'shape', 'pentagon', 18, 18], ['Hexagon', 'shape', 'hexagon', 20, 17], ['Heptagon', 'shape', 'heptagon', 18, 18], ['Octagon', 'shape', 'octagon', 18, 18], ['Decagon', 'shape', 'decagon', 18, 18], ['Plus', 'shape', 'plus', 18, 18], ['Ring', 'shape', 'donut', 18, 18], ['No symbol', 'shape', 'noentry', 18, 18], ['Cylinder', 'shape', 'cylinder', 14, 19], ['Cube', 'shape', 'cube', 18, 18], ['Heart', 'shape', 'heart', 19, 17], ['Lightning bolt', 'shape', 'lightning', 16, 20], ['Moon', 'shape', 'moon', 12, 19], ['Smiley face', 'shape', 'smiley', 18, 18], ['Teardrop', 'shape', 'teardrop', 18, 18], ['Pie', 'shape', 'pie', 18, 18], ['Revision cloud', 'cloud'], ['Left bracket', 'shape', 'lbracket', 6, 19], ['Right bracket', 'shape', 'rbracket', 6, 19], ['Left brace', 'shape', 'lbrace', 7, 19], ['Right brace', 'shape', 'rbrace', 7, 19]]],
+  ['Block arrows', [['Right arrow', 'shape', 'arrR', 20, 14], ['Left arrow', 'shape', 'arrL', 20, 14], ['Up arrow', 'shape', 'arrU', 14, 20], ['Down arrow', 'shape', 'arrD', 14, 20], ['Left and right arrow', 'shape', 'arrLR', 20, 12], ['Up and down arrow', 'shape', 'arrUD', 12, 20], ['Four way arrow', 'shape', 'arr4', 19, 19], ['Notched right arrow', 'shape', 'notched', 20, 14], ['Chevron', 'shape', 'chevron', 18, 14], ['Pentagon arrow', 'shape', 'homeplate', 20, 13], ['U-turn arrow', 'shape', 'uturn', 18, 18], ['Curved arrow', 'shape', 'circArrow', 20, 14]]],
+  ['Flowchart', [['Process', 'rect'], ['Alternate process', 'shape', 'falt'], ['Decision', 'shape', 'fdecision', 20, 16], ['Data', 'shape', 'fdata'], ['Predefined process', 'shape', 'fpredef'], ['Document', 'shape', 'fdoc'], ['Terminator', 'shape', 'fterm', 20, 11], ['Preparation', 'shape', 'fprep', 20, 13], ['Manual input', 'shape', 'finput'], ['Manual operation', 'shape', 'fmanual'], ['Connector', 'ellipse', null, 16, 16], ['Off-page connector', 'shape', 'foffpage', 16, 18], ['Card', 'shape', 'fcard'], ['Delay', 'shape', 'fdelay'], ['Merge', 'shape', 'fmerge', 18, 15], ['Extract', 'shape', 'fextract', 18, 15], ['Database', 'shape', 'fdb', 14, 19], ['Display', 'shape', 'fdisplay'], ['Summing junction', 'shape', 'fsum', 18, 18]]],
+  ['Stars and banners', [['4-point star', 'shape', 'star4', 19, 19], ['5-point star', 'shape', 'star5', 20, 19], ['6-point star', 'shape', 'star6', 19, 19], ['7-point star', 'shape', 'star7', 19, 19], ['8-point star', 'shape', 'star8', 19, 19], ['10-point star', 'shape', 'star10', 19, 19], ['12-point star', 'shape', 'star12', 19, 19], ['16-point star', 'shape', 'star16', 19, 19], ['Explosion', 'shape', 'burst', 20, 19], ['Wave banner', 'shape', 'wave', 20, 14], ['Ribbon', 'shape', 'ribbon', 21, 13], ['Plaque', 'shape', 'plaque', 20, 15]]],
+  ['Callouts', [['Rectangle callout', 'shape', 'callRect', 20, 18], ['Rounded callout', 'shape', 'callRound', 20, 18], ['Oval callout', 'shape', 'callOval', 20, 18], ['Thought bubble', 'shape', 'callCloud', 20, 18], ['Line callout', 'shape', 'callLine', 20, 16]]]
+];
+const FILLABLE = new Set(['rect', 'ellipse', 'shape']);
+const SHAPE_TOOLS = new Set(['rect', 'ellipse', 'line', 'arrow', 'darrow', 'cloud', 'shape']);
+function shapeThumb(it) {
+  const [, tool, kind, tw = 20, th = 15] = it; const ox = (24 - tw) / 2, oy = (24 - th) / 2;
+  const S1 = (d) => `<path d="${d}"/>`;
+  let body = '';
+  if (tool === 'shape') body = shapeSubs(kind, tw, th).map((s) => S1(subD(s, (x, y) => [ox + x, oy + y]))).join('');
+  else if (tool === 'rect') body = `<rect x="2" y="4.5" width="20" height="15" rx="0.5"/>`;
+  else if (tool === 'ellipse') body = `<ellipse cx="12" cy="12" rx="${tw / 2}" ry="${th / 2}"/>`;
+  else if (tool === 'line') body = S1('M4 20 20 4');
+  else if (tool === 'arrow') body = S1('M4 20 20 4M12 4h8v8');
+  else if (tool === 'darrow') body = S1('M4 20 20 4M13 4h7v7M11 20H4v-7');
+  else return icon(tool === 'pen' ? 'pen' : 'cloud');
+  return `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+const recentShapes = () => { const r = lsGet('pdfmate.shapesRecent', []); return Array.isArray(r) ? r : []; };
+const galleryItem = (tool, kind) => { for (const [, list] of SHAPE_GALLERY) for (const it of list) if (it[1] === tool && (tool !== 'shape' || it[2] === kind)) return it; return null; };
+// Opens the shape gallery under a button. onPick(item) runs on a choice; replace mode only lists closed shapes.
+function openShapes(anchor, onPick, replace) {
+  closeMenu();
+  const m = document.createElement('div'); m.className = 'menu shapegal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', replace ? 'Change shape' : 'Insert shape');
+  const items = []; const btn = (it) => { items.push(it); return `<button class="sg" data-i="${items.length - 1}" title="${esc(it[0])}" aria-label="${esc(it[0])}">${shapeThumb(it)}</button>`; };
+  let html = `<div class="sg-head"><b>${replace ? 'Change shape' : 'Insert shape'}</b><span>${replace ? 'Pick the new outline' : 'Pick one, then drag on the page. Shift keeps it in proportion'}</span></div>`;
+  const rec = replace ? [] : recentShapes().map(([t, k]) => galleryItem(t, k)).filter(Boolean);
+  if (rec.length) html += `<div class="mh">Recently used</div><div class="sg-grid">${rec.map(btn).join('')}</div>`;
+  for (const [hd, list] of SHAPE_GALLERY) { const l2 = replace ? list.filter((it) => it[1] === 'shape' || it[1] === 'rect' || it[1] === 'ellipse').filter((it) => !(it[1] === 'shape' && shapeSubs(it[2], 10, 10).every((s) => s.open))) : list; if (l2.length) html += `<div class="mh">${hd}</div><div class="sg-grid">${l2.map(btn).join('')}</div>`; }
+  m.innerHTML = html;
+  m.addEventListener('click', (e) => { const b = e.target.closest('button[data-i]'); if (!b) return; const it = items[+b.dataset.i]; closeMenu(); if (!replace) { const r = recentShapes().filter(([t, k]) => !(t === it[1] && (k || null) === (it[2] || null))); r.unshift([it[1], it[2] || null]); lsSet('pdfmate.shapesRecent', r.slice(0, 10)); } onPick(it); });
+  document.body.appendChild(m); menuEl = m;
+  const r = anchor.getBoundingClientRect(), mw = m.offsetWidth, mh = Math.min(m.offsetHeight, innerHeight - 16);
+  m.style.left = clamp(r.left, 8, innerWidth - mw - 8) + 'px';
+  m.style.top = (r.bottom + 6 + mh > innerHeight - 8 && r.top - mh - 6 > 8 ? r.top - mh - 6 : clamp(r.bottom + 6, 8, innerHeight - mh - 8)) + 'px';
+  m.style.maxHeight = (innerHeight - 16) + 'px'; m.style.overflowY = 'auto';
+  setTimeout(() => { document.addEventListener('pointerdown', menuOutside, true); document.addEventListener('keydown', menuKey); const f = m.querySelector('button'); if (f) f.focus(); }, 0);
+}
+function pickShape(it) {
+  const [, tool, kind] = it;
+  if (tool === 'shape') { S.shapeKind = kind; lsSet('pdfmate.shape', kind); }
+  setTool(tool); toast(`${it[0]}: drag on the page, or tap for a standard size`);
+}
+function changeShape(anchor) {
+  const s = selectedAnn(); if (!s) return;
+  openShapes(anchor, (it) => { applyStyleToSel((a) => { if (!['rect', 'ellipse', 'shape'].includes(a.t)) return; a.t = it[1]; if (it[1] === 'shape') a.kind = it[2]; else delete a.kind; }); refreshFormatBar(); }, true);
+}
+
 const TICK = [[0.08, 0.55], [0.38, 0.86], [0.94, 0.12]];
 const CROSS = [[[0.14, 0.14], [0.86, 0.86]], [[0.86, 0.14], [0.14, 0.86]]];
 function orientPt(a, p, q) { const { U, V } = UV(a.r); const u = p * a.w, v = (1 - q) * a.h; return [a.ax + u * U[0] + v * V[0], a.ay + u * U[1] + v * V[1]]; }
@@ -847,8 +1023,9 @@ function annNode(a) {
   if (a.rot && BOXES.has(a.t)) g.setAttribute('transform', `rotate(${a.rot} ${a.x + a.w / 2} ${a.y + a.h / 2})`);
   if (a.t === 'white') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: a.fill || '#ffffff' }));
   else if (a.t === 'hl') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: a.color, 'fill-opacity': 0.4, style: 'mix-blend-mode:multiply' }));
-  else if (a.t === 'rect') g.appendChild(sv('rect', { x: a.x + w / 2, y: a.y + w / 2, width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), fill: 'none', stroke: a.color, 'stroke-width': w }));
-  else if (a.t === 'ellipse') g.appendChild(sv('ellipse', { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: Math.max(0, a.w / 2 - w / 2), ry: Math.max(0, a.h / 2 - w / 2), fill: 'none', stroke: a.color, 'stroke-width': w }));
+  else if (a.t === 'rect') g.appendChild(sv('rect', { x: a.x + w / 2, y: a.y + w / 2, width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), fill: a.fill || 'none', 'fill-opacity': a.fop == null ? 1 : a.fop, stroke: a.color, 'stroke-width': w }));
+  else if (a.t === 'ellipse') g.appendChild(sv('ellipse', { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: Math.max(0, a.w / 2 - w / 2), ry: Math.max(0, a.h / 2 - w / 2), fill: a.fill || 'none', 'fill-opacity': a.fop == null ? 1 : a.fop, stroke: a.color, 'stroke-width': w }));
+  else if (a.t === 'shape') shapeSvgNodes(g, a);
   else if (a.t === 'redact') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: '#000000' }));
   else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') measSvg(g, a);
   else if (a.t === 'mark') {
@@ -1177,8 +1354,8 @@ pagesEl.addEventListener('pointerdown', (e) => {
   if (tool === 'crop') { drag = { mode: 'crop', p, el, g, start: pt, startPdf: pdfPt, id: e.pointerId, cur: pdfPt }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return; }
   // drag-to-create tools
   let a;
-  if (BOXES.has(tool)) a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width };
-  else if (tool === 'line' || tool === 'arrow' || tool === 'measure') { a = { id: uid('a'), t: tool, pts: [pdfPt, pdfPt.slice()], color: tool === 'measure' && S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: tool === 'measure' ? Math.min(S.style.width, 1.5) : S.style.width }; if (tool === 'measure') a.sc = Object.assign({}, mscOf({})); }
+  if (BOXES.has(tool)) { a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width }; if (tool === 'shape') a.kind = S.shapeKind; if (FILLABLE.has(tool) && S.style.fill && S.style.fill !== 'none') { a.fill = S.style.fill === 'tint' ? a.color : S.style.fill; if (S.style.fill === 'tint') a.fop = 0.25; } }
+  else if (tool === 'line' || tool === 'arrow' || tool === 'darrow' || tool === 'measure') { a = { id: uid('a'), t: tool === 'darrow' ? 'arrow' : tool, pts: [pdfPt, pdfPt.slice()], color: tool === 'measure' && S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: tool === 'measure' ? Math.min(S.style.width, 1.5) : S.style.width }; if (tool === 'measure') a.sc = Object.assign({}, mscOf({})); if (tool === 'darrow') a.both = true; }
   else if (tool === 'pen') a = { id: uid('a'), t: 'pen', pts: [pdfPt], color: S.style.ink, width: S.style.width };
   if (!a) return;
   p.annots.push(a);
@@ -1195,7 +1372,7 @@ pagesEl.addEventListener('pointermove', (e) => {
   if (drag.mode === 'tbox') { MARQ = { pageId: p.id, L: Math.min(pt[0], drag.start[0]), T: Math.min(pt[1], drag.start[1]), R: Math.max(pt[0], drag.start[0]), B: Math.max(pt[1], drag.start[1]) }; drawOverlay(p, el); return; }
   if (drag.mode === 'crop') { drag.cur = pdfPt; const [x0, y0] = drag.startPdf; p.crop = [Math.min(x0, pdfPt[0]), Math.min(y0, pdfPt[1]), Math.max(x0, pdfPt[0]), Math.max(y0, pdfPt[1])]; drawOverlay(p, el); return; }
   if (drag.mode === 'create') {
-    if (BOXES.has(a.t)) { const [x0, y0] = drag.startPdf; a.x = Math.min(x0, pdfPt[0]); a.y = Math.min(y0, pdfPt[1]); a.w = Math.abs(pdfPt[0] - x0); a.h = Math.abs(pdfPt[1] - y0); }
+    if (BOXES.has(a.t)) { const [x0, y0] = drag.startPdf; let dx = pdfPt[0] - x0, dy = pdfPt[1] - y0; if (e.shiftKey && FILLABLE.has(a.t)) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = (dx < 0 ? -1 : 1) * m; dy = (dy < 0 ? -1 : 1) * m; } a.x = Math.min(x0, x0 + dx); a.y = Math.min(y0, y0 + dy); a.w = Math.abs(dx); a.h = Math.abs(dy); }
     else if (a.t === 'pen') { const lp = a.pts[a.pts.length - 1]; if (Math.hypot(lp[0] - pdfPt[0], lp[1] - pdfPt[1]) > 0.6 / S.zoom + 0.3) a.pts.push(pdfPt); }
     else { let q = pdfPt; if (e.shiftKey) { const [x0, y0] = a.pts[0]; const dx = q[0] - x0, dy = q[1] - y0, an = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(dx, dy); q = [x0 + L * Math.cos(an), y0 + L * Math.sin(an)]; } a.pts[1] = q; }
     drawOverlay(p, el); return;
@@ -1245,9 +1422,10 @@ function endDrag(e) {
   if (mode === 'create') {
     let keep = true; const g = geo(p); const b = dispBox(a, g); const big = Math.max(b.R - b.L, b.B - b.T) * S.zoom;
     if (BOXES.has(a.t) && big < 6) {
-      if (a.t === 'white' || a.t === 'hl' || a.t === 'redact') { const [ax, ay] = ap(g.i, b.L - 50, b.T + 8); const [bx, by] = ap(g.i, b.L + 50, b.T - 8); a.x = Math.min(ax, bx); a.y = Math.min(ay, by); a.w = Math.abs(bx - ax); a.h = Math.abs(by - ay); }
+      if (FILLABLE.has(a.t) || a.t === 'cloud') { const sw2 = a.t === 'shape' && /^(arrR|arrL|arrLR|wave|ribbon|fterm|homeplate|chevron|notched)$/.test(a.kind) ? 96 : 72, sh2 = /^(arrU|arrD|arrUD|cylinder|fdb|lightning|moon)$/.test(a.kind || '') ? 96 : (sw2 === 96 ? 48 : (a.t === 'rect' || a.t === 'ellipse' || a.t === 'cloud' || /^(rrect|snip|snip2|frame|para|trap|fdata|falt|fpredef|fdoc|finput|fmanual|fcard|fdelay|fdisplay|callRect|callRound|callOval|callCloud|callLine|plaque)$/.test(a.kind) ? 54 : 72)); const [cx0, cy0] = ap(g.i, b.L, b.T); a.w = sw2; a.h = sh2; a.x = cx0 - sw2 / 2; a.y = cy0 - sh2 / 2; }
+      else if (a.t === 'white' || a.t === 'hl' || a.t === 'redact') { const [ax, ay] = ap(g.i, b.L - 50, b.T + 8); const [bx, by] = ap(g.i, b.L + 50, b.T - 8); a.x = Math.min(ax, bx); a.y = Math.min(ay, by); a.w = Math.abs(bx - ax); a.h = Math.abs(by - ay); }
       else keep = false;
-    } else if ((a.t === 'line' || a.t === 'arrow' || a.t === 'measure') && big < 6) keep = false;
+    } else if ((a.t === 'line' || a.t === 'arrow' || a.t === 'measure') && big < 6) { if (a.t === 'line' || a.t === 'arrow') { a.pts[1] = [a.pts[0][0] + 72, a.pts[0][1]]; } else keep = false; }
     else if (a.t === 'pen' && a.pts.length < 2) { a.pts.push([a.pts[0][0] + 0.01, a.pts[0][1]]); }
     if (!keep) p.annots = p.annots.filter((z) => z.id !== a.id);
     drawOverlay(p, el); commit(); return;
@@ -1346,7 +1524,7 @@ function alignSelected(k) {
   drawOverlay(s.p); commit();
 }
 function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
-function annLabel(a) { return ({ measure: 'Measurement', area: 'Area', cloud: 'Revision cloud', text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
+function annLabel(a) { return ({ measure: 'Measurement', area: 'Area', cloud: 'Revision cloud', text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', shape: shapeLabel(a.kind), line: 'Line', arrow: a.both ? 'Double arrow' : 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
 /* ---------- Edit PDF objects: text, shapes, lines and images inside the page content ---------- */
 // The original content stream is parsed once per page. Edits are kept per object index and applied by
@@ -2219,13 +2397,13 @@ const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d
 // Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
 const CATS = [
   ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sidebar', 'a:theme', 'a:glass', 'a:keys', 'a:tour']],
-  ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 't:pen', 't:rect', 't:ellipse', 't:line', 't:arrow', 't:cloud', '|', 't:tick', 't:cross', 'g:sign']],
+  ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
   ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
-const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
+const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
 const TOOL_KEY = { measure: 'M', area: 'K', cloud: 'C', select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
 const TOOL_ICON = { measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
 const RIB_ACT = {
@@ -2262,6 +2440,7 @@ function buildTools() {
     if (it === '|') { html += '<span class="rsep" aria-hidden="true"></span>'; continue; }
     const [kind, k] = it.split(':');
     if (kind === 't') { const tip = ({ measure: 'Measure distance, to scale', area: 'Measure area, to scale', cloud: 'Revision cloud' })[k] || (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool${['pen', 'rect', 'ellipse', 'line', 'arrow', 'cloud', 'tick', 'cross'].includes(k) && ck === 'comment' ? ' shp' : ''}" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
+    else if (kind === 'g' && k === 'shapes') html += `<button class="tool grp shapesbtn" data-group="shapes" aria-haspopup="dialog" aria-pressed="${SHAPE_TOOLS.has(S.tool)}" aria-label="Shapes" data-tip="Insert shapes: lines, arrows, stars, callouts, flowchart and more">${icon('shapes')}<span class="tl">Shapes</span>${CHEV}</button>`;
     else if (kind === 'g') html += `<button class="tool grp" data-group="sign" aria-haspopup="menu" aria-label="Stamps" data-tip="Stamps, signatures and images">${icon('stamp')}<span class="tl">Stamps</span>${CHEV}</button>`;
     else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
   }
@@ -2278,9 +2457,9 @@ function setTool(t, keepCat) {
   const g = toolGroup(t); if (g) { lastInGroup[g] = t; const gb = $(`#tools [data-group="${g}"]`); if (gb) gb.innerHTML = icon(GROUPS[g].find((v) => v[0] === t)[2]) + CHEV; }
   if (S.tool === 'objedit' && t !== 'objedit') { const op = OSEL && pageById(OSEL.pageId), hp = OHOV && pageById(OHOV.pageId); OSEL = null; OHOV = null; S.tool = t; if (op) drawOverlay(op); if (hp && hp !== op) drawOverlay(hp); }
   if (t === 'objedit') { for (const el of $$('.page', pagesEl)) { if (!el._vis) continue; const pp = pageById(el.dataset.id); if (pp && pp.kind === 'pdf') { const d = S.docs.get(pp.docId); if (d && !d.encrypted) pageObjs(d, pp.index); } } }
-  if (!keepCat && !$(`#tools [data-tool="${t}"]`) && !(t === 'image' || t === 'stamp')) { const c = CATS.find((x) => x[3].includes('t:' + t)); if (c && c[0] !== S.cat) { S.cat = c[0]; lsSet('pdfmate.cat', S.cat); buildTools(); } }
+  if (!keepCat && !$(`#tools [data-tool="${t}"]`) && !(t === 'image' || t === 'stamp')) { const c = CATS.find((x) => x[3].includes(SHAPE_TOOLS.has(t) ? 'g:shapes' : 't:' + t)); if (c && c[0] !== S.cat) { S.cat = c[0]; lsSet('pdfmate.cat', S.cat); buildTools(); } }
   S.tool = t; viewer.classList.toggle('drawing', DRAW_TOOLS.has(t)); viewer.dataset.tool = t;
-  $$('#tools .tool').forEach((b) => { if (!b.dataset.tool && !b.dataset.group) return; b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : toolGroup(t) === b.dataset.group)); });
+  $$('#tools .tool').forEach((b) => { if (!b.dataset.tool && !b.dataset.group) return; b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : b.dataset.group === 'shapes' ? SHAPE_TOOLS.has(t) : toolGroup(t) === b.dataset.group)); });
   if (t !== 'select' && S.sel && !S.editing) select(null);
   if (t === 'hand') { const sel = getSelection(); if (sel) sel.removeAllRanges(); }
   hideBubble(); refreshFormatBar();
@@ -2306,6 +2485,7 @@ $('#tools').addEventListener('click', (e) => {
   if (!S.pages.length) { toast('Open a PDF first'); return; }
   closeEditor(false);
   if (b.dataset.group === 'sign') { signMenu(b); return; }
+  if (b.dataset.group === 'shapes') { openShapes(b, pickShape); return; }
   if (b.dataset.group) { const g = b.dataset.group; openMenu(b, GROUPS[g].map(([t, label, ic, k]) => ({ label, icon: ic, kbd: k, run: () => setTool(t) }))); return; }
   setTool(b.dataset.tool);
 });
@@ -2336,11 +2516,12 @@ function refreshFormatBar() {
   let kind = s ? s.a.t : S.tool;
   if (s && s.a.t === 'text') kind = s.a.box ? 'tbox' : s.a.bg ? 'note' : s.a.border ? 'stampa' : 'text';
   if (s && s.a.t === 'mark') kind = s.a.kind === 'hl' ? 'markhl' : 'markline';
+  const shpK = s ? s.a.kind : S.shapeKind;
   if (!S.pages.length || kind === 'select' || kind === 'hand') { fb.hidden = true; fb.innerHTML = ''; refreshFmtPanel(); return; }
   const parts = [];
   const isHl = kind === 'hl' || kind === 'markhl';
   const cur = s ? s.a.color : (isHl ? S.style.hl : S.style.ink);
-  const label = { measure: 'Measure', area: 'Area', cloud: 'Cloud', crop: 'Crop', edittext: 'Edit text', text: 'Text', tbox: 'Text box', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
+  const label = { measure: 'Measure', area: 'Area', cloud: 'Cloud', crop: 'Crop', edittext: 'Edit text', text: 'Text', tbox: 'Text box', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', shape: shapeLabel(shpK), line: 'Line', arrow: s && s.a.both ? 'Double arrow' : 'Arrow', darrow: 'Double arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
   parts.push(`<span class="fb-label">${label}</span>`);
   const sw = (list, c0, attr = 'data-color') => `<div class="swatches" role="group" aria-label="Colour">${list.map(([n, c]) => `<button class="sw" ${attr}="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === String(c0).toLowerCase()}"></button>`).join('')}</div>`;
   if (!['white', 'image', 'redact', 'stamp', 'edittext', 'crop'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
@@ -2348,17 +2529,20 @@ function refreshFormatBar() {
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) parts.push(fmtBarHtml());
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 100) / 100} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
   if (['measure', 'area'].includes(kind)) { const sc = s ? mscOf(s.a) : mscOf({}); parts.push(`<span class="fb-label">Scale 1:</span><input class="fb-num" data-msr value="${fmtNum(sc.r)}" inputmode="decimal" aria-label="Scale"><select class="fb-font" data-msu aria-label="Units">${Object.keys(MUNITS).map((u) => `<option ${u === sc.u ? 'selected' : ''}>${u}</option>`).join('')}</select>${s && s.a.t === 'measure' ? '<button class="tbtn" data-act="calib" title="Type the real length of this line to set the scale">Calibrate</button>' : ''}`); }
-  if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'measure', 'area', 'cloud'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
-  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', measure: 'Drag along what you want to measure. Calibrate once on a known dimension.', area: 'Click each corner. Click the first point, double-click or press Enter to finish.', cloud: 'Drag a box to draw a revision cloud.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  if (FILLABLE.has(kind)) { const f0 = s ? (s.a.fill ? (s.a.fop != null && s.a.fop < 1 ? 'tint' : s.a.fill) : 'none') : (S.style.fill || 'none'); parts.push(`<span class="fb-label fb-sub">Fill</span><div class="swatches" role="group" aria-label="Fill">${SHP_FILLS.map(([n, c]) => `<button class="sw fillsw${c === 'none' ? ' nofill' : ''}" data-fill="${c}" style="background:${c === 'none' ? 'transparent' : c === 'tint' ? cur + '40' : c}" aria-label="${n}" title="${n}" aria-pressed="${String(c0eq(c, f0))}"></button>`).join('')}</div>`); }
+  if (['rect', 'ellipse', 'shape', 'line', 'arrow', 'darrow', 'pen', 'tick', 'cross', 'measure', 'area', 'cloud'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
+  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', measure: 'Drag along what you want to measure. Calibrate once on a known dimension.', area: 'Click each corner. Click the first point, double-click or press Enter to finish.', cloud: 'Drag a box to draw a revision cloud.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box, or tap for a standard size. Shift makes a square.', ellipse: 'Drag to draw, or tap. Shift makes a circle.', shape: 'Drag to draw, or tap for a standard size. Shift keeps it in proportion.', darrow: 'Drag to draw. Hold Shift to snap.', tick: 'Tap to place.', cross: 'Tap to place.' };
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const al = (fmtCur().align || 'left'); parts.push(`<button class="tbtn" data-fa="1" title="Alignment: ${al}" aria-label="Alignment ${al}">${icon({ left: 'tal', center: 'tac', right: 'tar', justify: 'taj' }[al])}</button><button class="tbtn" data-fp="1" aria-pressed="${!!S.fmtOpen}" title="All text and box formatting">${icon('fmt')}<span class="tb-hide-m">Format</span></button>`); }
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
     if (s.a.t === 'text') parts.push(`<button class="tbtn" data-act="edit">${icon('edit')}<span class="tb-hide-m">Edit</span></button>`);
+    if (FILLABLE.has(s.a.t)) parts.push(`<button class="tbtn" data-act="chshape" title="Change to another shape, keeping size and colours">${icon('shapes')}<span class="tb-hide-m">Change shape</span></button>`);
     if (ROTATABLE(s.a)) parts.push(`<button class="tbtn" data-act="rotl" title="Rotate 90° left" aria-label="Rotate left">${icon('rotl')}</button><button class="tbtn" data-act="rotr" title="Rotate 90° right" aria-label="Rotate right">${icon('rotr')}</button>`);
     parts.push(`<button class="tbtn" data-act="allpages" aria-label="Copy to other pages" title="Copy to other pages">${icon('dup')}<span class="tb-hide-m">All pages</span></button>`);
     parts.push(`<button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}<span class="tb-hide-m">Duplicate</span></button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}<span class="tb-hide-m">Delete</span></button>`);
   } else if (hints[kind]) parts.push(`<span class="fb-hint">${hints[kind]}</span>`);
   if (kind === 'crop') { const cp = S.pages[S.current]; parts.push(`<button class="tbtn" data-act="cropall" ${cp && cp.crop ? '' : 'disabled'}>Use on all pages</button><button class="tbtn" data-act="cropclear">Remove crop</button>`); }
+  if (!s && SHAPE_TOOLS.has(kind)) parts.push(`<button class="tbtn" data-act="pickshape" title="Pick another shape">${icon('shapes')}<span class="tb-hide-m">Shapes</span></button>`);
   if (!s && kind !== 'select') parts.push(`<button class="tbtn" data-act="done">Done</button>`);
   fb.innerHTML = parts.join(''); fb.hidden = false;
   refreshFmtPanel();
@@ -2375,11 +2559,12 @@ $('#formatBar').addEventListener('click', (e) => {
   if (e.target.closest('[data-fa]')) { const o = ['left', 'center', 'right', 'justify']; const c = fmtCur().align || 'left'; fmtSet({ align: o[(o.indexOf(c) + 1) % 4] }); return; }
   const sw = e.target.closest('.sw'); const st = e.target.closest('[data-step]'); const act = e.target.closest('[data-act]');
   const s = selectedAnn();
+  if (sw && sw.dataset.fill) { const f = sw.dataset.fill; S.style.fill = f; saveStyle(); if (s) applyStyleToSel((a) => { if (!FILLABLE.has(a.t)) return; delete a.fop; if (f === 'none') delete a.fill; else if (f === 'tint') { a.fill = a.color; a.fop = 0.25; } else a.fill = f; }); refreshFormatBar(); return; }
   if (sw && sw.dataset.bg) { const c = sw.dataset.bg; S.style.noteBg = c; saveStyle(); if (s) applyStyleToSel((a) => { a.bg = c; }); refreshFormatBar(); return; }
   if (sw) {
     const c = sw.dataset.color; const isHl = (s ? (s.a.t === 'mark' ? (s.a.kind === 'hl' ? 'hl' : 'x') : s.a.t) : S.tool) === 'hl';
     if (isHl) S.style.hl = c; else S.style.ink = c; saveStyle();
-    if (s) applyStyleToSel((a) => { a.color = c; });
+    if (s) applyStyleToSel((a) => { a.color = c; if (a.fill && a.fop != null && a.fop < 1) a.fill = c; });
     refreshFormatBar();
   } else if (st) {
     const d = +st.dataset.d;
@@ -2393,6 +2578,8 @@ $('#formatBar').addEventListener('click', (e) => {
     else if (k === 'allpages') openCopyToPages();
     else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90);
     else if (k === 'calib' && s) openCalibrate(s);
+    else if (k === 'chshape' && s) changeShape(act);
+    else if (k === 'pickshape') openShapes(act, pickShape);
     else if (k === 'cropall') { const src = S.pages.find((p) => p.crop && p === S.pages[S.current]) || S.pages.find((p) => p.crop); if (!src) return; const g1 = geo(src); const c = src.crop; const d1 = ap(g1.t, c[0], c[1]), d2 = ap(g1.t, c[2], c[3]); const f = [Math.min(d1[0], d2[0]) / g1.w, Math.min(d1[1], d2[1]) / g1.h, Math.max(d1[0], d2[0]) / g1.w, Math.max(d1[1], d2[1]) / g1.h];
       for (const p2 of S.pages) { const g2 = geo(p2); const a1 = ap(g2.i, f[0] * g2.w, f[1] * g2.h), a2 = ap(g2.i, f[2] * g2.w, f[3] * g2.h); p2.crop = [Math.min(a1[0], a2[0]), Math.min(a1[1], a2[1]), Math.max(a1[0], a2[0]), Math.max(a1[1], a2[1])]; drawOverlay(p2); } commit(); toast(`Cropped ${S.pages.length} pages`); }
     else if (k === 'cropclear') { const cp = S.pages[S.current]; const any = S.pages.filter((p) => p.crop); if (!any.length) return; if (cp && cp.crop) cp.crop = null; else any.forEach((p) => { p.crop = null; }); S.pages.forEach((p) => drawOverlay(p)); commit(); refreshFormatBar(); }
@@ -2804,6 +2991,7 @@ async function fitPagesTo(src, [TW0, TH0]) {
   }
   return out.save({ useObjectStreams: true });
 }
+const FILLO = (a) => (a.fill ? { color: hexRgb(a.fill), opacity: a.fop == null ? 1 : a.fop } : {});
 async function drawAnn(page, a, font, embedImg) {
   const col = hexRgb(a.color); const w = a.width || 1.5; const RC = PL.LineCapStyle.Round;
   const seg = (s, e) => page.drawLine({ start: { x: s[0], y: s[1] }, end: { x: e[0], y: e[1] }, thickness: w, color: col, lineCap: RC });
@@ -2811,8 +2999,14 @@ async function drawAnn(page, a, font, embedImg) {
   const RB = (x, y) => { const [px, py] = a.rot ? rotPt(x, y, bc[0], bc[1], a.rot) : [x, y]; return { x: px, y: py, rotate: brot }; };
   if (a.t === 'white') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: a.fill ? hexRgb(a.fill) : PL.rgb(1, 1, 1) });
   else if (a.t === 'hl') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
-  else if (a.t === 'rect') page.drawRectangle({ ...RB(a.x + w / 2, a.y + w / 2), width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), borderColor: col, borderWidth: w });
-  else if (a.t === 'ellipse') page.drawEllipse({ x: bc[0], y: bc[1], rotate: brot, xScale: Math.max(0.1, a.w / 2 - w / 2), yScale: Math.max(0.1, a.h / 2 - w / 2), borderColor: col, borderWidth: w });
+  else if (a.t === 'rect') page.drawRectangle({ ...RB(a.x + w / 2, a.y + w / 2), width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), borderColor: col, borderWidth: w, ...FILLO(a) });
+  else if (a.t === 'ellipse') page.drawEllipse({ x: bc[0], y: bc[1], rotate: brot, xScale: Math.max(0.1, a.w / 2 - w / 2), yScale: Math.max(0.1, a.h / 2 - w / 2), borderColor: col, borderWidth: w, ...FILLO(a) });
+  else if (a.t === 'shape') {
+    const map = (x, y) => { let q = [a.x + x, a.y + a.h - y]; if (a.rot) q = rotPt(q[0], q[1], bc[0], bc[1], a.rot); return [q[0], -q[1]]; };
+    page.pushOperators(PL.pushGraphicsState(), PL.setLineJoin(PL.LineJoinStyle.Round), PL.setLineCap(PL.LineCapStyle.Round));
+    for (const sb of shapeSubs(a.kind, a.w, a.h)) page.drawSvgPath(subD(sb, map), { x: 0, y: 0, borderColor: col, borderWidth: w, ...(sb.open ? {} : FILLO(a)) });
+    page.pushOperators(PL.popGraphicsState());
+  }
   else if (a.t === 'redact') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: PL.rgb(0, 0, 0) });
   else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') await measPdf(page, a, font);
   else if (a.t === 'mark') {
@@ -3761,7 +3955,7 @@ function about() {
     <h3 class="about-h">What it does</h3>
     <ul class="about-list">
       <li><b>View</b> search text, deep zoom up to 3600% for drawings, pages panel, light and dark</li>
-      <li><b>Comment</b> highlight, underline, strikeout, notes, pen, shapes, revision clouds, ticks, stamps</li>
+      <li><b>Comment</b> highlight, underline, strikeout, notes, pen, a Word-style Shapes gallery (80+ shapes: lines, arrows, block arrows, stars, banners, callouts, flowchart) with fill colours, revision clouds, ticks, stamps</li>
       <li><b>Edit</b> change existing text (any angle), move and recolour the PDF's own text, lines and images, text boxes with Word style formatting, whiteout</li>
       <li><b>Fill & Sign</b> form fields, signatures, ship's stamps with white background removal, date stamps, templates</li>
       <li><b>Pages</b> merge, insert, scan with camera, rotate, reorder, extract, split, crop, page numbers, watermark</li>

@@ -1,5 +1,5 @@
 // Meridian PDF Mate service worker: full offline precache, share target, file opening.
-const VERSION = 'meridian-pdf-mate-v22';
+const VERSION = 'meridian-pdf-mate-v23';
 const SHARE = 'meridian-pdf-mate-share';
 const ASSETS = [
 "./",
@@ -12,6 +12,8 @@ const ASSETS = [
 "icons/apple-touch-icon.png",
 "icons/favicon-32.png",
 "icons/icon.svg",
+"icons/pdf-file-256.png",
+"icons/pdf-file-48.png",
 "vendor/cmaps/78-EUC-H.bcmap",
 "vendor/cmaps/78-EUC-V.bcmap",
 "vendor/cmaps/78-H.bcmap",
