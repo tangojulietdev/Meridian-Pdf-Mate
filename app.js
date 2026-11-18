@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -95,6 +95,15 @@ const IC = {
   ocr: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8.5 15.5 11 8.5h2l2.5 7M9.5 13h5"/>',
   compare: '<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M5.5 9h3M5.5 12h3M15.5 9h3M15.5 12h3" /><path d="M15.5 15h3" stroke="#d70015"/>',
   objedit: '<path d="M4 4l6.5 16 2.3-6.7L19.5 11z"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-dasharray="2 1.6"/>',
+  measure: '<path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
+  area: '<path d="M4 8l7-5 9 5-3 11H6z"/><path d="M9 12h6M12 9v6" stroke-width="1.4"/>',
+  cloud: '<path d="M7 18a3.5 3.5 0 0 1-.6-6.9 5 5 0 0 1 9.7-1.6A4 4 0 0 1 18 18z"/>',
+  word: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M7.5 8.5 9 16l3-5.5 3 5.5 1.5-7.5"/>',
+  ul: '<path d="M7 4v7a5 5 0 0 0 10 0V4"/><path d="M5 20h14"/>',
+  stk: '<path d="M16 6.5C15.3 5 13.9 4 12 4c-2.4 0-4 1.3-4 3.2C8 11 16 9.5 16 14c0 2-1.8 3.5-4.2 3.5-2 0-3.5-1-4.3-2.5"/><path d="M4 12h16"/>',
+  hltext: '<path d="M4 20h16"/><path d="m8 16 1-4 7-7 3 3-7 7z"/>',
+  reverse: '<path d="M7 4v16m0 0-3-3m3 3 3-3"/><path d="M17 20V4m0 0-3 3m3-3 3 3"/>',
+  clean: '<path d="M3 21h18"/><path d="m14 4 6 6-8 8H6v-6z"/><path d="m9 9 6 6"/>',
   fliph: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7 4 12l5 5z"/><path d="M15 7l5 5-5 5z"/>',
   flipv: '<path d="M3 12h18" stroke-dasharray="2 2"/><path d="M7 9l5-5 5 5z"/><path d="M7 15l5 5 5-5z"/>',
   tbox: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 8.5h9M12 8.5v8"/>',
@@ -138,7 +147,7 @@ const GROUPS = {
 };
 const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#0040dd'], ['CHECKED', '#1a7f37'], ['ORIGINAL', '#0040dd'], ['COPY', '#c93400'], ['REJECTED', '#d70015'], ['VOID', '#d70015'], ['CONFIDENTIAL', '#d70015'], ['URGENT', '#d70015']];
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -259,7 +268,7 @@ function gradCanvas(a, k = 4) {
 
 /* ---------- Annotation geometry ---------- */
 const ORIENTED = new Set(['text', 'image', 'tick', 'cross']);
-const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact']);
+const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact', 'cloud']);
 function rotPt(x, y, cx, cy, deg) { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); const dx = x - cx, dy = y - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c]; }
 const normDeg = (d) => { d = ((d % 360) + 360) % 360; d = Math.round(d * 1000) / 1000; return d >= 360 ? 0 : d; };
 const ROTATABLE = (a) => a.t !== 'mark';
@@ -841,6 +850,7 @@ function annNode(a) {
   else if (a.t === 'rect') g.appendChild(sv('rect', { x: a.x + w / 2, y: a.y + w / 2, width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), fill: 'none', stroke: a.color, 'stroke-width': w }));
   else if (a.t === 'ellipse') g.appendChild(sv('ellipse', { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: Math.max(0, a.w / 2 - w / 2), ry: Math.max(0, a.h / 2 - w / 2), fill: 'none', stroke: a.color, 'stroke-width': w }));
   else if (a.t === 'redact') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: '#000000' }));
+  else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') measSvg(g, a);
   else if (a.t === 'mark') {
     if (a.kind === 'hl') for (const [x, y, rw, rh] of a.rects) g.appendChild(sv('rect', { x, y, width: rw, height: rh, fill: a.color, 'fill-opacity': 0.4, style: 'mix-blend-mode:multiply' }));
     else for (const [s0, s1] of a.segs || []) g.appendChild(sv('line', { x1: s0[0], y1: s0[1], x2: s1[0], y2: s1[1], stroke: a.color, 'stroke-width': a.width || 1 }));
@@ -1140,6 +1150,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
     if (hitText) { openEditor(p, hitText); return; }
     addTextAt(p, pt, tool === 'note'); return;
   }
+  if (tool === 'area') { areaClick(p, el, g, pt, pdfPt); return; }
   if (tool === 'tbox') {
     const hitText = [...p.annots].reverse().find((a) => a.t === 'text' && (() => { const b = dispBox(a, g); return pt[0] >= b.L && pt[0] <= b.R && pt[1] >= b.T && pt[1] <= b.B; })());
     if (hitText) { openEditor(p, hitText); return; }
@@ -1166,7 +1177,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
   // drag-to-create tools
   let a;
   if (BOXES.has(tool)) a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width };
-  else if (tool === 'line' || tool === 'arrow') a = { id: uid('a'), t: tool, pts: [pdfPt, pdfPt.slice()], color: S.style.ink, width: S.style.width };
+  else if (tool === 'line' || tool === 'arrow' || tool === 'measure') { a = { id: uid('a'), t: tool, pts: [pdfPt, pdfPt.slice()], color: tool === 'measure' && S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: tool === 'measure' ? Math.min(S.style.width, 1.5) : S.style.width }; if (tool === 'measure') a.sc = Object.assign({}, mscOf({})); }
   else if (tool === 'pen') a = { id: uid('a'), t: 'pen', pts: [pdfPt], color: S.style.ink, width: S.style.width };
   if (!a) return;
   p.annots.push(a);
@@ -1176,6 +1187,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
 let hovRaf = 0;
 pagesEl.addEventListener('pointermove', (e) => {
   if (objPointerMove(e)) return;
+  if (S.poly && S.tool === 'area' && !drag) { const el = e.target.closest('.page'); const p = el && pageById(el.dataset.id); if (p && p.id === S.poly.pageId) { const a = p.annots.find((z) => z.id === S.poly.id); if (a) { const g = geo(p); a._h = ap(g.i, ...ptFromEvent(e, el)); drawOverlay(p, el); } } }
   if (S.tool === 'objedit' && !drag && e.pointerType !== 'touch' && !hovRaf) { const ev = e; hovRaf = requestAnimationFrame(() => { hovRaf = 0; const el = ev.target.closest && ev.target.closest('.page'); const p = el && pageById(el.dataset.id); const c = p && objCtx(p); let nh = null; if (c && !c.parsed.err) { const g = geo(p); const pt = ptFromEvent(ev, el); const q = ap(g.i, pt[0], pt[1]); const h = objHits(c.doc, c.pi, c.parsed, q[0], q[1], 4 / S.zoom); if (h.length) nh = { pageId: p.id, id: h[0] }; } const was = OHOV; if ((was && was.pageId + was.id) !== (nh && nh.pageId + nh.id)) { OHOV = nh; if (was) { const wp = pageById(was.pageId); if (wp) drawOverlay(wp); } if (nh && (!was || was.pageId !== nh.pageId)) drawOverlay(p); } }); }
   if (!drag || e.pointerId !== drag.id) return;
   const { p, el, g, a } = drag; const pt = ptFromEvent(e, el); const pdfPt = ap(g.i, pt[0], pt[1]);
@@ -1234,7 +1246,7 @@ function endDrag(e) {
     if (BOXES.has(a.t) && big < 6) {
       if (a.t === 'white' || a.t === 'hl' || a.t === 'redact') { const [ax, ay] = ap(g.i, b.L - 50, b.T + 8); const [bx, by] = ap(g.i, b.L + 50, b.T - 8); a.x = Math.min(ax, bx); a.y = Math.min(ay, by); a.w = Math.abs(bx - ax); a.h = Math.abs(by - ay); }
       else keep = false;
-    } else if ((a.t === 'line' || a.t === 'arrow') && big < 6) keep = false;
+    } else if ((a.t === 'line' || a.t === 'arrow' || a.t === 'measure') && big < 6) keep = false;
     else if (a.t === 'pen' && a.pts.length < 2) { a.pts.push([a.pts[0][0] + 0.01, a.pts[0][1]]); }
     if (!keep) p.annots = p.annots.filter((z) => z.id !== a.id);
     drawOverlay(p, el); commit(); return;
@@ -1244,6 +1256,7 @@ function endDrag(e) {
 pagesEl.addEventListener('pointerup', endDrag);
 pagesEl.addEventListener('pointercancel', endDrag);
 pagesEl.addEventListener('dblclick', (e) => {
+  if (S.poly) { e.preventDefault(); finishPoly(); return; }
   const hit = e.target.closest('.ann'); const el = e.target.closest('.page'); if (!hit || !el) return;
   const p = pageById(el.dataset.id); const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') openEditor(p, a);
 });
@@ -1332,7 +1345,7 @@ function alignSelected(k) {
   drawOverlay(s.p); commit();
 }
 function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
-function annLabel(a) { return ({ text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
+function annLabel(a) { return ({ measure: 'Measurement', area: 'Area', cloud: 'Revision cloud', text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
 /* ---------- Edit PDF objects: text, shapes, lines and images inside the page content ---------- */
 // The original content stream is parsed once per page. Edits are kept per object index and applied by
@@ -2204,16 +2217,16 @@ const lastInGroup = { shape: 'rect', mark: 'tick' };
 const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 // Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
 const CATS = [
-  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', '|', 'a:sidebar', 'a:theme', 'a:keys']],
-  ['comment', 'Comment', 'note', ['t:select', '|', 't:note', 't:hl', 't:text', '|', 't:pen', 't:rect', 't:ellipse', 't:line', 't:arrow', '|', 't:tick', 't:cross', 'g:sign']],
+  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sidebar', 'a:theme', 'a:keys', 'a:tour']],
+  ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 't:pen', 't:rect', 't:ellipse', 't:line', 't:arrow', 't:cloud', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', '|', 'a:prot', 'a:dupp', 'a:delp', 't:crop', '|', 'a:pnum', 'a:wm', '|', 'a:split', 'a:export']],
-  ['tools', 'Protect & Tools', 'lock', ['t:redact', '|', 'a:ocr', 'a:compare', 'a:find', '|', 'a:export', 'a:split', 'a:print', 'a:props']]
+  ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
-const TOOL_SHORT = { select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
-const TOOL_KEY = { select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
-const TOOL_ICON = { select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
+const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
+const TOOL_KEY = { measure: 'M', area: 'K', cloud: 'C', select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
+const TOOL_ICON = { measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
 const RIB_ACT = {
   find: ['Search', 'search', 'Search text (Ctrl+F)', () => openFind()], goto: ['Go to page', 'goto', 'Go to page (Ctrl+G)', () => openGoto()],
   zin: ['Zoom in', 'zin', 'Zoom in (Ctrl +)', () => setZoom(S.zoom * 1.25)], zout: ['Zoom out', 'zout', 'Zoom out (Ctrl -)', () => setZoom(S.zoom / 1.25)],
@@ -2228,7 +2241,12 @@ const RIB_ACT = {
   pnum: ['Page numbers', 'pagenum', 'Add page numbers', () => openPageNumbers()], wm: ['Watermark', 'watermark', 'Add a watermark', () => openWatermark()],
   split: ['Split', 'split', 'Split into separate PDFs', () => openSplit()], export: ['Export', 'download', 'Export pages as images or text', () => openExport()],
   ocr: ['Recognise text', 'ocr', 'Make scanned pages searchable (OCR)', () => openOcr()], compare: ['Compare', 'compare', 'Compare with another PDF', () => openCompare()],
-  print: ['Print', 'print', 'Print (Ctrl+P)', () => openPrint()], props: ['Properties', 'props', 'Document title, author and details', () => openProps()]
+  print: ['Print', 'print', 'Print (Ctrl+P)', () => openPrint()], props: ['Properties', 'props', 'Document title, author and details', () => openProps(), true],
+  actual: ['Actual size', 'zin', 'Show at real paper size', () => setZoom(96 / 72), true], tour: ['Tour', 'tour', 'Show the quick tour', () => startTour(true), true],
+  hlt: ['Highlight', 'hltext', 'Highlight the selected text', () => selMark('hl')], ul: ['Underline', 'ul', 'Underline the selected text', () => selMark('ul')], stk: ['Strikeout', 'stk', 'Strike through the selected text', () => selMark('st')],
+  extract: ['Extract', 'extract', 'Save the current or selected pages as a new PDF', () => extractPages()], reverse: ['Reverse', 'reverse', 'Reverse the page order', () => reversePages(), true],
+  protect: ['Password', 'lock', 'Protect with a password (AES-256)', () => openProtect()], clean: ['Remove info', 'clean', 'Leave out title, author and keywords when saving', () => removeInfo(), true],
+  word: ['Word', 'word', 'Export to Word (.docx)', () => openWord()]
 };
 S.cat = lsGet('pdfmate.cat', 'comment'); if (!CATS.some((c) => c[0] === S.cat)) S.cat = 'comment';
 const catOf = (k) => CATS.find((c) => c[0] === k) || CATS[1];
@@ -2241,7 +2259,7 @@ function buildTools() {
   for (const it of items) {
     if (it === '|') { html += '<span class="rsep" aria-hidden="true"></span>'; continue; }
     const [kind, k] = it.split(':');
-    if (kind === 't') { const tip = (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
+    if (kind === 't') { const tip = ({ measure: 'Measure distance, to scale', area: 'Measure area, to scale', cloud: 'Revision cloud' })[k] || (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool${['pen', 'rect', 'ellipse', 'line', 'arrow', 'cloud', 'tick', 'cross'].includes(k) && ck === 'comment' ? ' shp' : ''}" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
     else if (kind === 'g') html += `<button class="tool grp" data-group="sign" aria-haspopup="menu" aria-label="Stamps" data-tip="Stamps, signatures and images">${icon('stamp')}<span class="tl">Stamps</span>${CHEV}</button>`;
     else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
   }
@@ -2249,8 +2267,10 @@ function buildTools() {
   $$('#cats .cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
   $('#tools').dataset.cat = S.cat;
 }
+function selMark(kind) { const s0 = selectionInPages(); if (!s0 || !String(s0.sel).trim()) { toast('Select some text on the page first (Select tool, drag over words), then tap this again'); return; } markSelection(kind); }
 function setCat(k) { if (!CATS.some((c) => c[0] === k)) return; S.cat = k; lsSet('pdfmate.cat', k); buildTools(); const here = $(`#tools [data-tool="${S.tool}"]`); setTool(!here && $('#tools [data-tool="select"]') ? 'select' : S.tool, true); }
 function setTool(t, keepCat) {
+  if (S.poly && t !== 'area') finishPoly();
   if (t !== 'image') S.pendingImg = null;
   if (t !== 'stamp') S.pendingStamp = null;
   const g = toolGroup(t); if (g) { lastInGroup[g] = t; const gb = $(`#tools [data-group="${g}"]`); if (gb) gb.innerHTML = icon(GROUPS[g].find((v) => v[0] === t)[2]) + CHEV; }
@@ -2275,6 +2295,7 @@ function signMenu(anchor) {
   ]);
 }
 function pickStamp(st) { S.pendingStamp = st; setTool('stamp'); S.pendingStamp = st; toast('Tap the page where the stamp goes'); refreshFormatBar(); }
+$('#tools').addEventListener('pointerdown', (e) => { if (e.target.closest('[data-act="hlt"],[data-act="ul"],[data-act="stk"]')) e.preventDefault(); });
 $('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat'); if (b) setCat(b.dataset.cat); });
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
@@ -2317,15 +2338,16 @@ function refreshFormatBar() {
   const parts = [];
   const isHl = kind === 'hl' || kind === 'markhl';
   const cur = s ? s.a.color : (isHl ? S.style.hl : S.style.ink);
-  const label = { crop: 'Crop', edittext: 'Edit text', text: 'Text', tbox: 'Text box', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
+  const label = { measure: 'Measure', area: 'Area', cloud: 'Cloud', crop: 'Crop', edittext: 'Edit text', text: 'Text', tbox: 'Text box', note: 'Sticky note', stampa: 'Stamp', stamp: 'Stamp', white: 'Whiteout', redact: 'Redact', hl: 'Highlight', markhl: 'Highlight', markline: s && s.a.kind === 'st' ? 'Strike through' : 'Underline', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', image: s ? 'Image' : 'Place image' }[kind] || '';
   parts.push(`<span class="fb-label">${label}</span>`);
   const sw = (list, c0, attr = 'data-color') => `<div class="swatches" role="group" aria-label="Colour">${list.map(([n, c]) => `<button class="sw" ${attr}="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === String(c0).toLowerCase()}"></button>`).join('')}</div>`;
   if (!['white', 'image', 'redact', 'stamp', 'edittext', 'crop'].includes(kind)) parts.push(sw(isHl ? HLS : INKS, cur));
   if (kind === 'note') parts.push(sw(NOTE_BGS, s ? s.a.bg : (S.style.noteBg || '#fff3a6'), 'data-bg'));
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) parts.push(fmtBarHtml());
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const v = s ? s.a.size : S.style.size; parts.push(`<div class="stepper" role="group" aria-label="Font size"><button data-step="size" data-d="-1" aria-label="Smaller">−</button><output>${Math.round(v * 100) / 100} pt</output><button data-step="size" data-d="1" aria-label="Larger">+</button></div>`); }
-  if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
-  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
+  if (['measure', 'area'].includes(kind)) { const sc = s ? mscOf(s.a) : mscOf({}); parts.push(`<span class="fb-label">Scale 1:</span><input class="fb-num" data-msr value="${fmtNum(sc.r)}" inputmode="decimal" aria-label="Scale"><select class="fb-font" data-msu aria-label="Units">${Object.keys(MUNITS).map((u) => `<option ${u === sc.u ? 'selected' : ''}>${u}</option>`).join('')}</select>${s && s.a.t === 'measure' ? '<button class="tbtn" data-act="calib" title="Type the real length of this line to set the scale">Calibrate</button>' : ''}`); }
+  if (['rect', 'ellipse', 'line', 'arrow', 'pen', 'tick', 'cross', 'measure', 'area', 'cloud'].includes(kind)) { const v = s ? s.a.width : S.style.width; parts.push(`<div class="stepper" role="group" aria-label="Line width"><button data-step="width" data-d="-1" aria-label="Thinner">−</button><output>${Math.round(v * 10) / 10} pt</output><button data-step="width" data-d="1" aria-label="Thicker">+</button></div>`); }
+  const hints = { crop: 'Drag over the area to keep. The saved file shows only that area.', edittext: 'Click a line of text to change it, horizontal, vertical or angled. The original is covered, not deleted. Redact it first if it must be removed.', white: 'Covers what is underneath, but the hidden text stays in the file. Use Redact to remove it.', redact: 'Drag over content to remove it. It is deleted for good when you save or print.', hl: 'Drag a box to highlight. To highlight words, select them with the Select tool.', text: 'Click to type. Double-click text to edit.', measure: 'Drag along what you want to measure. Calibrate once on a known dimension.', area: 'Click each corner. Click the first point, double-click or press Enter to finish.', cloud: 'Drag a box to draw a revision cloud.', tbox: 'Drag to draw a text box, or tap for a standard width. Text wraps inside it.', note: 'Click to add a note.', stamp: 'Tap where the stamp goes.', image: 'Tap where it goes.', pen: 'Draw freehand.', line: 'Drag to draw. Hold Shift to snap.', arrow: 'Drag to draw. Hold Shift to snap.', rect: 'Drag to draw a box.', ellipse: 'Drag to draw.', tick: 'Tap to place.', cross: 'Tap to place.' };
   if (['text', 'tbox', 'note', 'stampa'].includes(kind)) { const al = (fmtCur().align || 'left'); parts.push(`<button class="tbtn" data-fa="1" title="Alignment: ${al}" aria-label="Alignment ${al}">${icon({ left: 'tal', center: 'tac', right: 'tar', justify: 'taj' }[al])}</button><button class="tbtn" data-fp="1" aria-pressed="${!!S.fmtOpen}" title="All text and box formatting">${icon('fmt')}<span class="tb-hide-m">Format</span></button>`); }
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
@@ -2340,7 +2362,10 @@ function refreshFormatBar() {
   refreshFmtPanel();
 }
 $('#formatBar').addEventListener('pointerdown', (e) => { if (S.editing && e.target.closest('button')) e.preventDefault(); });
-$('#formatBar').addEventListener('change', (e) => { if (e.target.id === 'fbFont') fmtSet({ font: e.target.value }); });
+$('#formatBar').addEventListener('change', (e) => {
+  if (e.target.id === 'fbFont') { fmtSet({ font: e.target.value }); return; }
+  if (e.target.matches('[data-msr],[data-msu]')) { const fb = $('#formatBar'); const r = parseFloat(String(fb.querySelector('[data-msr]').value).replace(',', '.')); const u = fb.querySelector('[data-msu]').value; if (!(r > 0)) return; S.style.msc = { r, u }; saveStyle(); const s = selectedAnn(); if (s && (s.a.t === 'measure' || s.a.t === 'area')) { s.a.sc = { r, u }; drawOverlay(s.p); commit(); } refreshFormatBar(); }
+});
 $('#formatBar').addEventListener('click', (e) => {
   if (objBarClick(e)) return;
   const ft = e.target.closest('[data-ftg]'); if (ft) { fmtToggle(ft.dataset.ftg); return; }
@@ -2365,6 +2390,7 @@ $('#formatBar').addEventListener('click', (e) => {
     else if (k === 'done') { closeEditor(false); setTool('select'); }
     else if (k === 'allpages') openCopyToPages();
     else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90);
+    else if (k === 'calib' && s) openCalibrate(s);
     else if (k === 'cropall') { const src = S.pages.find((p) => p.crop && p === S.pages[S.current]) || S.pages.find((p) => p.crop); if (!src) return; const g1 = geo(src); const c = src.crop; const d1 = ap(g1.t, c[0], c[1]), d2 = ap(g1.t, c[2], c[3]); const f = [Math.min(d1[0], d2[0]) / g1.w, Math.min(d1[1], d2[1]) / g1.h, Math.max(d1[0], d2[0]) / g1.w, Math.max(d1[1], d2[1]) / g1.h];
       for (const p2 of S.pages) { const g2 = geo(p2); const a1 = ap(g2.i, f[0] * g2.w, f[1] * g2.h), a2 = ap(g2.i, f[2] * g2.w, f[3] * g2.h); p2.crop = [Math.min(a1[0], a2[0]), Math.min(a1[1], a2[1]), Math.max(a1[0], a2[0]), Math.max(a1[1], a2[1])]; drawOverlay(p2); } commit(); toast(`Cropped ${S.pages.length} pages`); }
     else if (k === 'cropclear') { const cp = S.pages[S.current]; const any = S.pages.filter((p) => p.crop); if (!any.length) return; if (cp && cp.crop) cp.crop = null; else any.forEach((p) => { p.crop = null; }); S.pages.forEach((p) => drawOverlay(p)); commit(); refreshFormatBar(); }
@@ -2786,6 +2812,7 @@ async function drawAnn(page, a, font, embedImg) {
   else if (a.t === 'rect') page.drawRectangle({ ...RB(a.x + w / 2, a.y + w / 2), width: Math.max(0, a.w - w), height: Math.max(0, a.h - w), borderColor: col, borderWidth: w });
   else if (a.t === 'ellipse') page.drawEllipse({ x: bc[0], y: bc[1], rotate: brot, xScale: Math.max(0.1, a.w / 2 - w / 2), yScale: Math.max(0.1, a.h / 2 - w / 2), borderColor: col, borderWidth: w });
   else if (a.t === 'redact') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: PL.rgb(0, 0, 0) });
+  else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') await measPdf(page, a, font);
   else if (a.t === 'mark') {
     if (a.kind === 'hl') for (const [x, y, rw, rh] of a.rects) page.drawRectangle({ x, y, width: rw, height: rh, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
     else for (const [s0, s1] of a.segs || []) page.drawLine({ start: { x: s0[0], y: s0[1] }, end: { x: s1[0], y: s1[1] }, thickness: a.width || 1, color: col });
@@ -3282,6 +3309,285 @@ function openExport() {
   };
 }
 
+
+/* ---------- Password protection: PDF 2.0 standard security, AES-256 (V5 R6) ---------- */
+const PERM = { print: 4, modify: 8, copy: 16, annot: 32, fill: 256, access: 512, assemble: 1024, printHi: 2048 };
+const u8cat = (...a) => { const n = a.reduce((s, x) => s + x.length, 0); const o = new Uint8Array(n); let k = 0; for (const x of a) { o.set(x, k); k += x.length; } return o; };
+const rnd = (n) => crypto.getRandomValues(new Uint8Array(n));
+async function aesCbc(key, iv, data, pad = true) {
+  const k = await crypto.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['encrypt']);
+  const out = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, k, data));
+  return pad ? out : out.slice(0, data.length); // WebCrypto always pads; drop the extra block for block-aligned input
+}
+// ISO 32000-2 algorithm 2.B
+async function hash2B(pwd, salt, udata) {
+  let k = new Uint8Array(await crypto.subtle.digest('SHA-256', u8cat(pwd, salt, udata))); let e = new Uint8Array(0); let i = 0;
+  while (i < 64 || e[e.length - 1] > i - 32) {
+    const one = u8cat(pwd, k, udata); const k1 = new Uint8Array(one.length * 64); for (let j = 0; j < 64; j++) k1.set(one, j * one.length);
+    e = await aesCbc(k.slice(0, 16), k.slice(16, 32), k1, false);
+    let sum = 0; for (let j = 0; j < 16; j++) sum += e[j];
+    k = new Uint8Array(await crypto.subtle.digest(['SHA-256', 'SHA-384', 'SHA-512'][sum % 3], e)); i++;
+  }
+  return k.slice(0, 32);
+}
+const pwBytes = (s) => new TextEncoder().encode(String(s || '').normalize('NFKC')).slice(0, 127);
+const hexOf = (u) => [...u].map((b) => b.toString(16).padStart(2, '0')).join('');
+async function encryptPdf(bytes, { user = '', owner = '', allow = {} } = {}) {
+  const doc = await PL.PDFDocument.load(bytes, { updateMetadata: false }); const ctx = doc.context;
+  const upw = pwBytes(user), opw = pwBytes(owner || hexOf(rnd(16)));
+  const fileKey = rnd(32);
+  const uvs = rnd(8), uks = rnd(8), ovs = rnd(8), oks = rnd(8);
+  const U = u8cat(await hash2B(upw, uvs, new Uint8Array(0)), uvs, uks);
+  const UE = await aesCbc(await hash2B(upw, uks, new Uint8Array(0)), new Uint8Array(16), fileKey, false);
+  const O = u8cat(await hash2B(opw, ovs, U), ovs, oks);
+  const OE = await aesCbc(await hash2B(opw, oks, U), new Uint8Array(16), fileKey, false);
+  let p = 0xfffff0c0 | 0; for (const k in PERM) if (allow[k] !== false) p |= PERM[k];
+  const pb = new Uint8Array(16); new DataView(pb.buffer).setInt32(0, p, true); pb.set([0xff, 0xff, 0xff, 0xff, 0x54, 0x61, 0x64, 0x62], 4); pb.set(rnd(4), 12);
+  const Perms = await aesCbc(fileKey, new Uint8Array(16), pb, false);
+  // encrypt every string and stream
+  const encBytes = async (u) => { const iv = rnd(16); return u8cat(iv, await aesCbc(fileKey, iv, u, true)); };
+  const N = (n) => PL.PDFName.of(n);
+  const walk = async (v) => {
+    if (v instanceof PL.PDFString || v instanceof PL.PDFHexString) return PL.PDFHexString.of(hexOf(await encBytes(v.asBytes())));
+    if (v instanceof PL.PDFArray) { for (let i = 0; i < v.size(); i++) v.set(i, await walk(v.get(i))); return v; }
+    if (v instanceof PL.PDFDict) { for (const [k, x] of v.entries()) v.set(k, await walk(x)); return v; }
+    return v;
+  };
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (obj instanceof PL.PDFStream) {
+      const type = obj.dict.get(N('Type')); if (type === N('XRef') || type === N('ObjStm')) { ctx.delete(ref); continue; }
+      await walk(obj.dict);
+      const raw = obj instanceof PL.PDFRawStream ? obj.contents : obj.getContents();
+      const enc = await encBytes(raw); obj.dict.set(N('Length'), PL.PDFNumber.of(enc.length));
+      ctx.assign(ref, PL.PDFRawStream.of(obj.dict, enc));
+    } else await walk(obj);
+  }
+  const cf = ctx.obj({ StdCF: { AuthEvent: 'DocOpen', CFM: 'AESV3', Length: 32 } });
+  const encDict = ctx.obj({ Filter: 'Standard', V: 5, R: 6, Length: 256, CF: cf, StmF: 'StdCF', StrF: 'StdCF', P: p });
+  encDict.set(N('O'), PL.PDFHexString.of(hexOf(O))); encDict.set(N('U'), PL.PDFHexString.of(hexOf(U)));
+  encDict.set(N('OE'), PL.PDFHexString.of(hexOf(OE))); encDict.set(N('UE'), PL.PDFHexString.of(hexOf(UE)));
+  encDict.set(N('Perms'), PL.PDFHexString.of(hexOf(Perms)));
+  ctx.trailerInfo.Encrypt = ctx.register(encDict);
+  const id = PL.PDFHexString.of(hexOf(rnd(16))); ctx.trailerInfo.ID = ctx.obj([id, id]);
+  return doc.save({ useObjectStreams: false, updateFieldAppearances: false });
+}
+
+/* ---------- Export to Word (.docx) ---------- */
+const xmlEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+// Rebuild lines and paragraphs from positioned text
+async function pageParagraphs(pg) {
+  const vp = pg.getViewport({ scale: 1 }); const W = vp.width, H = vp.height;
+  const tc = await pg.getTextContent({ disableNormalization: false });
+  let names = {}; try { await pg.getOperatorList(); for (const it of tc.items) { if (it.fontName && !(it.fontName in names)) { let n = ''; try { const f = pg.commonObjs.get(it.fontName); n = (f && (f.name || f.loadedName)) || ''; } catch (e) {} names[it.fontName] = n; } } } catch (e) {}
+  const items = [];
+  for (const it of tc.items) {
+    if (!it.str || !it.transform) continue; const t = it.transform;
+    const [x, y] = vp.convertToViewportPoint(t[4], t[5]); const size = Math.hypot(t[2], t[3]) || Math.hypot(t[0], t[1]) || 10;
+    if (Math.abs(t[1]) > Math.abs(t[0]) * 0.2) continue; // skip rotated text in flowing layout
+    const nm = names[it.fontName] || ''; const st = (tc.styles && tc.styles[it.fontName]) || {};
+    const fam = nm.replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].replace(/(MT|PS|PSMT|Std|Pro)$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+    items.push({ fam: /^[A-Za-z][A-Za-z ]{2,30}$/.test(fam) && !/^(Helvetica|Arial|Times|Courier|Symbol|Zapf)/i.test(fam) ? fam : '', x, y, w: it.width || 0, size, str: it.str, bold: /bold|black|heavy|semibold|demi/i.test(nm), italic: /italic|oblique/i.test(nm), mono: /courier|mono/i.test(nm + (st.fontFamily || '')), serif: /times|serif(?!.*sans)|georgia|garamond|cambria/i.test(nm) && !/sans/i.test(nm) });
+  }
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
+  const lines = [];
+  for (const it of items) { const L = lines.find((l) => Math.abs(l.y - it.y) < Math.min(l.size, it.size) * 0.45); if (L) { L.items.push(it); L.size = Math.max(L.size, it.size); } else lines.push({ y: it.y, size: it.size, items: [it] }); }
+  lines.sort((a, b) => a.y - b.y);
+  for (const L of lines) { L.items.sort((a, b) => a.x - b.x); L.x = L.items[0].x; L.r = Math.max(...L.items.map((i) => i.x + i.w)); }
+  const minX = lines.length ? Math.min(...lines.map((l) => l.x)) : 50; const maxR = lines.length ? Math.max(...lines.map((l) => l.r)) : W - 50;
+  const paras = []; let cur = null;
+  for (const L of lines) {
+    const runs = []; let prev = null;
+    for (const it of L.items) { let txt = it.str; if (prev) { const gap = it.x - (prev.x + prev.w); if (gap > it.size * 2.2) txt = '\t' + txt; else if (gap > it.size * 0.18 && !/\s$/.test(prev.str) && !/^\s/.test(txt)) txt = ' ' + txt; } runs.push({ t: txt, b: it.bold, i: it.italic, size: it.size, mono: it.mono, serif: it.serif, fam: it.fam }); prev = it; }
+    const mid = (L.x + L.r) / 2; const centred = Math.abs(mid - W / 2) < W * 0.04 && (L.r - L.x) < (maxR - minX) * 0.75 && L.x - minX > 20;
+    const bullet = /^\s*([•●▪–\-*]|\d{1,3}[.)]|[a-z][.)])\s/i.test(L.items[0].str);
+    const brk = !cur || L.y - cur.lastY > cur.size * 1.75 || Math.abs(L.size - cur.size) > cur.size * 0.18 || Math.abs(L.x - cur.lastX) > L.size * 1.5 && !(cur.lines === 1 && L.x < cur.lastX) || bullet || centred || cur.centred;
+    if (brk) { cur = { runs: [], size: L.size, x: L.x, lastY: L.y, lastX: L.x, top: L.y, before: cur ? Math.max(0, L.y - cur.lastY - L.size * 1.25) : L.y, centred, lines: 1 }; paras.push(cur); }
+    else { const last = cur.runs[cur.runs.length - 1]; if (last && /-$/.test(last.t) && /^[a-z]/.test(runs[0].t)) last.t = last.t.slice(0, -1); else if (last && !/\s$/.test(last.t)) runs[0] = Object.assign({}, runs[0], { t: ' ' + runs[0].t.replace(/^\t/, '') }); cur.lines++; }
+    cur.runs.push(...runs); cur.lastY = L.y; cur.lastX = L.x;
+  }
+  return { paras, W, H, minX, maxR, top: lines.length ? lines[0].y - lines[0].size : 50 };
+}
+function docxRun(r) {
+  const fonts = xmlEsc(r.fam || (r.mono ? 'Courier New' : r.serif ? 'Times New Roman' : 'Arial'));
+  const sz = Math.max(2, Math.round(r.size * 2));
+  const parts = r.t.split('\t'); let x = '';
+  parts.forEach((t, i) => { if (i) x += '<w:tab/>'; if (t) x += `<w:t xml:space="preserve">${xmlEsc(t)}</w:t>`; });
+  return `<w:r><w:rPr><w:rFonts w:ascii="${fonts}" w:hAnsi="${fonts}" w:cs="${fonts}"/>${r.b ? '<w:b/>' : ''}${r.i ? '<w:i/>' : ''}<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr>${x}</w:r>`;
+}
+// mode: 'text' (editable), 'image' (exact look). Returns a Blob.
+async function buildDocx(pdf, mode, onProgress) {
+  const media = []; let body = ''; const n = pdf.numPages; let sect = null;
+  for (let i = 1; i <= n; i++) {
+    const pg = await pdf.getPage(i); const vp = pg.getViewport({ scale: 1 });
+    const pgW = Math.round(vp.width * 20), pgH = Math.round(vp.height * 20);
+    let info = mode === 'text' ? await pageParagraphs(pg) : null; const useImg = mode === 'image' || !info.paras.length;
+    if (!sect) sect = { pgW, pgH, ml: useImg ? 360 : Math.round(Math.max(36, Math.min(info.minX, 90)) * 20), mr: useImg ? 360 : Math.round(Math.max(36, Math.min(vp.width - info.maxR, 90)) * 20) };
+    if (i > 1) body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+    if (useImg) {
+      const scale = Math.min(2.2, Math.sqrt(9e6 / (vp.width * vp.height))); const v2 = pg.getViewport({ scale }); const c = document.createElement('canvas'); c.width = Math.round(v2.width); c.height = Math.round(v2.height);
+      const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); await pg.render({ canvasContext: x, viewport: v2 }).promise;
+      const data = new Uint8Array(await (await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.88))).arrayBuffer()); c.width = c.height = 0;
+      const id = media.length + 1; media.push({ name: `image${id}.jpeg`, data });
+      const availW = (sect.pgW - 720) / 20, availH = (sect.pgH - 720) / 20; const k = Math.min(availW / vp.width, availH / vp.height); const cx = Math.round(vp.width * k * 12700), cy = Math.round(vp.height * k * 12700);
+      body += `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Page ${i}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="image${id}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+    } else {
+      for (const p of info.paras) {
+        const ind = Math.max(0, Math.round((p.x - info.minX) * 20)); const before = Math.round(Math.min(p.before, 60) * 20);
+        body += `<w:p><w:pPr><w:spacing w:before="${before}" w:after="0" w:line="${Math.round(p.size * 1.18 * 20)}" w:lineRule="atLeast"/>${p.centred ? '<w:jc w:val="center"/>' : ind > 30 ? `<w:ind w:left="${ind}"/>` : ''}</w:pPr>${p.runs.map(docxRun).join('')}</w:p>`;
+      }
+    }
+    pg.cleanup(); if (onProgress) onProgress(i / n);
+  }
+  if (!sect) sect = { pgW: 11906, pgH: 16838, ml: 1134, mr: 1134 };
+  const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${body}<w:sectPr><w:pgSz w:w="${sect.pgW}" w:h="${sect.pgH}"/><w:pgMar w:top="${mode === 'image' ? 360 : 1000}" w:right="${sect.mr}" w:bottom="${mode === 'image' ? 360 : 800}" w:left="${sect.ml}" w:header="400" w:footer="400" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${media.map((m, k) => `<Relationship Id="rIdImg${k + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${m.name}"/>`).join('')}</Relationships>`;
+  const types = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`;
+  const root = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`;
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  const core = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>Meridian PDF Mate</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created></cp:coreProperties>`;
+  const enc = new TextEncoder();
+  const files = [{ name: '[Content_Types].xml', data: enc.encode(types) }, { name: '_rels/.rels', data: enc.encode(root) }, { name: 'docProps/core.xml', data: enc.encode(core) }, { name: 'word/document.xml', data: enc.encode(document) }, { name: 'word/styles.xml', data: enc.encode(styles) }, { name: 'word/_rels/document.xml.rels', data: enc.encode(rels) }, ...media.map((m) => ({ name: 'word/media/' + m.name, data: m.data }))];
+  const z = makeZip(files); return new Blob([z], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+function openWord() {
+  if (!S.pages.length) return; const nSel = S.selPages.size; let mode = 'text', scope = nSel ? 'sel' : 'all';
+  const sh = sheet(`<h2>Export to Word</h2><p class="sub">Makes a .docx you can open in Microsoft Word, Google Docs, Pages or LibreOffice.</p>
+    <div class="field"><span class="flabel">Layout</span><div class="seg" role="group"><button data-m="text">Editable text</button><button data-m="image">Exact look</button></div>
+      <small class="sub" id="wNote" style="margin:6px 0 0;display:block"></small></div>
+    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button data-s="all">All ${S.pages.length}</button>${nSel ? `<button data-s="sel">Selected ${nSel}</button>` : ''}<button data-s="cur">This page</button></div></div>
+    <div class="progress" hidden><i></i></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('download')} Export .docx</button></div>`);
+  const paint = () => { sh.querySelectorAll('[data-m]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.m === mode)); sh.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.s === scope)); sh.querySelector('#wNote').textContent = mode === 'text' ? 'Text, sizes, bold and centring are rebuilt as normal paragraphs you can edit. Drawings and complex tables are not carried over. Scanned pages come in as pictures; run Recognise text first to make them editable.' : 'Each page is placed as a sharp picture. Looks exactly like the PDF but the text cannot be edited.'; };
+  sh.addEventListener('click', (e) => { const m = e.target.closest('[data-m]'), s2 = e.target.closest('[data-s]'); if (m) mode = m.dataset.m; if (s2) scope = s2.dataset.s; paint(); });
+  paint(); sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-go]').onclick = async () => {
+    const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : scope === 'cur' ? [S.pages[S.current]] : S.pages;
+    const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i'); sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = true);
+    try {
+      const bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * 25) + '%'; });
+      const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() }).promise;
+      const blob = await buildDocx(pdf, mode, (f) => { bar.style.width = Math.round(25 + f * 75) + '%'; });
+      try { pdf.loadingTask.destroy(); } catch (e) {}
+      downloadBlob(blob, fileName().replace(/\.pdf$/i, '') + '.docx'); closeSheet(); toast('Word document exported');
+    } catch (e) { console.error(e); toast('Could not export to Word', { err: true }); sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = false); }
+  };
+}
+function openProtect() {
+  if (!S.pages.length) return;
+  const sh = sheet(`<h2>Protect with password</h2><p class="sub">Saves a copy locked with AES-256, the strongest PDF encryption. It opens in Acrobat, Chrome, Edge, Preview and phone PDF apps. There is no way to recover a forgotten password.</p>
+    <div class="field"><label for="pw1">Password to open</label><input id="pw1" class="inp" type="password" autocomplete="new-password" autofocus></div>
+    <div class="field"><label for="pw2">Repeat password</label><input id="pw2" class="inp" type="password" autocomplete="new-password"></div>
+    <div class="field"><span class="flabel">Allow people with the password to</span>
+      <label class="chk"><input type="checkbox" data-al="print" checked> Print</label>
+      <label class="chk"><input type="checkbox" data-al="copy" checked> Copy text</label>
+      <label class="chk"><input type="checkbox" data-al="modify" checked> Change the document</label>
+      <label class="chk"><input type="checkbox" data-al="annot" checked> Add comments and fill forms</label></div>
+    <div class="field" id="ownF" hidden><label for="pw3">Permissions password (to change these limits later)</label><input id="pw3" class="inp" type="password" autocomplete="new-password"></div>
+    <div class="progress" hidden><i></i></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('lock')} Save protected copy</button></div>`);
+  const upd = () => { sh.querySelector('#ownF').hidden = [...sh.querySelectorAll('[data-al]')].every((c) => c.checked); };
+  sh.addEventListener('change', upd); upd(); sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-go]').onclick = async () => {
+    const p1 = sh.querySelector('#pw1').value, p2 = sh.querySelector('#pw2').value;
+    if (!p1) { toast('Type a password', { err: true }); return; } if (p1 !== p2) { toast('The two passwords do not match', { err: true }); return; }
+    const allow = {}; sh.querySelectorAll('[data-al]').forEach((c) => { const v = c.checked; if (c.dataset.al === 'print') { allow.print = v; allow.printHi = v; } else if (c.dataset.al === 'modify') { allow.modify = v; allow.assemble = v; } else if (c.dataset.al === 'annot') { allow.annot = v; allow.fill = v; } else allow.copy = v; });
+    const own = sh.querySelector('#pw3').value || (Object.values(allow).every(Boolean) ? p1 : '');
+    const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i'); sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = true);
+    try {
+      const bytes = await buildPdf(S.pages, (f) => { bar.style.width = Math.round(f * 70) + '%'; });
+      const enc = await encryptPdf(bytes, { user: p1, owner: own, allow }); bar.style.width = '100%';
+      downloadBlob(new Blob([enc], { type: 'application/pdf' }), fileName().replace(/\.pdf$/i, '') + '-protected.pdf'); closeSheet(); toast('Protected copy saved');
+    } catch (e) { console.error(e); toast('Could not protect this file', { err: true }); sh.querySelectorAll('.acts .btn').forEach((b) => b.disabled = false); }
+  };
+}
+async function extractPages() {
+  const list = targetPages(); if (!list.length) return;
+  const t = toast('Extracting pages', { spin: true, sticky: true });
+  try { const bytes = await buildPdf(list); const nums = list.map((p) => S.pages.indexOf(p) + 1); const rng = nums.length === 1 ? 'page-' + nums[0] : 'pages-' + nums[0] + '-' + nums[nums.length - 1]; downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName().replace(/\.pdf$/i, '') + '-' + rng + '.pdf'); toast(`Saved ${list.length} page${list.length > 1 ? 's' : ''} as a new PDF`); }
+  catch (e) { console.error(e); toast('Could not extract pages', { err: true }); } finally { t.remove(); }
+}
+function reversePages() { if (S.pages.length < 2) return; S.pages.reverse(); renderAll(); commit(); toast('Page order reversed'); }
+function removeInfo() { S.meta = {}; for (const d of S.docs.values()) d._stripMeta = true; commit(); setDirty(true); toast('Title, author, subject and keywords will be left out when you save'); }
+
+/* ---------- Measuring and revision clouds ---------- */
+const MUNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 };
+const mscOf = (a) => a.sc || S.style.msc || { r: 1, u: 'mm' };
+const PT_MM = 25.4 / 72;
+function measLen(a) { const [p0, p1] = a.pts; const s = mscOf(a); return Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) * PT_MM * s.r / MUNITS[s.u]; }
+function polyAreaPt(pts) { let s = 0; for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length]; s += x0 * y1 - x1 * y0; } return Math.abs(s) / 2; }
+function measArea(a) { const s = mscOf(a); const k = PT_MM * s.r / MUNITS[s.u]; return polyAreaPt(a.pts) * k * k; }
+const fmtNum = (v) => (v >= 1000 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v >= 10 ? v.toFixed(2) : v.toFixed(3)).replace(/\.?0+$/, (m) => (m.includes('.') ? '' : m));
+function measLabel(a) { const s = mscOf(a); return a.t === 'area' ? fmtNum(measArea(a)) + ' ' + s.u + '²' : fmtNum(measLen(a)) + ' ' + s.u; }
+const measFs = (a) => a.fs || Math.max(7, Math.min(14, (a.width || 1.5) * 4 + 3));
+function polyCentroid(pts) { let A = 0, cx = 0, cy = 0; for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length]; const f = x0 * y1 - x1 * y0; A += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f; } if (Math.abs(A) < 1e-6) { const n = pts.length; return [pts.reduce((s, p) => s + p[0], 0) / n, pts.reduce((s, p) => s + p[1], 0) / n]; } return [cx / (3 * A), cy / (3 * A)]; }
+// Label placement for a measure line: centre point and readable angle (degrees, PDF space)
+function measLabelPos(a) { const [p0, p1] = a.pts; let ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180 / Math.PI; if (ang > 90) ang -= 180; if (ang < -90) ang += 180; const r = ang * Math.PI / 180; const off = measFs(a) * 0.45; return { x: (p0[0] + p1[0]) / 2 - Math.sin(r) * off, y: (p0[1] + p1[1]) / 2 + Math.cos(r) * off, ang }; }
+function measTicks(a) { const [p0, p1] = a.pts; const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1; const nx = -(p1[1] - p0[1]) / L, ny = (p1[0] - p0[0]) / L; const t = Math.max(3, measFs(a) * 0.45); return [p0, p1].map(([x, y]) => [[x - nx * t, y - ny * t], [x + nx * t, y + ny * t]]); }
+// Scalloped outline through the four corners [bl, tl, tr, br]; ymap lets the same code write SVG (y up) or PDF path (y down)
+function cloudPath(cs, size, ymap = (y) => y, sweep = 1) {
+  let d = `M${cs[0][0]} ${ymap(cs[0][1])}`;
+  for (let i = 0; i < 4; i++) { const [x0, y0] = cs[i], [x1, y1] = cs[(i + 1) % 4]; const L = Math.hypot(x1 - x0, y1 - y0); const n = Math.max(1, Math.round(L / (size * 2))); const r = L / n / 2; for (let k = 1; k <= n; k++) { const x = x0 + (x1 - x0) * k / n, y = y0 + (y1 - y0) * k / n; d += ` A${r} ${r} 0 0 ${sweep} ${x} ${ymap(y)}`; } }
+  return d + ' Z';
+}
+const cloudSize = (a) => Math.max(3, Math.min(12, Math.min(a.w, a.h) / 5));
+function cloudCorners(a) { const c = [[a.x, a.y], [a.x, a.y + a.h], [a.x + a.w, a.y + a.h], [a.x + a.w, a.y]]; if (!a.rot) return c; const cx = a.x + a.w / 2, cy = a.y + a.h / 2; return c.map(([x, y]) => rotPt(x, y, cx, cy, a.rot)); }
+function measSvg(g, a) {
+  const w = a.width || 1.2; const col = a.color; const fs = measFs(a);
+  if (a.t === 'measure') {
+    const [p0, p1] = a.pts; g.appendChild(sv('line', { x1: p0[0], y1: p0[1], x2: p1[0], y2: p1[1], stroke: col, 'stroke-width': w }));
+    for (const [s, e] of measTicks(a)) g.appendChild(sv('line', { x1: s[0], y1: s[1], x2: e[0], y2: e[1], stroke: col, 'stroke-width': w }));
+    const L = measLabelPos(a); const lab = measLabel(a); const tw = lab.length * fs * 0.56 + fs * 0.6;
+    const gg = sv('g', { transform: `translate(${L.x} ${L.y}) rotate(${L.ang}) scale(1 -1)` });
+    gg.appendChild(sv('rect', { x: -tw / 2, y: -fs * 0.95, width: tw, height: fs * 1.2, rx: fs * 0.25, fill: '#ffffff', 'fill-opacity': 0.92 }));
+    const t = sv('text', { x: 0, y: 0, 'text-anchor': 'middle', 'font-size': fs, 'font-family': 'Helvetica, Arial, sans-serif', 'font-weight': 600, fill: col }); t.textContent = lab; gg.appendChild(t); g.appendChild(gg);
+  } else if (a.t === 'area') {
+    const pts = a._h ? [...a.pts, a._h] : a.pts; const ptsS = pts.map((p) => p.join(',')).join(' ');
+    g.appendChild(sv(a._h ? 'polyline' : 'polygon', { points: ptsS, fill: a._h ? 'none' : col, 'fill-opacity': 0.12, stroke: col, 'stroke-width': w, 'stroke-linejoin': 'round', 'stroke-dasharray': a._h ? `${4 * w} ${3 * w}` : 'none' }));
+    if (a._h) for (const p of a.pts) g.appendChild(sv('circle', { cx: p[0], cy: p[1], r: Math.max(1.5, w * 1.6), fill: col }));
+    if (!a._h && a.pts.length >= 3) { const [cx, cy] = polyCentroid(a.pts); const lab = measLabel(a); const tw = lab.length * fs * 0.56 + fs * 0.6; const gg = sv('g', { transform: `translate(${cx} ${cy}) scale(1 -1)` }); gg.appendChild(sv('rect', { x: -tw / 2, y: -fs * 0.95, width: tw, height: fs * 1.2, rx: fs * 0.25, fill: '#ffffff', 'fill-opacity': 0.92 })); const t = sv('text', { x: 0, y: 0, 'text-anchor': 'middle', 'font-size': fs, 'font-family': 'Helvetica, Arial, sans-serif', 'font-weight': 600, fill: col }); t.textContent = lab; gg.appendChild(t); g.appendChild(gg); }
+  } else if (a.t === 'cloud') {
+    g.appendChild(sv('path', { d: cloudPath([[a.x, a.y], [a.x, a.y + a.h], [a.x + a.w, a.y + a.h], [a.x + a.w, a.y]], cloudSize(a), (y) => y, 0), fill: 'none', stroke: col, 'stroke-width': w, 'stroke-linejoin': 'round' }));
+  }
+}
+async function measPdf(page, a, font) {
+  const col = hexRgb(a.color); const w = a.width || 1.2; const fs = measFs(a);
+  const line = (s, e) => page.drawLine({ start: { x: s[0], y: s[1] }, end: { x: e[0], y: e[1] }, thickness: w, color: col });
+  const label = async (x, y, ang, lab) => {
+    const f = await font('helv', 1); const tw = f.widthOfTextAtSize(lab.replace('²', '2'), fs); const r = ang * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+    const bw = tw + fs * 0.6, bh = fs * 1.2; const bx = -bw / 2, by = -fs * 0.25;
+    page.drawRectangle({ x: x + bx * c - by * s, y: y + bx * s + by * c, width: bw, height: bh, color: PL.rgb(1, 1, 1), opacity: 0.92, rotate: PL.degrees(ang) });
+    const sq = /²$/.test(lab); const main = sq ? lab.slice(0, -1) : lab; const mw = f.widthOfTextAtSize(main, fs); const tw2 = mw + (sq ? f.widthOfTextAtSize('2', fs * 0.62) : 0); const tx = -tw2 / 2;
+    page.drawText(main, { x: x + tx * c, y: y + tx * s, size: fs, font: f, color: col, rotate: PL.degrees(ang) });
+    if (sq) { const ux = tx + mw, uy = fs * 0.38; page.drawText('2', { x: x + ux * c - uy * s, y: y + ux * s + uy * c, size: fs * 0.62, font: f, color: col, rotate: PL.degrees(ang) }); }
+  };
+  if (a.t === 'measure') { line(a.pts[0], a.pts[1]); for (const [s, e] of measTicks(a)) line(s, e); const L = measLabelPos(a); await label(L.x, L.y, L.ang, measLabel(a)); }
+  else if (a.t === 'area') { if (a.pts.length < 3) return; const d = 'M' + a.pts.map(([x, y]) => x + ' ' + (-y)).join(' L') + ' Z'; page.drawSvgPath(d, { x: 0, y: 0, color: col, opacity: 0.12, borderColor: col, borderWidth: w }); const [cx, cy] = polyCentroid(a.pts); await label(cx, cy, 0, measLabel(a)); }
+  else if (a.t === 'cloud') { page.drawSvgPath(cloudPath(cloudCorners(a), cloudSize(a), (y) => -y, 1), { x: 0, y: 0, borderColor: col, borderWidth: w }); }
+}
+// Area tool: click points, click the first point, double-click or press Enter to finish
+function finishPoly(cancel) {
+  if (!S.poly) return; const p = pageById(S.poly.pageId); S.poly = null; if (!p) return; const a = p.annots.find((z) => z.t === 'area' && z._h !== undefined); if (!a) return;
+  delete a._h; const pts = []; for (const q of a.pts) { const l = pts[pts.length - 1]; if (!l || Math.hypot(q[0] - l[0], q[1] - l[1]) > 0.5) pts.push(q); } a.pts = pts;
+  if (cancel || a.pts.length < 3) { p.annots = p.annots.filter((z) => z !== a); drawOverlay(p); if (!cancel) toast('An area needs at least 3 points'); return; }
+  drawOverlay(p); commit(); select(p.id, a.id); refreshFormatBar();
+}
+function areaClick(p, el, g, pt, pdfPt) {
+  let a = S.poly && S.poly.pageId === p.id ? p.annots.find((z) => z.id === S.poly.id) : null;
+  if (!a) { finishPoly(); a = { id: uid('a'), t: 'area', pts: [pdfPt], color: S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: Math.min(S.style.width, 2), sc: Object.assign({}, mscOf({})), _h: pdfPt }; p.annots.push(a); S.poly = { pageId: p.id, id: a.id }; drawOverlay(p, el); return; }
+  const f = ap(g.t, a.pts[0][0], a.pts[0][1]); if (a.pts.length >= 3 && Math.hypot(f[0] - pt[0], f[1] - pt[1]) * S.zoom < 10) { finishPoly(); return; }
+  a.pts.push(pdfPt); a._h = pdfPt; drawOverlay(p, el);
+}
+function openCalibrate(s) {
+  const a = s.a; const sc = mscOf(a); const paperMm = Math.hypot(a.pts[1][0] - a.pts[0][0], a.pts[1][1] - a.pts[0][1]) * PT_MM;
+  const sh = sheet(`<h2>Set the drawing scale</h2><p class="sub">Draw a measure line over something whose real length you know, such as a dimension on the drawing, then type that length here.</p>
+    <div class="field"><label for="calV">Real length of this line</label><div style="display:flex;gap:8px"><input id="calV" class="inp" inputmode="decimal" value="${fmtNum(measLen(a))}" autofocus><select id="calU" class="inp" style="width:90px">${Object.keys(MUNITS).map((u) => `<option ${u === sc.u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>Set scale</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-ok]').onclick = () => { const v = parseFloat(sh.querySelector('#calV').value.replace(',', '.')); const u = sh.querySelector('#calU').value; if (!(v > 0) || !(paperMm > 0)) { toast('Type a length', { err: true }); return; } const r = v * MUNITS[u] / paperMm; S.style.msc = { r: Math.round(r * 10000) / 10000, u }; saveStyle(); for (const z of s.p.annots) if ((z.t === 'measure' || z.t === 'area') && (z === a || !z.scLocked)) z.sc = Object.assign({}, S.style.msc); drawOverlay(s.p); commit(); closeSheet(); refreshFormatBar(); toast(`Scale set to 1:${fmtNum(S.style.msc.r)} (${u})`); };
+}
+
 /* ---------- Document scanner ---------- */
 function otsu(gray) { const h = new Array(256).fill(0); for (const v of gray) h[v]++; const tot = gray.length; let sum = 0; for (let i = 0; i < 256; i++) sum += i * h[i]; let sB = 0, wB = 0, best = 0, th = 128; for (let i = 0; i < 256; i++) { wB += h[i]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += i * h[i]; const mB = sB / wB, mF = (sum - sB) / wF; const v = wB * wF * (mB - mF) * (mB - mF); if (v > best) { best = v; th = i; } } return th; }
 function detectCorners(img) {
@@ -3439,53 +3745,33 @@ $('#docName').addEventListener('input', updateMeta);
 $('#docName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 function themeLabel() { const t = lsGet('pdfmate.theme', 'system'); return t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'; }
 function cycleTheme() { const order = ['system', 'light', 'dark']; const t = lsGet('pdfmate.theme', 'system'); const n = order[(order.indexOf(t) + 1) % 3]; lsSet('pdfmate.theme', n); if (n === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', n); toast(`Appearance: ${themeLabel()}`); }
-$('#btnMore').addEventListener('click', (e) => {
-  if (menuEl) { closeMenu(); return; }
-  const has = S.pages.length > 0; const forms = [...S.docs.values()].reduce((n, d) => n + d.fields.length, 0);
-  openMenu(e.currentTarget, [
-    { label: 'Open in new tab…', icon: 'open', kbd: 'Ctrl O', run: () => $('#fileOpen').click() },
-    { label: 'Add pages from file…', icon: 'merge', run: () => $('#fileAdd').click(), disabled: !has },
-    { label: 'Add photos as pages…', icon: 'photo', run: () => $('#fileImg').click() },
-    { label: 'Find…', icon: 'search', kbd: 'Ctrl F', run: openFind, disabled: !has },
-    { label: 'Recognise text (OCR)…', icon: 'ocr', run: openOcr, disabled: !has },
-    { label: 'Compare with…', icon: 'compare', run: openCompare, disabled: !has },
-    { label: 'Print…', icon: 'print', kbd: 'Ctrl P', run: openPrint, disabled: !has },
-    '-', { h: 'Pages' },
-    { label: 'Scan with camera…', icon: 'scan', run: startScan },
-    { label: 'Insert blank page', icon: 'blank', run: () => pageAction('blank'), disabled: !has },
-    { label: 'Crop pages', icon: 'crop', run: () => setTool('crop'), disabled: !has },
-    { label: 'Templates…', icon: 'form', run: openTemplates },
-    { label: 'Duplicate page', icon: 'dup', run: () => pageAction('dup'), disabled: !has },
-    { label: 'Page numbers…', icon: 'pagenum', run: openPageNumbers, disabled: !has },
-    { label: 'Watermark…', icon: 'watermark', run: openWatermark, disabled: !has },
-    { label: 'Split into separate PDFs…', icon: 'split', run: openSplit, disabled: !has },
-    { label: 'Export as images or text…', icon: 'download', run: openExport, disabled: !has },
-    { label: 'Go to page…', icon: 'goto', kbd: 'Ctrl G', run: openGoto, disabled: !has },
-    '-',
-    { label: forms ? `Fill form fields (${forms})` : 'Fill form fields', icon: 'form', run: openFormList, disabled: !forms },
-    { label: 'Signatures and stamps…', icon: 'sign', run: () => { if (!has) { toast('Open a PDF first'); return; } openLibrary(); } },
-    '-',
-    { label: 'Zoom in', icon: 'zin', run: () => setZoom(S.zoom * 1.2), disabled: !has },
-    { label: 'Zoom out', icon: 'zout', run: () => setZoom(S.zoom / 1.2), disabled: !has },
-    { label: 'Fit to width', icon: 'fit', kbd: 'Ctrl 0', run: () => setZoom(0, true), disabled: !has },
-    { label: 'Fit whole page', icon: 'fitpage', run: fitPage, disabled: !has },
-    { label: 'Actual size', icon: 'zin', run: () => setZoom(96 / 72), disabled: !has },
-    { label: 'Redo', icon: 'redo', kbd: 'Ctrl ⇧ Z', run: redo, disabled: !S.fut.length },
-    '-',
-    { label: 'Keyboard shortcuts', icon: 'kbd', kbd: '?', run: openShortcuts },
-    { label: 'Show the tour', icon: 'tour', run: () => startTour(true), disabled: !has },
-    ...(isStandalone() ? [] : [{ label: 'Install app', icon: 'install', run: doInstall }]),
-    { label: `Appearance: ${themeLabel()}`, icon: 'theme', run: cycleTheme },
-    { label: 'Document properties…', icon: 'props', run: openProps, disabled: !has },
-    { label: 'About Meridian PDF Mate', icon: 'info', run: about },
-    { label: 'Close tab', icon: 'xmark', run: () => closeTab(WS.active), disabled: !has }
-  ]);
-});
+$('#btnMore').addEventListener('click', () => about());
 function about() {
-  sheet(`<h2>Meridian PDF Mate</h2><p class="sub">Version ${VERSION} · by Tango Juliet Dev</p>
-    <p style="margin:0 0 10px;color:var(--label-2)">Fill, sign, stamp and mark up PDFs, then merge, reorder, rotate or delete pages. Works fully offline once opened or installed. Files are processed on this device and are never uploaded.</p>
-    <p style="margin:0;color:var(--label-3);font-size:12px">Edit text replaces a line by covering the original and typing over it in a matching style. The original stays in the file underneath. Use Redact where it must be removed. Built with pdf.js (Apache 2.0) and pdf-lib (MIT).</p>
-    <div class="acts"><button class="btn primary" data-x>Done</button></div>`).querySelector('[data-x]').onclick = closeSheet;
+  const off = navigator.onLine === false;
+  const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · by Tango Juliet Dev</p></div></div>
+    <p class="about-lead">A full PDF editor built for seafarers. Fill, sign, stamp, edit and organise ship's paperwork on any laptop, tablet or phone, at sea or in port.</p>
+    <div class="about-grid">
+      <div class="about-card"><b>${icon('offline')} Works without internet</b><span>After the first visit everything is saved on this device. Open it mid-ocean with no signal and it still works. ${off ? '<em>You are offline right now.</em>' : ''}</span></div>
+      <div class="about-card"><b>${icon('open')} Nothing to install</b><span>Runs in your browser: Chrome, Edge, Safari or Firefox. You can add it to the home screen or desktop if you like, but you don't have to.</span></div>
+      <div class="about-card"><b>${icon('lock')} Your files stay with you</b><span>PDFs are opened and saved on this device only. Nothing is uploaded, there is no account and no tracking.</span></div>
+      <div class="about-card"><b>${icon('ocr')} Made for ship documents</b><span>Checklists, permits, SOFs, NORs, cargo plans, drawings and crew forms: fill, sign, stamp, measure and send back by email or WhatsApp.</span></div>
+    </div>
+    <h3 class="about-h">What it does</h3>
+    <ul class="about-list">
+      <li><b>View</b> search text, deep zoom up to 3600% for drawings, pages panel, light and dark</li>
+      <li><b>Comment</b> highlight, underline, strikeout, notes, pen, shapes, revision clouds, ticks, stamps</li>
+      <li><b>Edit</b> change existing text (any angle), move and recolour the PDF's own text, lines and images, text boxes with Word style formatting, whiteout</li>
+      <li><b>Fill & Sign</b> form fields, signatures, ship's stamps with white background removal, date stamps, templates</li>
+      <li><b>Pages</b> merge, insert, scan with camera, rotate, reorder, extract, split, crop, page numbers, watermark</li>
+      <li><b>Tools</b> measure distance and area to scale, true redaction, password protection (AES-256), text recognition for scans, compare two PDFs, export to Word, images or text, print with duplex</li>
+    </ul>
+    <h3 class="about-h">Tips</h3>
+    <ul class="about-list"><li>Every tool has a one-letter shortcut. Press <kbd>?</kbd> to see them all.</li><li>Your open files and changes are kept if the browser is closed, and come back next time.</li><li>For best results at sea, open the app once while connected so the latest version is saved.</li></ul>
+    <div class="about-mail"><div><b>Ideas, problems or a tool you need on board?</b><span>Write to Tango Juliet Dev. Suggestions from seafarers shape every update.</span></div><a class="btn primary" href="mailto:tangojulietdev@gmail.com?subject=Meridian%20PDF%20Mate%20${encodeURIComponent(VERSION)}%20suggestion">${icon('share')} tangojulietdev@gmail.com</a></div>
+    <p class="about-small">Built with pdf.js (Apache 2.0), pdf-lib (MIT) and Tesseract (Apache 2.0). Edit text covers the original line and types over it; use Redact where content must be removed.</p>
+    <div class="acts" style="justify-content:space-between"><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-k="keys">${icon('kbd')} Shortcuts</button><button class="btn" data-k="tour">${icon('tour')} Tour</button>${isStandalone() ? '' : `<button class="btn" data-k="install">${icon('install')} Add to home screen</button>`}</span><button class="btn primary" data-x>Done</button></div>`, { wide: true });
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeSheet(); if (b.dataset.k === 'keys') openShortcuts(); else if (b.dataset.k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else doInstall(); });
 }
 
 /* ---------- Keyboard ---------- */
@@ -3503,6 +3789,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === '-') { e.preventDefault(); setZoom(S.zoom / 1.25); return; }
   if (mod && e.key === '0') { e.preventDefault(); setZoom(0, true); return; }
   if (inField || $('#layer .scrim')) return;
+  if (S.poly && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); finishPoly(e.key === 'Escape' && false); return; }
   if (S.tool === 'objedit' && S.pages.length) {
     if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); objSelectAll(OSEL ? pageById(OSEL.pageId) : S.pages[S.current]); return; }
     if (mod && e.key.toLowerCase() === 'v' && OCLIP) { e.preventDefault(); objPaste(); return; }
@@ -3529,7 +3816,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault(); const s = selAnns(); if (!s) return; const st = e.shiftKey ? 10 : 1; const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[e.key];
     const T = pdfAffineFromDisplay(geo(s.p), (x, y) => [x + d[0], y + d[1]]); s.as.forEach((a) => applyT(a, T)); drawOverlay(s.p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 400); return;
   }
-  if (!mod && S.pages.length) { const map = { v: 'select', h: 'hand', t: 'text', b: 'tbox', o: 'objedit', d: 'edittext', n: 'note', u: 'hl', w: 'white', x: 'redact', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' }; const k = map[e.key.toLowerCase()]; if (k) setTool(k); }
+  if (!mod && S.pages.length) { const map = { v: 'select', h: 'hand', t: 'text', b: 'tbox', o: 'objedit', m: 'measure', k: 'area', c: 'cloud', d: 'edittext', n: 'note', u: 'hl', w: 'white', x: 'redact', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' }; const k = map[e.key.toLowerCase()]; if (k) setTool(k); }
 });
 
 /* ---------- Shortcuts sheet ---------- */
@@ -3537,7 +3824,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function openShortcuts() {
   const K = (k) => k.split(' ').map((x) => `<kbd>${esc(x === 'Ctrl' && MAC ? '⌘' : x === 'Alt' && MAC ? '⌥' : x)}</kbd>`).join('');
   const groups = [
-    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Text box', 'B'], ['Edit existing text', 'D'], ['Edit PDF contents (text, shapes, images)', 'O'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
+    ['Tools', [['Select', 'V'], ['Hand (or hold Space)', 'H'], ['Add text', 'T'], ['Text box', 'B'], ['Edit existing text', 'D'], ['Edit PDF contents (text, shapes, images)', 'O'], ['Measure distance', 'M'], ['Measure area', 'K'], ['Revision cloud', 'C'], ['Note', 'N'], ['Highlight', 'U'], ['Whiteout', 'W'], ['Redact', 'X'], ['Rectangle', 'R'], ['Ellipse', 'E'], ['Line', 'L'], ['Arrow', 'A'], ['Pen', 'P']]],
     ['Marks', [['Add to selection', 'Shift Click'], ['Box select', 'Shift Drag'], ['Select all on page', 'Ctrl A'], ['Copy / Cut / Paste', 'Ctrl C'], ['Duplicate', 'Ctrl D'], ['Bring to front / back', 'Ctrl ]'], ['Nudge (10 pt with Shift)', '← → ↑ ↓'], ['Move without snapping', 'Alt Drag'], ['Delete', 'Del'], ['Deselect', 'Esc'], ['More actions', 'Right-click']]],
     ['Document', [['Open', 'Ctrl O'], ['Save or share', 'Ctrl S'], ['Print', 'Ctrl P'], ['Find', 'Ctrl F'], ['Go to page', 'Ctrl G'], ['Undo', 'Ctrl Z'], ['Redo', 'Ctrl Shift Z'], ['Zoom in / out', 'Ctrl + −'], ['Fit to width', 'Ctrl 0'], ['This list', '?']]],
   ];
@@ -3553,7 +3840,7 @@ const TOUR = [
   { sel: '#tabbar', t: 'Tabs', d: 'Keep several PDFs open at once. Drop files anywhere to open them in new tabs.' },
   { sel: '#sidebar', t: 'Pages', d: 'Drag thumbnails to reorder. Shift-click to pick several, then rotate, duplicate or delete.' },
   { sel: '#viewer', t: 'Right-click for more', d: 'Right-click a page or a mark for copy, paste, layering and align. Shift-click or Shift-drag selects several marks, and they snap to edges and centres as you drag.' },
-  { sel: '#btnMore', t: 'More', d: 'OCR, compare, scan, page numbers, watermark, split, export and templates live here.' },
+  { sel: '#btnMore', t: 'About and help', d: 'What the app can do, shortcuts, the tour and how to send suggestions.' },
   { sel: '#btnSave', t: 'Save', d: 'Save, share or print. Your files never leave this device, and the app works offline. Press ? for all shortcuts.' },
 ];
 let tourEl = null, tourI = 0;
@@ -3604,7 +3891,7 @@ addEventListener('beforeunload', (e) => { saveTab(); if (WS.list.some((t) => t.d
 /* ---------- Boot ---------- */
 function boot() {
   $('#btnSidebar').innerHTML = icon('sidebar'); $('#btnUndo').innerHTML = icon('undo'); $('#btnRedo').innerHTML = icon('redo');
-  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('more'); $('#saveIc').outerHTML = icon('share');
+  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#saveIc').outerHTML = icon('share');
   $('#zoomIn').innerHTML = icon('zin'); $('#zoomOut').innerHTML = icon('zout');
   for (const b of $$('.toolbar .tbtn[title], #tsIc[title]')) { b.dataset.tip = b.getAttribute('title'); b.removeAttribute('title'); }
   const fi = { rotl: 'rotl', rotr: 'rotr', up: 'up', down: 'down', blank: 'blank', del: 'trash' };
