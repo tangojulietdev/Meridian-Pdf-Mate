@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.6.1';
+const VERSION = '3.7.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -81,6 +81,8 @@ const IC = {
   hand: '<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5V4.5a1.5 1.5 0 0 1 3 0V12"/><path d="M14 11.5V6a1.5 1.5 0 0 1 3 0v6"/><path d="M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.6-2.2L4.6 15.6a1.6 1.6 0 0 1 2.4-2.1L8 14.5"/>',
   note: '<path d="M5 4h14a1 1 0 0 1 1 1v10l-5 5H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M15 20v-4a1 1 0 0 1 1-1h4"/><path d="M8 9h8M8 12.5h5"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  split2: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 4v16"/>',
   shapes: '<circle cx="8" cy="8" r="5"/><path d="M13.5 13.5h7v7h-7z"/><path d="m8 14.5 4.2 6.5H3.8z"/>',
   redact: '<rect x="3" y="7" width="18" height="10" rx="1.5" fill="currentColor"/><path d="M3 4h7M14 20h7"/>',
   pagenum: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10.5 15.5h3M12 13v5" stroke-width="1.5"/>',
@@ -683,6 +685,154 @@ function newBlank(at = S.pages.length, like) {
   if (S.pages.length === 1) { $('#docName').value = 'Untitled'; if (innerWidth > 760) setSidebar(true); }
   renderAll(); commit(); scrollToPage(at);
 }
+/* ---------- Bridge night mode (3.7) ---------- */
+const NIGHT_LEVELS = [[1, 'Brightest'], [0.8, 'Bright'], [0.6, 'Medium'], [0.42, 'Dim'], [0.28, 'Darkest']];
+function applyNight() {
+  const v = lsGet('pdfmate.night', 'off'); const root = document.documentElement; const on = v !== 'off';
+  if (on) { root.dataset.night = 'on'; root.style.setProperty('--night-b', String(v)); root.setAttribute('data-theme', 'dark'); } else if (root.dataset.night) { delete root.dataset.night; root.style.removeProperty('--night-b'); const t = lsGet('pdfmate.theme', 'system'); if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme'); }
+  $$('meta[name="theme-color"]').forEach((m) => { if (!m.dataset.orig) m.dataset.orig = m.content; m.content = on ? '#000000' : m.dataset.orig; });
+  const b = $('#btnNight'); if (b) b.setAttribute('aria-pressed', on);
+  $$('#tools [data-act="night"]').forEach((x) => x.setAttribute('aria-pressed', on));
+}
+function toggleNight(anchor) {
+  const v = lsGet('pdfmate.night', 'off');
+  if (v === 'off') { lsSet('pdfmate.night', lsGet('pdfmate.nightLast', 0.6)); applyNight(); toast('Night mode on. Tap the moon again for brightness'); return; }
+  openMenu(anchor || $('#btnNight'), [{ h: 'Night brightness' }, ...NIGHT_LEVELS.map(([k, l]) => ({ label: l, icon: Math.abs(k - v) < 0.01 ? 'check' : 'moon', run: () => { lsSet('pdfmate.night', k); lsSet('pdfmate.nightLast', k); applyNight(); } })), '-', { label: 'Turn night mode off', icon: 'close', run: () => { lsSet('pdfmate.night', 'off'); applyNight(); } }]);
+}
+
+/* ---------- Split screen (3.7) ---------- */
+const SPL = { open: false, tabId: null, zoom: 0, link: lsGet('pdfmate.splitLink', false), io: null, z: 1, lock: 0 };
+let DRAGX = null; // a page drag that started in the split pane: {tabId, ids}
+const splitTab = () => WS.list.find((t) => t.id === SPL.tabId);
+const activeTab = () => WS.list[WS.active];
+const splitEl = () => $('#split');
+function clonePage(p) { const c = JSON.parse(JSON.stringify(p)); c.id = uid('p'); for (const a of c.annots || []) a.id = uid('a'); return c; }
+function pickSplitTab() {
+  const t = splitTab(); if (t && t !== activeTab()) return t;
+  const other = WS.list.filter((x) => x !== activeTab() && x.pages.length); SPL.tabId = other.length ? other[other.length - 1].id : null; return splitTab();
+}
+function openSplitView() {
+  if (innerWidth < 760) { toast('Split screen needs a wider screen. Turn the tablet sideways or use a computer.'); return; }
+  if (SPL.open) { closeSplitView(); return; }
+  saveTab(); SPL.open = true; pickSplitTab();
+  splitEl().hidden = false; $('#splitter').hidden = false; document.body.classList.add('has-split');
+  renderSplit(); refitMain(); markSplitBtn();
+  if (!splitTab()) toast('Choose a document for the right side, or open one from a file');
+}
+function closeSplitView() { SPL.open = false; splitEl().hidden = true; $('#splitter').hidden = true; document.body.classList.remove('has-split'); if (SPL.io) SPL.io.disconnect(); $('#spPages').innerHTML = ''; refitMain(); markSplitBtn(); }
+function markSplitBtn() { $$('#tools [data-act="sview"]').forEach((x) => x.setAttribute('aria-pressed', SPL.open)); }
+function refitMain() { setTimeout(() => { if (S.fit && S.pages.length) setZoom(0, true); if (SPL.open && !SPL.zoom) renderSplit(); }, 60); }
+function splitOptions() {
+  const sel = $('#spDoc'); if (!sel) return; const cur = splitTab();
+  const opts = WS.list.map((t) => (t === activeTab() ? '' : `<option value="${t.id}" ${t === cur ? 'selected' : ''}>${esc(t.name)}${t.pages.length ? ` (${t.pages.length} p)` : ''}</option>`)).join('');
+  sel.innerHTML = (cur ? '' : '<option value="" selected>Choose a document</option>') + opts + '<option value="__open">Open a file…</option>';
+}
+function splitFitZoom(t) { const w = $('#spView').clientWidth - 36; const mw = Math.max(...t.pages.map((p) => geo(p).w), 1); return clamp(w / mw, 0.1, 4); }
+function renderSplit() {
+  if (!SPL.open) return; splitOptions();
+  const t = pickSplitTab(); const box = $('#spPages'); const view = $('#spView');
+  $('#spEmpty').hidden = !!(t && t.pages.length); $('#spSwap').disabled = !t; $('#spLink').setAttribute('aria-pressed', SPL.link);
+  if (SPL.io) SPL.io.disconnect(); box.innerHTML = '';
+  if (!t || !t.pages.length) return;
+  const z = SPL.zoom || splitFitZoom(t); SPL.z = z; $('#spZoom').textContent = Math.round(z * 100) + '%';
+  SPL.io = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting && !e.target._done) { e.target._done = true; paintSplitPage(e.target); } }, { root: view, rootMargin: '600px 0px' });
+  t.pages.forEach((p, i) => {
+    const g = geo(p); const el = document.createElement('div'); el.className = 'sp-page'; el.draggable = true; el.dataset.id = p.id; el.dataset.i = i;
+    el.style.width = g.w * z + 'px'; el.style.height = g.h * z + 'px'; el.title = 'Drag onto the left document, or onto its pages panel, to copy this page';
+    el.innerHTML = `<canvas></canvas><svg class="sp-ov" viewBox="0 0 ${g.w} ${g.h}" xmlns="${SVGNS}"></svg><span class="pnum">${i + 1}</span>`;
+    const svg = el.querySelector('svg'); const content = sv('g', { transform: `matrix(${g.t.join(' ')})` }); for (const a of p.annots) { try { content.appendChild(annNode(a)); } catch (err) {} } svg.appendChild(content);
+    box.appendChild(el); SPL.io.observe(el);
+  });
+  updateSplitInd();
+}
+async function paintSplitPage(el) {
+  const t = splitTab(); if (!t) return; const p = t.pages.find((x) => x.id === el.dataset.id); if (!p) return;
+  const g = geo(p); const dpr = Math.min(devicePixelRatio || 1, 2); const s = SPL.z * dpr; const cv = el.querySelector('canvas');
+  const W = Math.max(1, Math.round(g.w * s)), H = Math.max(1, Math.round(g.h * s)); const k = Math.min(1, Math.sqrt(16e6 / (W * H)));
+  cv.width = Math.round(W * k); cv.height = Math.round(H * k); const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+  try {
+    if (p.kind === 'pdf') { const d = S.docs.get(p.docId); if (!d || !d.pdf) return; const pg = await d.pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: s * k, rotation: tr(p) }) }).promise; }
+    else if (p.kind === 'img') { const im = S.imgs.get(p.imgId); if (!im) return; const tt = g.t, sk = s * k; x.setTransform(tt[0] * sk, tt[1] * sk, tt[2] * sk, tt[3] * sk, tt[4] * sk, tt[5] * sk); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(im.el, 0, 0, 1, 1); }
+  } catch (err) { console.warn('split render', err); }
+}
+function updateSplitInd() {
+  const v = $('#spView'), t = splitTab(); if (!t || !t.pages.length) { $('#spInd').textContent = ''; return; }
+  const mid = v.getBoundingClientRect().top + v.clientHeight / 3; let n = 1; for (const el of $$('.sp-page', v)) { if (el.getBoundingClientRect().top <= mid) n = +el.dataset.i + 1; }
+  $('#spInd').textContent = `${n} / ${t.pages.length}`;
+}
+function splitSwap() {
+  const t = splitTab(); if (!t) return; const cur = activeTab(); const i = WS.list.indexOf(t);
+  switchTab(i); SPL.tabId = cur.id; renderSplit(); toast(`Now editing ${t.name}`);
+}
+function splitAfterTabChange() { if (!SPL.open) return; if (splitTab() === activeTab() || !splitTab()) { SPL.tabId = null; } renderSplit(); }
+function snapOf(pages) { return JSON.stringify({ pages, vals: [...S.docs.values()].map((d) => [d.id, d.values]) }); }
+// Copy pages into another (not active) tab, with an undo step in that tab.
+function addPagesToTab(t, pages, at) {
+  t.hist.push(t.last); if (t.hist.length > 40) t.hist.shift(); t.fut = [];
+  t.pages.splice(clamp(at, 0, t.pages.length), 0, ...pages.map(clonePage)); t.last = snapOf(t.pages); t.dirty = true;
+  renderTabs(); renderSplit(); scheduleSave();
+}
+function dropIndexIn(container, sel, y, attr = 'i') {
+  const els = $$(sel, container); for (const el of els) { const r = el.getBoundingClientRect(); if (y < r.top + r.height / 2) return { at: +el.dataset[attr], el, before: true }; }
+  const last = els[els.length - 1]; return { at: els.length, el: last, before: false };
+}
+function clearDropMarks() { $$('.drop-before,.drop-after').forEach((e) => e.classList.remove('drop-before', 'drop-after')); }
+function initSplit() {
+  const v = $('#spView');
+  $('#spDoc').addEventListener('change', (e) => { const val = e.target.value; if (val === '__open') { splitOptions(); $('#fileSplit').click(); return; } SPL.tabId = val || null; SPL.zoom = 0; renderSplit(); });
+  $('#spZin').onclick = () => { SPL.zoom = clamp((SPL.zoom || SPL.z) * 1.25, 0.1, 6); renderSplit(); };
+  $('#spZout').onclick = () => { SPL.zoom = clamp((SPL.zoom || SPL.z) / 1.25, 0.1, 6); renderSplit(); };
+  $('#spZoom').onclick = () => { SPL.zoom = 0; renderSplit(); };
+  $('#spLink').onclick = () => { SPL.link = !SPL.link; lsSet('pdfmate.splitLink', SPL.link); $('#spLink').setAttribute('aria-pressed', SPL.link); toast(SPL.link ? 'Scrolling together' : 'Scrolling separately'); };
+  $('#spSwap').onclick = splitSwap; $('#spClose').onclick = closeSplitView; $('#spOpen').onclick = () => $('#fileSplit').click();
+  $('#fileSplit').addEventListener('change', async (e) => {
+    const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+    const keep = activeTab(); const before = new Set(WS.list.map((t) => t.id));
+    await openFilesInTabs(files); const added = WS.list.filter((t) => !before.has(t.id));
+    const back = WS.list.indexOf(keep); if (back >= 0 && WS.list[WS.active] !== keep) switchTab(back);
+    if (added.length) SPL.tabId = added[added.length - 1].id; else if (keep && WS.list[WS.active] !== keep) SPL.tabId = activeTab().id;
+    renderTabs(); renderSplit();
+  });
+  // Scroll: page indicator and optional linked scrolling.
+  const ratio = (el) => el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+  v.addEventListener('scroll', () => { updateSplitInd(); if (SPL.link && SPL.lock !== 1) { SPL.lock = 2; viewer.scrollTop = ratio(v) * (viewer.scrollHeight - viewer.clientHeight); requestAnimationFrame(() => { SPL.lock = 0; }); } }, { passive: true });
+  viewer.addEventListener('scroll', () => { if (SPL.open && SPL.link && SPL.lock !== 2) { SPL.lock = 1; v.scrollTop = ratio(viewer) * (v.scrollHeight - v.clientHeight); requestAnimationFrame(() => { SPL.lock = 0; }); } }, { passive: true });
+  v.addEventListener('dblclick', () => { if (splitTab()) splitSwap(); });
+  // Drag pages out of the split pane.
+  v.addEventListener('dragstart', (e) => { const el = e.target.closest('.sp-page'); if (!el) return; const t = splitTab(); DRAGX = { tabId: t.id, ids: [el.dataset.id] }; e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', 'page'); el.classList.add('dragging'); });
+  v.addEventListener('dragend', (e) => { DRAGX = null; clearDropMarks(); $$('.sp-page.dragging').forEach((x) => x.classList.remove('dragging')); $('#pages').classList.remove('drop-on'); });
+  // Drop pages from the left pages panel into the split pane.
+  v.addEventListener('dragover', (e) => { if (!dragThumb || !splitTab()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; clearDropMarks(); const d = dropIndexIn(v, '.sp-page', e.clientY); if (d.el) d.el.classList.add(d.before ? 'drop-before' : 'drop-after'); v.classList.add('drop-on'); });
+  v.addEventListener('dragleave', (e) => { if (!v.contains(e.relatedTarget)) { v.classList.remove('drop-on'); clearDropMarks(); } });
+  v.addEventListener('drop', (e) => {
+    if (!dragThumb) return; const t = splitTab(); if (!t) return; e.preventDefault(); e.stopPropagation();
+    const moving = S.selPages.has(dragThumb) ? S.pages.filter((p) => S.selPages.has(p.id)) : [pageById(dragThumb)];
+    const d = dropIndexIn(v, '.sp-page', e.clientY); dragThumb = null; v.classList.remove('drop-on'); clearDropMarks();
+    saveTab(); addPagesToTab(t, moving.filter(Boolean), d.at); toast(`Copied ${moving.length} page${moving.length > 1 ? 's' : ''} into ${t.name}`);
+  });
+  // Drop split pages into the left document, on its pages or its pages panel.
+  const dropInto = (at) => {
+    const src = WS.list.find((t) => t.id === DRAGX.tabId); if (!src) return; const pages = DRAGX.ids.map((id) => src.pages.find((p) => p.id === id)).filter(Boolean);
+    S.pages.splice(clamp(at, 0, S.pages.length), 0, ...pages.map(clonePage)); DRAGX = null; clearDropMarks();
+    if (S.pages.length === pages.length && !$('#docName').value) $('#docName').value = src.name;
+    renderAll(); commit(); renderTabs(); scrollToPage(clamp(at, 0, S.pages.length - 1)); toast(`Copied ${pages.length} page${pages.length > 1 ? 's' : ''} from ${src.name}`);
+  };
+  viewer.addEventListener('dragover', (e) => { if (!DRAGX) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; clearDropMarks(); const els = $$('.page', pagesEl); let hit = null, before = true; for (const el of els) { const r = el.getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { hit = el; break; } } if (!hit && els.length) { hit = els[els.length - 1]; before = false; } if (hit) hit.classList.add(before ? 'drop-before' : 'drop-after'); pagesEl.classList.add('drop-on'); });
+  viewer.addEventListener('dragleave', (e) => { if (DRAGX && !viewer.contains(e.relatedTarget)) { pagesEl.classList.remove('drop-on'); clearDropMarks(); } });
+  viewer.addEventListener('drop', (e) => { if (!DRAGX) return; e.preventDefault(); e.stopPropagation(); pagesEl.classList.remove('drop-on'); const els = $$('.page', pagesEl); let at = els.length; for (let k = 0; k < els.length; k++) { const r = els[k].getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { at = k; break; } } dropInto(at); });
+  sbList.addEventListener('dragover', (e) => { if (!DRAGX) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; clearDropMarks(); const b = e.target.closest('.thumb'); if (b) { const r = b.getBoundingClientRect(); const target = e.clientY > r.top + r.height / 2 ? b.nextElementSibling : b; if (target) target.classList.add('drop-before'); } });
+  sbList.addEventListener('drop', (e) => { if (!DRAGX) return; e.preventDefault(); e.stopPropagation(); const before = sbList.querySelector('.drop-before'); let at = before ? S.pages.findIndex((p) => p.id === before.dataset.id) : S.pages.length; if (at < 0) at = S.pages.length; dropInto(at); });
+  // Resize the split.
+  const sp = $('#splitter'); let drag = null;
+  sp.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, w: splitEl().offsetWidth }; sp.setPointerCapture(e.pointerId); document.body.classList.add('split-resizing'); });
+  sp.addEventListener('pointermove', (e) => { if (!drag) return; const w = clamp(drag.w - (e.clientX - drag.x), 280, innerWidth * 0.72); document.documentElement.style.setProperty('--split-w', w + 'px'); });
+  const end = () => { if (!drag) return; drag = null; document.body.classList.remove('split-resizing'); lsSet('pdfmate.splitW', splitEl().offsetWidth); refitMain(); if (!SPL.zoom) renderSplit(); };
+  sp.addEventListener('pointerup', end); sp.addEventListener('pointercancel', end);
+  sp.addEventListener('dblclick', () => { document.documentElement.style.removeProperty('--split-w'); lsSet('pdfmate.splitW', 0); refitMain(); });
+  const w0 = lsGet('pdfmate.splitW', 0); if (w0) document.documentElement.style.setProperty('--split-w', w0 + 'px');
+  let rt = 0; addEventListener('resize', () => { if (!SPL.open) return; clearTimeout(rt); rt = setTimeout(() => { if (innerWidth < 760) closeSplitView(); else if (!SPL.zoom) renderSplit(); }, 200); });
+}
+
 /* ---------- Document tabs ---------- */
 const WS = { list: [], active: 0 };
 function blankTab() { return { id: uid('t'), name: 'Untitled', pages: [], hist: [], fut: [], last: JSON.stringify({ pages: [], vals: [] }), sel: null, selPages: new Set(), current: 0, zoom: 1, fit: true, dirty: false, meta: null, scroll: 0, sbView: 'pages' }; }
@@ -698,7 +848,7 @@ function loadTab(i) {
   renderAll(); setSbView(t.sbView || 'pages');
   requestAnimationFrame(() => { viewer.scrollTop = t.scroll || 0; onScroll(); });
   if (S.selecting) { S.selecting = false; $('#sidebar').classList.remove('selecting'); $('#btnSelPages').textContent = 'Select'; }
-  updateChrome(); renderTabs(); refreshFormatBar();
+  updateChrome(); renderTabs(); refreshFormatBar(); splitAfterTabChange();
 }
 function switchTab(i) { if (i === WS.active || !WS.list[i]) return; saveTab(); loadTab(i); scheduleSave(); }
 function newTab() { saveTab(); WS.list.push(blankTab()); loadTab(WS.list.length - 1); }
@@ -715,7 +865,7 @@ function closeTab(i, force) {
   WS.list.splice(i, 1);
   if (!WS.list.length) WS.list.push(blankTab());
   let next = WS.active; if (i < WS.active) next--; else if (i === WS.active) next = Math.min(i, WS.list.length - 1);
-  WS.active = -1; loadTab(next); releaseUnused(); scheduleSave();
+  WS.active = -1; loadTab(next); releaseUnused(); scheduleSave(); splitAfterTabChange();
   if (!S.pages.length) setSidebar(false);
 }
 function closeDoc() { closeTab(WS.active, true); }
@@ -2396,11 +2546,11 @@ const lastInGroup = { shape: 'rect', mark: 'tick' };
 const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 // Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
 const CATS = [
-  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sidebar', 'a:theme', 'a:glass', 'a:keys', 'a:tour']],
+  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sview', '|', 'a:sidebar', 'a:theme', 'a:night', 'a:glass', 'a:keys', 'a:tour']],
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
 const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
@@ -2426,7 +2576,9 @@ const RIB_ACT = {
   hlt: ['Highlight', 'hltext', 'Highlight the selected text', () => selMark('hl')], ul: ['Underline', 'ul', 'Underline the selected text', () => selMark('ul')], stk: ['Strikeout', 'stk', 'Strike through the selected text', () => selMark('st')],
   extract: ['Extract', 'extract', 'Save the current or selected pages as a new PDF', () => extractPages()], reverse: ['Reverse', 'reverse', 'Reverse the page order', () => reversePages(), true],
   protect: ['Password', 'lock', 'Protect with a password (AES-256)', () => openProtect()], clean: ['Remove info', 'clean', 'Leave out title, author and keywords when saving', () => removeInfo(), true],
-  word: ['Word', 'word', 'Export to Word (.docx)', () => openWord()]
+  word: ['Word', 'word', 'Export to Word (.docx)', () => openWord()],
+  sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
+  night: ['Night', 'moon', 'Bridge night mode: red light that keeps your night vision', () => toggleNight($('#tools [data-act="night"]')), true]
 };
 S.cat = lsGet('pdfmate.cat', 'comment'); if (!CATS.some((c) => c[0] === S.cat)) S.cat = 'comment';
 const catOf = (k) => CATS.find((c) => c[0] === k) || CATS[1];
@@ -2447,6 +2599,7 @@ function buildTools() {
   $('#tools').innerHTML = html;
   $$('#cats .cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
   $('#tools').dataset.cat = S.cat;
+  try { markSplitBtn(); $$('#tools [data-act="night"]').forEach((x) => x.setAttribute('aria-pressed', lsGet('pdfmate.night', 'off') !== 'off')); } catch (e) {}
 }
 function selMark(kind) { const s0 = selectionInPages(); if (!s0 || !String(s0.sel).trim()) { toast('Select some text on the page first (Select tool, drag over words), then tap this again'); return; } markSelection(kind); }
 function setCat(k) { if (!CATS.some((c) => c[0] === k)) return; S.cat = k; lsSet('pdfmate.cat', k); buildTools(); const here = $(`#tools [data-tool="${S.tool}"]`); setTool(!here && $('#tools [data-tool="select"]') ? 'select' : S.tool, true); }
@@ -2481,7 +2634,7 @@ $('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat')
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
   if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
-  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
+  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
   if (!S.pages.length) { toast('Open a PDF first'); return; }
   closeEditor(false);
   if (b.dataset.group === 'sign') { signMenu(b); return; }
@@ -2866,7 +3019,7 @@ sbList.addEventListener('click', (e) => {
   lastThumbIdx = i; markThumbs(); updateChrome();
 });
 let dragThumb = null;
-sbList.addEventListener('dragstart', (e) => { const b = e.target.closest('.thumb'); if (!b) return; dragThumb = b.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragThumb); });
+sbList.addEventListener('dragstart', (e) => { const b = e.target.closest('.thumb'); if (!b) return; dragThumb = b.dataset.id; e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', dragThumb); });
 sbList.addEventListener('dragover', (e) => {
   if (!dragThumb) return; e.preventDefault(); $$('.thumb', sbList).forEach((t) => t.classList.remove('drop-before'));
   const b = e.target.closest('.thumb'); if (b) { const r = b.getBoundingClientRect(); const target = e.clientY > r.top + r.height / 2 ? b.nextElementSibling : b; if (target) target.classList.add('drop-before'); }
@@ -4057,6 +4210,7 @@ $('#docName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.targ
 function themeLabel() { const t = lsGet('pdfmate.theme', 'system'); return t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'; }
 function cycleTheme() { const order = ['system', 'light', 'dark']; const t = lsGet('pdfmate.theme', 'system'); const n = order[(order.indexOf(t) + 1) % 3]; lsSet('pdfmate.theme', n); if (n === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', n); toast(`Appearance: ${themeLabel()}`); }
 $('#btnMore').addEventListener('click', () => about());
+$('#btnNight').addEventListener('click', (e) => toggleNight(e.currentTarget));
 function about() {
   const off = navigator.onLine === false;
   const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · by Tango Juliet Dev</p></div></div>
@@ -4202,7 +4356,7 @@ addEventListener('beforeunload', (e) => { saveTab(); if (WS.list.some((t) => t.d
 /* ---------- Boot ---------- */
 function boot() {
   $('#btnSidebar').innerHTML = icon('sidebar'); $('#btnUndo').innerHTML = icon('undo'); $('#btnRedo').innerHTML = icon('redo');
-  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#saveIc').outerHTML = icon('share');
+  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#btnNight').innerHTML = icon('moon'); $('#saveIc').outerHTML = icon('share');
   $('#zoomIn').innerHTML = icon('zin'); $('#zoomOut').innerHTML = icon('zout');
   for (const b of $$('.toolbar .tbtn[title], #tsIc[title]')) { b.dataset.tip = b.getAttribute('title'); b.removeAttribute('title'); }
   const fi = { rotl: 'rotl', rotr: 'rotr', up: 'up', down: 'down', blank: 'blank', del: 'trash' };
@@ -4283,4 +4437,5 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
-window.__pdfmate = { S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };
+applyNight(); initSplit();
+window.__pdfmate = { WS, SPL, openSplitView, S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };

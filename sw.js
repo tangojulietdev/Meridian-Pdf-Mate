@@ -1,5 +1,5 @@
 // Meridian PDF Mate service worker: full offline precache, share target, file opening.
-const VERSION = 'meridian-pdf-mate-v25';
+const VERSION = 'meridian-pdf-mate-v26';
 const SHARE = 'meridian-pdf-mate-share';
 const ASSETS = [
 "./",

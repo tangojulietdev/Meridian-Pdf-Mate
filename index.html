@@ -683,6 +683,42 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 
 
 
+
+/* ===== 3.7: bridge night mode ===== */
+:root[data-night]{background:#000;color-scheme:dark}
+:root[data-night] body{filter:grayscale(1) brightness(var(--night-b,.6))}
+:root[data-night]::after{content:"";position:fixed;inset:0;background:#ff1a00;mix-blend-mode:multiply;pointer-events:none;z-index:2147483647}
+:root[data-night] .page,:root[data-night] .thumb canvas,:root[data-night] .thumb img,:root[data-night] .sp-page{filter:invert(1)}
+:root[data-night] .page .pnum,:root[data-night] .sp-page .pnum{filter:invert(1)}
+#btnNight[aria-pressed="true"]{color:#ff453a}
+/* ===== 3.7: split screen ===== */
+.splitter{flex:none;width:7px;margin:0 -3px;cursor:col-resize;position:relative;z-index:5;padding-top:var(--chrome-h,0px)}
+.splitter::after{content:"";position:absolute;left:3px;top:var(--chrome-h,0px);bottom:0;width:1px;background:var(--sep-strong)}
+.splitter:hover::after,.split-resizing .splitter::after{width:3px;left:2px;background:var(--accent)}
+.split-resizing{cursor:col-resize;user-select:none}
+.split{flex:none;width:var(--split-w,44%);min-width:280px;display:flex;flex-direction:column;background:var(--canvas);padding-top:var(--chrome-h,0px);position:relative}
+.sp-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:.5px solid var(--sep-strong);background:var(--mat,var(--canvas));flex-wrap:wrap}
+.sp-head select.inp{flex:1;min-width:120px;height:32px;width:auto}
+.sp-btns{display:flex;align-items:center;gap:2px}
+.sp-btns .tbtn{height:30px;min-width:30px}
+.sp-btns #spSwap{gap:6px;padding:0 10px;font-weight:600}
+.sp-btns .tbtn[aria-pressed="true"]{color:var(--accent);background:var(--fill-2)}
+.sp-zoom{font-size:12px;font-variant-numeric:tabular-nums;min-width:48px!important}
+.sp-ind{font-size:12px;color:var(--label-3);min-width:46px;text-align:center;font-variant-numeric:tabular-nums}
+.sp-view{flex:1;min-height:0;overflow:auto;position:relative}
+.sp-pages{display:flex;flex-direction:column;align-items:center;gap:16px;padding:18px 18px 80px;min-width:min-content}
+.sp-page{position:relative;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.08),0 8px 24px -10px rgba(0,0,0,.35);cursor:grab;flex:none}
+.sp-page canvas,.sp-page svg{position:absolute;inset:0;width:100%;height:100%}
+.sp-page .pnum{position:absolute;bottom:-15px;left:0;right:0;text-align:center;font-size:11px;color:var(--label-3)}
+.sp-page.dragging{opacity:.45}
+.sp-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;color:var(--label-2)}
+.sp-empty[hidden]{display:none}
+.sp-empty b{font-size:15px;color:var(--label)}
+.sp-empty p{max-width:280px;margin:0 0 6px;font-size:13px}
+.sp-view.drop-on,.pages.drop-on{outline:2px dashed var(--accent);outline-offset:-6px}
+.sp-page.drop-before,.page.drop-before{box-shadow:0 -6px 0 -2px var(--accent),0 8px 24px -10px rgba(0,0,0,.35)}
+.sp-page.drop-after,.page.drop-after{box-shadow:0 6px 0 -2px var(--accent),0 8px 24px -10px rgba(0,0,0,.35)}
+@media (max-width:760px){.split,.splitter{display:none!important}}
 /* ===== 3.6: print options ===== */
 .pr-row{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
 .pr-row select.inp{flex:1;min-width:170px;width:auto}
@@ -813,6 +849,7 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
         <button class="tbtn" id="btnOpen" aria-label="Open or add files" title="Open or add files (Ctrl+O)"></button>
         <button class="tbtn tb-print" id="btnPrint" aria-label="Print" title="Print (Ctrl+P)" disabled></button>
         <button class="tbtn" id="btnInstall" aria-label="Install app" title="Install Meridian PDF Mate" hidden></button>
+        <button class="tbtn" id="btnNight" aria-label="Bridge night mode" title="Bridge night mode: red light, keeps your night vision" aria-pressed="false"></button>
         <button class="tbtn" id="btnMore" aria-label="About and help" title="About Meridian PDF Mate"></button>
       </div>
       <button class="tbtn primary" id="btnSave" disabled><span id="saveIc"></span><span class="tb-hide-m">Save</span></button>
@@ -869,6 +906,25 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
       <span class="psep" aria-hidden="true"></span>
       <button class="pageind" id="pageInd" title="Go to page (Ctrl+G)" hidden>1 / 1</button>
     </div>
+    <div class="splitter" id="splitter" hidden role="separator" aria-orientation="vertical" aria-label="Resize split screen" title="Drag to resize, double-click to reset"></div>
+    <aside class="split" id="split" hidden aria-label="Second document">
+      <div class="sp-head">
+        <select id="spDoc" class="inp" aria-label="Document on the right"></select>
+        <div class="sp-btns">
+          <button class="tbtn" id="spZout" aria-label="Zoom out" title="Zoom out"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.5-4.5M8 11h6"/></svg></button>
+          <button class="tbtn sp-zoom" id="spZoom" title="Fit width">100%</button>
+          <button class="tbtn" id="spZin" aria-label="Zoom in" title="Zoom in"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.5-4.5M8 11h6M11 8v6"/></svg></button>
+          <span class="sp-ind" id="spInd"></span>
+          <button class="tbtn" id="spLink" aria-pressed="false" aria-label="Scroll together" title="Scroll both documents together"><svg class="i" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
+          <button class="tbtn" id="spSwap" aria-label="Edit this document" title="Edit this document (swap sides). Or double-click it"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg><span>Edit this</span></button>
+          <button class="tbtn" id="spClose" aria-label="Close split screen" title="Close split screen"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+      </div>
+      <div class="sp-view" id="spView">
+        <div class="sp-pages" id="spPages"></div>
+        <div class="sp-empty" id="spEmpty"><b>Second document</b><p>Pick an open document above, or open one from a file. Drag pages across to copy them, either way.</p><button class="btn primary" id="spOpen">Open a file</button></div>
+      </div>
+    </aside>
     </div>
   </div>
 </div>
@@ -876,6 +932,7 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileImg" accept="image/*" multiple hidden>
 <input type="file" id="fileStamp" accept="image/*" hidden>
 <input type="file" id="fileInsertImg" accept="image/*" hidden>
+<input type="file" id="fileSplit" accept="application/pdf,.pdf,image/*" hidden>
 <input type="file" id="fileScan" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileCmp" accept="application/pdf,.pdf" hidden>
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
