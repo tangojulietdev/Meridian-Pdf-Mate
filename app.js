@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.3.0';
+const VERSION = '3.4.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -1058,7 +1058,8 @@ function onScroll() {
 }
 viewer.addEventListener('scroll', onScroll, { passive: true });
 viewer.addEventListener('scroll', () => { if (!S.pages.length) return; if (RQ.dtask) { try { RQ.dtask.cancel(); } catch (e) {} } queueRender(140); }, { passive: true });
-function scrollToPage(i, smooth = true) { const el = $$('.page', pagesEl)[i]; if (el) viewer.scrollTo({ top: el.offsetTop - 18, behavior: smooth ? 'smooth' : 'auto' }); }
+const chromeH = () => { const t = document.getElementById('topchrome'); return t && getComputedStyle(t).position === 'absolute' ? t.offsetHeight : 0; };
+function scrollToPage(i, smooth = true) { const el = $$('.page', pagesEl)[i]; if (el) viewer.scrollTo({ top: el.offsetTop - 18 - chromeH(), behavior: smooth ? 'smooth' : 'auto' }); }
 const ZMIN = 0.1, ZMAX = 48; // 7.5% to 3600%
 // Page point under the anchor (client coords) stays put while zooming.
 function zoomAnchor(ax, ay) {
@@ -2187,7 +2188,7 @@ function showHit() {
   const el = $$('.page', pagesEl)[h.page]; if (!el) return;
   paintFind();
   const cur = el.querySelector('.findlayer .cur');
-  if (cur) { const r = cur.getBoundingClientRect(), vr = viewer.getBoundingClientRect(); if (r.top < vr.top + 60 || r.bottom > vr.bottom - 40) viewer.scrollTo({ top: viewer.scrollTop + r.top - vr.top - vr.height / 3, behavior: 'smooth' }); }
+  if (cur) { const r = cur.getBoundingClientRect(), vr = viewer.getBoundingClientRect(); if (r.top < vr.top + chromeH() + 60 || r.bottom > vr.bottom - 40) viewer.scrollTo({ top: viewer.scrollTop + r.top - vr.top - vr.height / 3, behavior: 'smooth' }); }
   else { scrollToPage(h.page); setTimeout(paintFind, 700); }
 }
 function paintFind(only) {
@@ -2217,7 +2218,7 @@ const lastInGroup = { shape: 'rect', mark: 'tick' };
 const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 // Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
 const CATS = [
-  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sidebar', 'a:theme', 'a:keys', 'a:tour']],
+  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sidebar', 'a:theme', 'a:glass', 'a:keys', 'a:tour']],
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 't:pen', 't:rect', 't:ellipse', 't:line', 't:arrow', 't:cloud', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
@@ -2242,6 +2243,7 @@ const RIB_ACT = {
   split: ['Split', 'split', 'Split into separate PDFs', () => openSplit()], export: ['Export', 'download', 'Export pages as images or text', () => openExport()],
   ocr: ['Recognise text', 'ocr', 'Make scanned pages searchable (OCR)', () => openOcr()], compare: ['Compare', 'compare', 'Compare with another PDF', () => openCompare()],
   print: ['Print', 'print', 'Print (Ctrl+P)', () => openPrint()], props: ['Properties', 'props', 'Document title, author and details', () => openProps(), true],
+  glass: ['Glass', 'theme', 'Turn the frosted glass look on or off. Off is lighter for older computers', () => { const off = document.documentElement.dataset.glass !== 'off'; if (off) document.documentElement.dataset.glass = 'off'; else delete document.documentElement.dataset.glass; lsSet('pdfmate.glass', off ? 'off' : 'on'); toast(off ? 'Glass effects off' : 'Glass effects on'); }, true],
   actual: ['Actual size', 'zin', 'Show at real paper size', () => setZoom(96 / 72), true], tour: ['Tour', 'tour', 'Show the quick tour', () => startTour(true), true],
   hlt: ['Highlight', 'hltext', 'Highlight the selected text', () => selMark('hl')], ul: ['Underline', 'ul', 'Underline the selected text', () => selMark('ul')], stk: ['Strikeout', 'stk', 'Strike through the selected text', () => selMark('st')],
   extract: ['Extract', 'extract', 'Save the current or selected pages as a new PDF', () => extractPages()], reverse: ['Reverse', 'reverse', 'Reverse the page order', () => reversePages(), true],
@@ -3149,7 +3151,7 @@ function openGoto() {
 }
 function fitPage() {
   const p = S.pages[S.current]; if (!p) return; const g = geo(p);
-  const z = Math.min((viewer.clientWidth - 48) / g.w, (viewer.clientHeight - 110) / g.h);
+  const z = Math.min((viewer.clientWidth - 48) / g.w, (viewer.clientHeight - 110 - chromeH()) / g.h);
   setZoom(z); scrollToPage(S.current, false);
 }
 
@@ -3725,7 +3727,7 @@ $('#btnUndo').addEventListener('click', undo); $('#btnRedo').addEventListener('c
 $('#zoomIn').addEventListener('click', () => setZoom(S.zoom * 1.25)); $('#zoomOut').addEventListener('click', () => setZoom(S.zoom / 1.25));
 $('#zoomLbl').addEventListener('click', (e) => {
   const pct = (v) => ({ label: v + '%', icon: Math.abs(S.zoom * 75 - v) < 0.6 ? 'check' : 'zin', run: () => setZoom(v / 75) });
-  openMenu(e.currentTarget, [{ label: 'Fit width', icon: 'fit', run: () => setZoom(0, true) }, { label: 'Whole page', icon: 'fitpage', run: () => { const p = S.pages[S.current]; if (!p) return; const g = geo(p); setZoom(Math.min((viewer.clientWidth - 40) / g.w, (viewer.clientHeight - 60) / g.h)); scrollToPage(S.current, false); } }, '-', ...[50, 100, 150, 200, 400, 800, 1600, 3600].map(pct)]);
+  openMenu(e.currentTarget, [{ label: 'Fit width', icon: 'fit', run: () => setZoom(0, true) }, { label: 'Whole page', icon: 'fitpage', run: () => { const p = S.pages[S.current]; if (!p) return; const g = geo(p); setZoom(Math.min((viewer.clientWidth - 40) / g.w, (viewer.clientHeight - 60 - chromeH()) / g.h)); scrollToPage(S.current, false); } }, '-', ...[50, 100, 150, 200, 400, 800, 1600, 3600].map(pct)]);
 });
 $('#btnOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#tabNew').addEventListener('click', () => $('#fileOpen').click());
@@ -3770,7 +3772,7 @@ function about() {
     <div class="about-mail"><div><b>Ideas, problems or a tool you need on board?</b><span>Write to Tango Juliet Dev. Suggestions from seafarers shape every update.</span></div><a class="btn primary" href="mailto:tangojulietdev@gmail.com?subject=Meridian%20PDF%20Mate%20${encodeURIComponent(VERSION)}%20suggestion">${icon('share')} tangojulietdev@gmail.com</a></div>
     <p class="about-small">Built with pdf.js (Apache 2.0), pdf-lib (MIT) and Tesseract (Apache 2.0). Edit text covers the original line and types over it; use Redact where content must be removed.</p>
     <div class="acts" style="justify-content:space-between"><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-k="keys">${icon('kbd')} Shortcuts</button><button class="btn" data-k="tour">${icon('tour')} Tour</button>${isStandalone() ? '' : `<button class="btn" data-k="install">${icon('install')} Add to home screen</button>`}</span><button class="btn primary" data-x>Done</button></div>`, { wide: true });
-  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-x]').onclick = closeSheet; setTimeout(() => { sh.scrollTop = 0; }, 60);
   sh.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeSheet(); if (b.dataset.k === 'keys') openShortcuts(); else if (b.dataset.k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else doInstall(); });
 }
 
@@ -3906,6 +3908,8 @@ function boot() {
   $('#recents').addEventListener('click', (e) => { const x = e.target.closest('[data-forget]'); if (x) { e.stopPropagation(); forgetRecent(x.dataset.forget); return; } const c = e.target.closest('[data-rid]'); if (c) openRecent(c.dataset.rid); });
   $('#recents').addEventListener('keydown', (e) => { const c = e.target.closest('[data-rid]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRecent(c.dataset.rid); } });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  { const tc = document.getElementById('topchrome'); const setH = () => document.documentElement.style.setProperty('--chrome-h', tc.offsetHeight + 'px'); setH(); try { new ResizeObserver(setH).observe(tc); } catch (e) { addEventListener('resize', setH); } }
+  try { if (lsGet('pdfmate.glass', 'on') === 'off') document.documentElement.dataset.glass = 'off'; } catch (e) {}
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('#ribbon')) $('#ribbon').appendChild(t); };
   placeTools(); mq.addEventListener('change', placeTools);

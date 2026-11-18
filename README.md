@@ -17,6 +17,7 @@ Offline PDF editor by Tango Juliet Dev. Fill, sign, stamp and mark up PDFs, then
 - Measure distance and area to scale on drawings (calibrate once on a known dimension), revision clouds, highlight, underline and strikeout of selected text.
 - Password protection with AES-256 (PDF 2.0 standard), with print, copy and edit permissions. Export to Word (.docx) as editable text or exact-look pages. Extract pages, reverse order, remove document info.
 - Search text from the top bar (Ctrl+F): live match count, results list with page and context, previous and next, match case and whole words.
+- Frosted glass interface: the document scrolls under translucent top bars and side panel, with one glass material (blur, grain, lit edges) on every menu, sheet and floating bar. Can be turned off in View for older computers, and follows the system Reduce transparency setting.
 - Undo and redo, keyboard shortcuts, light and dark appearance.
 - Print with page range, one-sided, two-sided (long or short edge binding, preset in the print dialog) or manual two-sided for printers without duplex.
 - Save by download or share sheet (email, WhatsApp) on phones.
