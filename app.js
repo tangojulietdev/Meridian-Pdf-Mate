@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.5.0';
+const VERSION = '3.6.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -2958,7 +2958,7 @@ async function buildPdf(list, onProgress, opts = {}) {
       }
       page.setRotation(PL.degrees(tr(p)));
     } else {
-      const [x0, y0, x1, y1] = p.view; page = out.addPage([x1 - x0, y1 - y0]);
+      const [x0, y0, x1, y1] = p.view; page = out.addPage([x1 - x0, y1 - y0]); if (x0 || y0) page.setMediaBox(x0, y0, x1 - x0, y1 - y0);
       if (p.kind === 'img') page.drawImage(await embedImg(p.imgId), { x: 0, y: 0, width: x1 - x0, height: y1 - y0 });
       page.setRotation(PL.degrees(tr(p)));
     }
@@ -3154,69 +3154,183 @@ async function printRaster(bytes) {
   addEventListener('afterprint', clean);
   window.print();
 }
+// ---------- Print layouts (3.6) ----------
+const PAPERS = { doc: ['Same as document'], a4: ['A4', 595.28, 841.89], a3: ['A3', 841.89, 1190.55], a5: ['A5', 419.53, 595.28], letter: ['Letter', 612, 792], legal: ['Legal', 612, 1008] };
+const NUP = { 2: [2, 1, true], 4: [2, 2, false], 6: [3, 2, true], 9: [3, 3, false], 16: [4, 4, false] };
+// Draws one source page, with its rotation and crop, fitted and centred in a cell of the sheet.
+async function placeInCell(out, sheet, pg, cell, border) {
+  const cb = pg.getCropBox(); const r = ((pg.getRotation().angle % 360) + 360) % 360; const w = cb.width, h = cb.height;
+  const dw = r % 180 ? h : w, dh = r % 180 ? w : h; const k = Math.min(cell.w / dw, cell.h / dh); const ox = cell.x + (cell.w - dw * k) / 2, oy = cell.y + (cell.h - dh * k) / 2;
+  const emb = await out.embedPage(pg, { left: cb.x, bottom: cb.y, right: cb.x + w, top: cb.y + h });
+  const pos = { 0: [ox, oy], 90: [ox, oy + w * k], 180: [ox + w * k, oy + h * k], 270: [ox + h * k, oy] }[r] || [ox, oy];
+  sheet.drawPage(emb, { x: pos[0], y: pos[1], xScale: k, yScale: k, rotate: PL.degrees(-r) });
+  if (border) sheet.drawRectangle({ x: ox, y: oy, width: dw * k, height: dh * k, borderColor: PL.rgb(0.55, 0.55, 0.58), borderWidth: 0.5 });
+}
+const pageDims = (pg) => { const cb = pg.getCropBox(); const r = ((pg.getRotation().angle % 360) + 360) % 360; return r % 180 ? [cb.height, cb.width] : [cb.width, cb.height]; };
+async function layoutPdf(bytes, o) {
+  const src = await PL.PDFDocument.load(bytes); const pages = src.getPages(); const n = pages.length;
+  if (o.layout === 'normal' && o.paper === 'doc') return bytes;
+  const out = await PL.PDFDocument.create(); out.setProducer('Meridian PDF Mate by Tango Juliet Dev');
+  const P = PAPERS[o.paper === 'doc' ? 'a4' : o.paper]; const pw = P[1], ph = P[2];
+  if (o.layout === 'normal') {
+    for (const pg of pages) { const [dw, dh] = pageDims(pg); const land = dw > dh; const W = land ? ph : pw, H = land ? pw : ph; const m = 0; const sh = out.addPage([W, H]); await placeInCell(out, sh, pg, { x: m, y: m, w: W - 2 * m, h: H - 2 * m }); }
+  } else if (o.layout === 'nup') {
+    const [cols, rows, landSheet] = NUP[o.nup] || NUP[2]; const W = landSheet ? ph : pw, H = landSheet ? pw : ph; const m = 18, gap = 8;
+    const cw = (W - 2 * m - gap * (cols - 1)) / cols, ch = (H - 2 * m - gap * (rows - 1)) / rows; const per = cols * rows;
+    for (let s = 0; s < n; s += per) { const sh = out.addPage([W, H]); for (let j = 0; j < per && s + j < n; j++) { const c = j % cols, rr = Math.floor(j / cols); await placeInCell(out, sh, pages[s + j], { x: m + c * (cw + gap), y: H - m - (rr + 1) * ch - rr * gap, w: cw, h: ch }, o.borders); } }
+  } else if (o.layout === 'booklet') {
+    const N = Math.ceil(n / 4) * 4 || 4; const W = ph, H = pw; const m = 14, half = W / 2;
+    const put = async (sh, idx, left) => { if (idx < n) await placeInCell(out, sh, pages[idx], { x: left ? m : half + m, y: m, w: half - 2 * m, h: H - 2 * m }, o.borders); };
+    for (let s = 0; s < N / 4; s++) {
+      const f = out.addPage([W, H]); await put(f, N - 1 - 2 * s, true); await put(f, 2 * s, false);
+      const b = out.addPage([W, H]); await put(b, 2 * s + 1, true); await put(b, N - 2 - 2 * s, false);
+    }
+  }
+  return out.save();
+}
+// Copies, margin label, two-sided flag and the manual two-sided split, all on the finished sheets.
+async function finishPrint(bytes, o) {
+  const src = await PL.PDFDocument.load(bytes); let idx = src.getPageIndices();
+  const duplexed = o.sides !== 'one';
+  if (o.copies > 1) {
+    const unit = duplexed ? 2 : 1; const units = []; for (let i = 0; i < idx.length; i += unit) units.push(idx.slice(i, i + unit));
+    if (duplexed) units.forEach((u) => { if (u.length < 2) u.push(-1); });
+    const rep = []; if (o.collate) for (let c = 0; c < o.copies; c++) units.forEach((u) => rep.push(...u)); else units.forEach((u) => { for (let c = 0; c < o.copies; c++) rep.push(...u); });
+    idx = rep;
+  }
+  if (o.sides === 'manual') {
+    if (idx.length % 2) idx.push(-1);
+    const fronts = idx.filter((_, i) => i % 2 === 0), backs = idx.filter((_, i) => i % 2 === 1).reverse();
+    idx = o.part === 'fronts' ? fronts : backs;
+  }
+  const out = await PL.PDFDocument.create(); out.setProducer('Meridian PDF Mate by Tango Juliet Dev');
+  const real = idx.filter((i) => i >= 0); const copied = real.length ? await out.copyPages(src, real) : []; let ci = 0;
+  const first = src.getPage(0); const [fw, fh] = pageDims(first); const total = idx.length;
+  const font = o.label ? await out.embedFont(PL.StandardFonts.Helvetica) : null;
+  const name = String(o.name || '').replace(/[^\x20-\x7e\xa0-\xff]/g, '?').slice(0, 80); const stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  for (let k = 0; k < idx.length; k++) {
+    let pg; if (idx[k] < 0) { const cb = first.getCropBox(); pg = out.addPage([fw, fh]); void cb; } else { pg = copied[ci++]; out.addPage(pg); }
+    if (o.sides === 'manual' && o.part === 'backs' && o.bind === 'short') pg.setRotation(PL.degrees((pg.getRotation().angle + 180) % 360));
+    if (font && idx[k] >= 0) {
+      const rot = ((pg.getRotation().angle % 360) + 360) % 360; const cb = pg.getCropBox(); const [dw] = rot % 180 ? [cb.height, cb.width] : [cb.width, cb.height];
+      const txt = `${name}   ${stamp}   Page ${idx[k] + 1} of ${src.getPageCount()}`; const size = 7; const tw = font.widthOfTextAtSize(txt, size);
+      // Write in the bottom margin of the page as it is seen, whatever its rotation.
+      const at = (u, v) => ({ 0: [cb.x + u, cb.y + v], 90: [cb.x + cb.width - v, cb.y + u], 180: [cb.x + cb.width - u, cb.y + cb.height - v], 270: [cb.x + v, cb.y + cb.height - u] }[rot]);
+      const [tx, ty] = at((dw - tw) / 2, 9); pg.drawText(txt, { x: tx, y: ty, size, font, color: PL.rgb(0.45, 0.45, 0.48), rotate: PL.degrees(rot) });
+    }
+  }
+  if (duplexed && o.sides === 'two') { try { out.catalog.getOrCreateViewerPreferences().setDuplex(PL.Duplex[o.bind === 'short' ? 'DuplexFlipShortEdge' : 'DuplexFlipLongEdge']); } catch (e) {} }
+  else { try { out.catalog.getOrCreateViewerPreferences().setDuplex(PL.Duplex.Simplex); } catch (e) {} }
+  if (o.copies > 1 && o.sides === 'one') { try { out.catalog.getOrCreateViewerPreferences().setNumCopies(1); } catch (e) {} }
+  void total; return out.save();
+}
 function openPrint() {
   if (!S.pages.length) return; closeEditor(false);
-  const nSel = S.selPages.size; const st = lsGet('pdfmate.print', { sides: 'one', bind: 'long' });
-  let scope = nSel ? 'sel' : 'all', sides = st.sides, bind = st.bind;
+  const nSel = S.selPages.size; const st = Object.assign({ sides: 'one', bind: 'long', layout: 'normal', nup: 2, paper: 'doc', content: 'all', gray: false, label: false, borders: false, collate: true }, lsGet('pdfmate.print', {}));
+  let scope = nSel ? 'sel' : 'all', sides = st.sides, bind = st.bind, layout = st.layout;
+  const cur = Math.min(S.current, S.pages.length - 1) + 1;
   const desk = canIframePrint();
+  const opt = (v, l, c) => `<option value="${v}" ${String(v) === String(c) ? 'selected' : ''}>${l}</option>`;
   const sh = sheet(`<h2>Print</h2><p class="sub">${S.pages.length} page${S.pages.length > 1 ? 's' : ''}. Markup, signatures and form entries print as shown.</p>
-    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group" aria-label="Pages"><button data-sc="all">All</button>${nSel ? `<button data-sc="sel">Selected ${nSel}</button>` : ''}<button data-sc="range">Range</button></div>
-      <input id="prRange" class="inp" style="margin-top:8px" placeholder="For example 1-3, 6" inputmode="numeric" autocomplete="off" hidden></div>
+    <div class="field"><span class="flabel">Pages</span><div class="seg" role="group" aria-label="Pages"><button data-sc="all">All</button><button data-sc="cur">Current (${cur})</button>${nSel ? `<button data-sc="sel">Selected ${nSel}</button>` : ''}<button data-sc="range">Range</button></div>
+      <input id="prRange" class="inp" style="margin-top:8px" placeholder="For example 1-3, 6" inputmode="numeric" autocomplete="off" hidden>
+      <div class="pr-row"><select id="prSub" class="inp" aria-label="Which pages">${opt('all', 'All pages in range', 'all')}${opt('odd', 'Odd pages only', '')}${opt('even', 'Even pages only', '')}</select><label class="chkrow"><input type="checkbox" id="prRev"> Reverse order</label></div></div>
+    <div class="field"><span class="flabel">Copies</span><div class="pr-row"><div class="stepper pr-step"><button type="button" data-cp="-1" aria-label="Fewer copies">−</button><input id="prCopies" class="inp" value="1" inputmode="numeric" aria-label="Copies"><button type="button" data-cp="1" aria-label="More copies">+</button></div><label class="chkrow"><input type="checkbox" id="prCollate" ${st.collate ? 'checked' : ''}> Collate (1 2 3, 1 2 3)</label></div></div>
+    <div class="field"><span class="flabel">Layout</span><div class="seg" role="group" aria-label="Layout"><button data-ly="normal">One per sheet</button><button data-ly="nup">Several per sheet</button><button data-ly="booklet">Booklet</button></div>
+      <div class="pr-row" id="prNupRow"><select id="prNup" class="inp" aria-label="Pages per sheet">${[2, 4, 6, 9, 16].map((k) => opt(k, k + ' pages per sheet', st.nup)).join('')}</select><label class="chkrow"><input type="checkbox" id="prBorders" ${st.borders ? 'checked' : ''}> Page borders</label></div></div>
+    <div class="field"><span class="flabel">Paper and scaling</span><select id="prPaper" class="inp" aria-label="Paper">${Object.entries(PAPERS).map(([k, v]) => opt(k, k === 'doc' ? 'Same as document, actual size' : `Fit to ${v[0]}`, st.paper)).join('')}</select></div>
     <div class="field"><span class="flabel">Sides</span><div class="seg" role="group" aria-label="Sides"><button data-sd="one">One-sided</button><button data-sd="two">Two-sided</button><button data-sd="manual">Manual two-sided</button></div></div>
     <div class="field" id="prBindF"><span class="flabel">Binding</span><div class="seg" role="group" aria-label="Binding" style="height:auto">
       <button data-bd="long" style="height:auto;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px">${icon('longedge', 'style="width:26px;height:26px"')}<span>Long edge</span><small style="color:var(--label-3);font-weight:400">Book style</small></button>
       <button data-bd="short" style="height:auto;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px">${icon('shortedge', 'style="width:26px;height:26px"')}<span>Short edge</span><small style="color:var(--label-3);font-weight:400">Flip up, calendar style</small></button></div></div>
+    <div class="field"><span class="flabel">Print what</span><select id="prContent" class="inp" aria-label="Print what">${opt('all', 'Document and markup', st.content)}${opt('doc', 'Document only, without markup', st.content)}${opt('mark', 'Markup only, for pre-printed forms', st.content)}</select>
+      <label class="chkrow"><input type="checkbox" id="prGray" ${st.gray ? 'checked' : ''}> Black and white (saves colour ink)</label>
+      <label class="chkrow"><input type="checkbox" id="prLabel" ${st.label ? 'checked' : ''}> File name, date and time in the bottom margin</label></div>
     <p class="sub" id="prNote" style="margin:4px 0 0"></p>
+    <p class="sub pr-sum" id="prSum"></p>
     <div class="progress" hidden><i></i></div>
     <div class="acts" id="prActs"></div>`);
-  const range = sh.querySelector('#prRange');
+  const $s = (q) => sh.querySelector(q); const range = $s('#prRange');
+  if (sides !== 'one' && layout === 'booklet') bind = 'short';
+  const copies = () => clamp(parseInt($s('#prCopies').value, 10) || 1, 1, 99);
   const pick = () => {
-    if (scope === 'all') return S.pages;
-    if (scope === 'sel') return S.pages.filter((p) => S.selPages.has(p.id));
-    const idx = parseRange(range.value, S.pages.length); return idx ? idx.map((i) => S.pages[i]) : null;
+    let list;
+    if (scope === 'all') list = S.pages; else if (scope === 'cur') list = [S.pages[cur - 1]];
+    else if (scope === 'sel') list = S.pages.filter((p) => S.selPages.has(p.id));
+    else { const idx = parseRange(range.value, S.pages.length); if (!idx) return null; list = idx.map((i) => S.pages[i]); }
+    const sub = $s('#prSub').value; if (sub !== 'all') list = list.filter((p) => { const n = S.pages.indexOf(p) + 1; return sub === 'odd' ? n % 2 === 1 : n % 2 === 0; });
+    if ($s('#prRev').checked) list = list.slice().reverse();
+    return list;
+  };
+  const opts = () => ({ sides, bind: layout === 'booklet' ? 'short' : bind, layout, nup: +$s('#prNup').value, paper: $s('#prPaper').value, content: $s('#prContent').value, gray: $s('#prGray').checked, label: $s('#prLabel').checked, borders: $s('#prBorders').checked, collate: $s('#prCollate').checked, copies: copies(), name: $('#docName').value || 'Document' });
+  const summary = () => {
+    const l = pick(); if (!l) return 'Type a page range to see how much paper this takes.'; if (!l.length) return 'No pages match. Check the range and the odd or even choice.';
+    const o = opts(); let sidesN = o.layout === 'nup' ? Math.ceil(l.length / o.nup) : o.layout === 'booklet' ? Math.ceil(l.length / 4) * 2 : l.length;
+    const sheets = o.sides === 'one' ? sidesN : Math.ceil(sidesN / 2); const tot = sheets * o.copies;
+    return `${l.length} page${l.length > 1 ? 's' : ''} on <b>${tot} sheet${tot > 1 ? 's' : ''}</b> of paper${o.copies > 1 ? ` (${o.copies} copies)` : ''}${o.layout === 'booklet' ? '. Fold the stack in half and staple on the fold.' : ''}`;
   };
   const paint = () => {
     sh.querySelectorAll('[data-sc]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.sc === scope));
     sh.querySelectorAll('[data-sd]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.sd === sides));
-    sh.querySelectorAll('[data-bd]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.bd === bind));
-    range.hidden = scope !== 'range'; sh.querySelector('#prBindF').hidden = sides === 'one';
-    const edge = bind === 'long' ? 'long edge' : 'short edge';
-    sh.querySelector('#prNote').innerHTML = sides === 'one' ? 'Prints on one side of each sheet.'
-      : sides === 'two' ? (desk ? `The print dialog opens with two-sided printing set to flip on the ${edge}. If it is not ticked, open <b>More settings</b> and tick <b>Print on both sides</b>.` : `In the print screen choose <b>Two-sided</b> and <b>${bind === 'long' ? 'Long edge' : 'Short edge'}</b>.`)
+    sh.querySelectorAll('[data-bd]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.bd === (layout === 'booklet' ? 'short' : bind)));
+    sh.querySelectorAll('[data-ly]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.ly === layout));
+    range.hidden = scope !== 'range'; $s('#prBindF').hidden = sides === 'one' || layout === 'booklet'; $s('#prNupRow').hidden = layout === 'normal';
+    $s('#prNup').hidden = layout !== 'nup'; $s('#prCollate').closest('label').hidden = copies() < 2;
+    const edge = bind === 'long' || layout === 'booklet' ? (layout === 'booklet' ? 'short edge' : 'long edge') : 'short edge';
+    let note = sides === 'one' ? (layout === 'booklet' ? 'A booklet needs both sides of each sheet. Choose Two-sided, or Manual two-sided if your printer cannot.' : 'Prints on one side of each sheet.')
+      : sides === 'two' ? (desk ? `The print dialog opens with two-sided printing set to flip on the ${edge}. If it is not ticked, open <b>More settings</b> and tick <b>Print on both sides</b>.` : `In the print screen choose <b>Two-sided</b> and <b>${edge === 'long edge' ? 'Long edge' : 'Short edge'}</b>.`)
       : `For printers that cannot print both sides. Print the fronts, put the printed stack back in the paper tray so the blank sides will be printed, then print the backs. Try it with two sheets first, because trays differ between printers.`;
-    const acts = sh.querySelector('#prActs');
-    acts.innerHTML = sides === 'manual'
-      ? `<button class="btn" data-x>Cancel</button><button class="btn" data-go="fronts">1. Print fronts</button><button class="btn primary" data-go="backs">2. Print backs</button>`
-      : `<button class="btn" data-x>Cancel</button><button class="btn primary" data-go="all">${icon('print')} Print</button>`;
+    if (layout !== 'normal' || $s('#prPaper').value !== 'doc') note += ' In the print dialog keep the scale at <b>Default</b> or <b>Fit</b>, and pick the same paper size.';
+    $s('#prNote').innerHTML = note; $s('#prSum').innerHTML = summary();
+    const acts = $s('#prActs');
+    acts.innerHTML = `<button class="btn" data-x>Cancel</button><button class="btn" data-pv title="Open the pages exactly as they will print">${icon('search')} Preview</button>` + (sides === 'manual'
+      ? `<button class="btn" data-go="fronts">1. Print fronts</button><button class="btn primary" data-go="backs">2. Print backs</button>`
+      : `<button class="btn primary" data-go="all">${icon('print')} Print</button>`);
     acts.querySelector('[data-x]').onclick = closeSheet;
+    acts.querySelector('[data-pv]').onclick = (e) => run('preview', e.currentTarget);
     acts.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => run(b.dataset.go, b));
   };
+  const make = async (part, bar) => {
+    const o = opts(); const list = pick();
+    let pages = list;
+    if (o.content === 'doc') pages = list.map((p) => ({ ...p, annots: p.annots.filter((a) => a.t === 'redact') }));
+    else if (o.content === 'mark') pages = list.map((p) => ({ ...p, kind: 'blank', annots: p.annots.filter((a) => a.t !== 'redact'), ocr: null }));
+    let bytes = await buildPdf(pages, (f) => { bar.style.width = Math.round(f * 70) + '%'; });
+    bytes = await layoutPdf(bytes, o); bar.style.width = '78%';
+    bytes = await finishPrint(bytes, Object.assign(o, { part })); bar.style.width = '85%';
+    if (o.gray) bytes = await rasterizePdf(bytes, 200, 0.9, (f) => { bar.style.width = Math.round(85 + f * 15) + '%'; }, true);
+    return bytes;
+  };
   const run = async (what, btn) => {
-    lsSet('pdfmate.print', { sides, bind });
-    const list = pick(); if (!list || !list.length) { toast('Enter a page range such as 1-3, 6', { err: true }); range.focus(); return; }
-    let pages = list, duplex = 'simplex';
-    if (sides === 'two') duplex = bind;
-    if (sides === 'manual') { const m = manualSides(list, bind); pages = what === 'fronts' ? m.fronts : m.backs; }
+    const o = opts(); lsSet('pdfmate.print', { sides, bind, layout, nup: o.nup, paper: o.paper, content: o.content, gray: o.gray, label: o.label, borders: o.borders, collate: o.collate });
+    const list = pick(); if (!list) { toast('Enter a page range such as 1-3, 6', { err: true }); range.focus(); return; }
+    if (!list.length) { toast('No pages match. Check the range and the odd or even choice.', { err: true }); return; }
+    if (layout === 'booklet' && sides === 'one') { toast('Choose Two-sided or Manual two-sided for a booklet', { err: true }); return; }
     const btns = sh.querySelectorAll('.acts .btn'); btns.forEach((b) => b.disabled = true);
-    const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i'); bar.style.width = '0';
+    const pr = $s('.progress'); pr.hidden = false; const bar = pr.querySelector('i'); bar.style.width = '0';
     try {
-      const bytes = await buildPdf(pages, (f) => { bar.style.width = Math.round(f * 100) + '%'; }, { duplex });
+      const bytes = await make(what === 'preview' ? (sides === 'manual' ? 'all' : 'all') : what, bar);
+      if (what === 'preview') { const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); const w = window.open(url, '_blank'); if (!w) downloadBlob(new Blob([bytes], { type: 'application/pdf' }), 'Print preview.pdf'); setTimeout(() => URL.revokeObjectURL(url), 120000); btns.forEach((b) => b.disabled = false); pr.hidden = true; return; }
       await printBytes(bytes);
       if (sides === 'manual' && what === 'fronts') { toast('Fronts sent. Turn the stack over, put it back in the tray, then tap Print backs.', { ms: 6000 }); btns.forEach((b) => b.disabled = false); pr.hidden = true; }
       else closeSheet();
     } catch (e) { console.error(e); btns.forEach((b) => b.disabled = false); pr.hidden = true; toast('Could not print. ' + (e && e.message ? e.message : ''), { err: true, ms: 5000 }); }
   };
   sh.addEventListener('click', (e) => {
-    const sc = e.target.closest('[data-sc]'), sd = e.target.closest('[data-sd]'), bd = e.target.closest('[data-bd]');
+    const sc = e.target.closest('[data-sc]'), sd = e.target.closest('[data-sd]'), bd = e.target.closest('[data-bd]'), ly = e.target.closest('[data-ly]'), cp = e.target.closest('[data-cp]');
     if (sc) { scope = sc.dataset.sc; paint(); if (scope === 'range') range.focus(); }
     if (sd) { sides = sd.dataset.sd; paint(); }
     if (bd) { bind = bd.dataset.bd; paint(); }
+    if (ly) { layout = ly.dataset.ly; if (layout === 'booklet' && sides === 'one') sides = 'two'; paint(); }
+    if (cp) { $s('#prCopies').value = clamp(copies() + +cp.dataset.cp, 1, 99); paint(); }
   });
+  sh.addEventListener('input', () => { $s('#prSum').innerHTML = summary(); $s('#prCollate').closest('label').hidden = copies() < 2; });
+  sh.addEventListener('change', paint);
   paint();
 }
 
 /* ---------- Raster, compress, split, page numbers, watermark ---------- */
-async function rasterizePdf(bytes, dpi = 150, q = 0.85, onProgress) {
+async function rasterizePdf(bytes, dpi = 150, q = 0.85, onProgress, gray) {
   const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() }).promise;
   const out = await PL.PDFDocument.create(); out.setProducer('Meridian PDF Mate by Tango Juliet Dev');
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -3225,6 +3339,7 @@ async function rasterizePdf(bytes, dpi = 150, q = 0.85, onProgress) {
     const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
     await pg.render({ canvasContext: x, viewport: vp }).promise;
+    if (gray) { const d = x.getImageData(0, 0, c.width, c.height), a = d.data; for (let k = 0; k < a.length; k += 4) { const yv = 0.299 * a[k] + 0.587 * a[k + 1] + 0.114 * a[k + 2]; a[k] = a[k + 1] = a[k + 2] = yv; } x.putImageData(d, 0, 0); }
     const jpg = await out.embedJpg(dataUrlBytes(c.toDataURL('image/jpeg', q)));
     const page = out.addPage([v1.width, v1.height]); page.drawImage(jpg, { x: 0, y: 0, width: v1.width, height: v1.height });
     c.width = c.height = 0; if (onProgress) onProgress(i / pdf.numPages);
@@ -3959,7 +4074,7 @@ function about() {
       <li><b>Edit</b> change existing text (any angle), move and recolour the PDF's own text, lines and images, text boxes with Word style formatting, whiteout</li>
       <li><b>Fill & Sign</b> form fields, signatures, ship's stamps with white background removal, date stamps, templates</li>
       <li><b>Pages</b> merge, insert, scan with camera, rotate, reorder, extract, split, crop, page numbers, watermark</li>
-      <li><b>Tools</b> measure distance and area to scale, true redaction, password protection (AES-256), text recognition for scans, compare two PDFs, export to Word, images or text, print with duplex</li>
+      <li><b>Tools</b> measure distance and area to scale, true redaction, password protection (AES-256), text recognition for scans, compare two PDFs, export to Word, images or text, print with current page, odd or even pages, copies, several pages per sheet, booklets, fit to paper, black and white, markup only and two-sided</li>
     </ul>
     <h3 class="about-h">Tips</h3>
     <ul class="about-list"><li>Every tool has a one-letter shortcut. Press <kbd>?</kbd> to see them all.</li><li>Your open files and changes are kept if the browser is closed, and come back next time.</li><li>For best results at sea, open the app once while connected so the latest version is saved.</li></ul>
@@ -4168,4 +4283,4 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
-window.__pdfmate = { S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP };
+window.__pdfmate = { S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };

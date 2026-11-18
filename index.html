@@ -682,6 +682,16 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 @media (max-width:560px){.about-grid{grid-template-columns:1fr}}
 
 
+
+/* ===== 3.6: print options ===== */
+.pr-row{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.pr-row select.inp{flex:1;min-width:170px;width:auto}
+.pr-row .chkrow{padding:0;white-space:nowrap}
+.pr-step{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:9px;background:var(--fill-2)}
+.pr-step button{width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:var(--label);font-size:17px}
+.pr-step button:hover{background:var(--control)}
+.pr-step .inp{width:48px;height:32px;text-align:center;padding:0 4px}
+.pr-sum{margin:6px 0 0;color:var(--label-2)}
 /* ===== 3.5: shape gallery and shape fill ===== */
 .menu.shapegal{width:min(372px,calc(100vw - 16px));padding:8px 8px 10px}
 .shapegal .sg-head{display:flex;flex-direction:column;gap:2px;padding:4px 6px 6px}
