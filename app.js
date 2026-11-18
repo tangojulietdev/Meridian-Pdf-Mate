@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -2202,21 +2202,63 @@ function paintFind(only) {
 /* ---------- Tools and format bar ---------- */
 const lastInGroup = { shape: 'rect', mark: 'tick' };
 const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
-function buildTools() {
-  $('#tools').innerHTML = '<div class="tgroup" role="group">' + TOOLS.map(([k, label, ic]) => {
-    if (k === 'sep') return '</div><div class="tgroup" role="group">';
-    if (k.startsWith('g:')) { const g = k.slice(2); const cur = g === 'sign' ? 'sign' : (GROUPS[g].find((v) => v[0] === lastInGroup[g]) || GROUPS[g][0])[2]; return `<button class="tool grp" data-group="${g}" aria-haspopup="menu" aria-label="${label}" data-tip="${label}">${icon(cur)}${CHEV}</button>`; }
-    return `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${label}" data-tip="${label}">${icon(ic)}</button>`;
-  }).join('') + '</div>';
+// Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
+const CATS = [
+  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', '|', 'a:sidebar', 'a:theme', 'a:keys']],
+  ['comment', 'Comment', 'note', ['t:select', '|', 't:note', 't:hl', 't:text', '|', 't:pen', 't:rect', 't:ellipse', 't:line', 't:arrow', '|', 't:tick', 't:cross', 'g:sign']],
+  ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
+  ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
+  ['pages', 'Pages', 'blank', ['a:blank', 'a:addfile', 'a:addphoto', 'a:scan', '|', 'a:prot', 'a:dupp', 'a:delp', 't:crop', '|', 'a:pnum', 'a:wm', '|', 'a:split', 'a:export']],
+  ['tools', 'Protect & Tools', 'lock', ['t:redact', '|', 'a:ocr', 'a:compare', 'a:find', '|', 'a:export', 'a:split', 'a:print', 'a:props']]
+];
+const TOOL_SHORT = { select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
+const TOOL_KEY = { select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
+const TOOL_ICON = { select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
+const RIB_ACT = {
+  find: ['Search', 'search', 'Search text (Ctrl+F)', () => openFind()], goto: ['Go to page', 'goto', 'Go to page (Ctrl+G)', () => openGoto()],
+  zin: ['Zoom in', 'zin', 'Zoom in (Ctrl +)', () => setZoom(S.zoom * 1.25)], zout: ['Zoom out', 'zout', 'Zoom out (Ctrl -)', () => setZoom(S.zoom / 1.25)],
+  fitw: ['Fit width', 'fit', 'Fit width (Ctrl 0)', () => setZoom(0, true)], fitp: ['Whole page', 'fitpage', 'Fit whole page', () => fitPage()],
+  sidebar: ['Pages panel', 'sidebar', 'Show or hide the pages panel', () => $('#btnSidebar').click(), true], theme: ['Appearance', 'theme', 'Light, dark or system', () => { cycleTheme(); toast('Appearance: ' + themeLabel()); }, true], keys: ['Shortcuts', 'kbd', 'Keyboard shortcuts (?)', () => openShortcuts(), true],
+  img: ['Image', 'photo', 'Insert an image from a file', () => $('#fileInsertImg').click()],
+  forms: ['Form fields', 'form', 'List and fill the form fields in this PDF', () => { const n = [...S.docs.values()].reduce((k, d) => k + d.fields.length, 0); if (!n) { toast('This PDF has no form fields. Use Add text, Tick and Cross to fill it.'); return; } openFormList(); }],
+  date: ['Date', 'text', 'Place today\'s date', () => { const d = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase(); pickStamp({ text: d, color: '#000000', plain: true }); }],
+  sigs: ['Signature', 'sign', 'Signatures and saved stamps', () => openLibrary()], templates: ['Templates', 'form', 'Ready-made forms and templates', () => openTemplates(), true],
+  blank: ['Blank page', 'blank', 'Insert a blank page after the current one', () => pageAction('blank')], addfile: ['Add file', 'merge', 'Add pages from another PDF or image', () => $('#fileAdd').click()], addphoto: ['Photos', 'photo', 'Add photos as pages', () => $('#fileImg').click(), true],
+  scan: ['Scan', 'scan', 'Scan with the camera', () => startScan(), true], prot: ['Rotate', 'rotr', 'Rotate the current or selected pages', () => pageAction('rotr')], dupp: ['Duplicate', 'dup', 'Duplicate the current or selected pages', () => pageAction('dup')], delp: ['Delete', 'trash', 'Delete the current or selected pages', () => pageAction('del')],
+  pnum: ['Page numbers', 'pagenum', 'Add page numbers', () => openPageNumbers()], wm: ['Watermark', 'watermark', 'Add a watermark', () => openWatermark()],
+  split: ['Split', 'split', 'Split into separate PDFs', () => openSplit()], export: ['Export', 'download', 'Export pages as images or text', () => openExport()],
+  ocr: ['Recognise text', 'ocr', 'Make scanned pages searchable (OCR)', () => openOcr()], compare: ['Compare', 'compare', 'Compare with another PDF', () => openCompare()],
+  print: ['Print', 'print', 'Print (Ctrl+P)', () => openPrint()], props: ['Properties', 'props', 'Document title, author and details', () => openProps()]
+};
+S.cat = lsGet('pdfmate.cat', 'comment'); if (!CATS.some((c) => c[0] === S.cat)) S.cat = 'comment';
+const catOf = (k) => CATS.find((c) => c[0] === k) || CATS[1];
+function buildCats() {
+  $('#cats').innerHTML = CATS.map(([k, label, ic]) => `<button class="cat" role="tab" data-cat="${k}" aria-selected="${k === S.cat}" data-tip="${label}">${icon(ic)}<span>${label}</span></button>`).join('');
 }
-function setTool(t) {
+function buildTools() {
+  const [ck, clabel, cic, items] = catOf(S.cat);
+  let html = `<button class="tool catsw" data-catsw="1" aria-label="Change tool category" data-tip="Tool category">${icon(cic)}<span class="tl">${clabel}</span>${CHEV}</button><span class="rsep catsep"></span>`;
+  for (const it of items) {
+    if (it === '|') { html += '<span class="rsep" aria-hidden="true"></span>'; continue; }
+    const [kind, k] = it.split(':');
+    if (kind === 't') { const tip = (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
+    else if (kind === 'g') html += `<button class="tool grp" data-group="sign" aria-haspopup="menu" aria-label="Stamps" data-tip="Stamps, signatures and images">${icon('stamp')}<span class="tl">Stamps</span>${CHEV}</button>`;
+    else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
+  }
+  $('#tools').innerHTML = html;
+  $$('#cats .cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
+  $('#tools').dataset.cat = S.cat;
+}
+function setCat(k) { if (!CATS.some((c) => c[0] === k)) return; S.cat = k; lsSet('pdfmate.cat', k); buildTools(); const here = $(`#tools [data-tool="${S.tool}"]`); setTool(!here && $('#tools [data-tool="select"]') ? 'select' : S.tool, true); }
+function setTool(t, keepCat) {
   if (t !== 'image') S.pendingImg = null;
   if (t !== 'stamp') S.pendingStamp = null;
   const g = toolGroup(t); if (g) { lastInGroup[g] = t; const gb = $(`#tools [data-group="${g}"]`); if (gb) gb.innerHTML = icon(GROUPS[g].find((v) => v[0] === t)[2]) + CHEV; }
   if (S.tool === 'objedit' && t !== 'objedit') { const op = OSEL && pageById(OSEL.pageId), hp = OHOV && pageById(OHOV.pageId); OSEL = null; OHOV = null; S.tool = t; if (op) drawOverlay(op); if (hp && hp !== op) drawOverlay(hp); }
   if (t === 'objedit') { for (const el of $$('.page', pagesEl)) { if (!el._vis) continue; const pp = pageById(el.dataset.id); if (pp && pp.kind === 'pdf') { const d = S.docs.get(pp.docId); if (d && !d.encrypted) pageObjs(d, pp.index); } } }
+  if (!keepCat && !$(`#tools [data-tool="${t}"]`) && !(t === 'image' || t === 'stamp')) { const c = CATS.find((x) => x[3].includes('t:' + t)); if (c && c[0] !== S.cat) { S.cat = c[0]; lsSet('pdfmate.cat', S.cat); buildTools(); } }
   S.tool = t; viewer.classList.toggle('drawing', DRAW_TOOLS.has(t)); viewer.dataset.tool = t;
-  $$('#tools .tool').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : toolGroup(t) === b.dataset.group)));
+  $$('#tools .tool').forEach((b) => { if (!b.dataset.tool && !b.dataset.group) return; b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : toolGroup(t) === b.dataset.group)); });
   if (t !== 'select' && S.sel && !S.editing) select(null);
   if (t === 'hand') { const sel = getSelection(); if (sel) sel.removeAllRanges(); }
   hideBubble(); refreshFormatBar();
@@ -2233,8 +2275,11 @@ function signMenu(anchor) {
   ]);
 }
 function pickStamp(st) { S.pendingStamp = st; setTool('stamp'); S.pendingStamp = st; toast('Tap the page where the stamp goes'); refreshFormatBar(); }
+$('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat'); if (b) setCat(b.dataset.cat); });
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
+  if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
+  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
   if (!S.pages.length) { toast('Open a PDF first'); return; }
   closeEditor(false);
   if (b.dataset.group === 'sign') { signMenu(b); return; }
@@ -3504,7 +3549,7 @@ function openShortcuts() {
 
 /* ---------- First-run tour ---------- */
 const TOUR = [
-  { sel: '#tools', t: 'Tools', d: 'Select, hand, text, text boxes, edit existing text, edit PDF shapes and images, notes, highlight, shapes, pen and signatures. Each has a one-letter shortcut.' },
+  { sel: '#cats', t: 'Tool categories', d: 'Pick View, Comment, Edit, Fill & Sign, Pages or Protect & Tools. The row underneath shows that group\'s tools. Each tool has a one-letter shortcut that works from any group.' },
   { sel: '#tabbar', t: 'Tabs', d: 'Keep several PDFs open at once. Drop files anywhere to open them in new tabs.' },
   { sel: '#sidebar', t: 'Pages', d: 'Drag thumbnails to reorder. Shift-click to pick several, then rotate, duplicate or delete.' },
   { sel: '#viewer', t: 'Right-click for more', d: 'Right-click a page or a mark for copy, paste, layering and align. Shift-click or Shift-drag selects several marks, and they snap to edges and centres as you drag.' },
@@ -3570,12 +3615,12 @@ function boot() {
   $$('#sbSeg button').forEach((b) => b.onclick = () => setSbView(b.dataset.v));
   $('#pageInd').addEventListener('click', openGoto);
   WS.list = [blankTab()]; WS.active = 0;
-  buildTools(); setTool('select'); renderAll(); resetHistory(); updateChrome(); renderTabs();
+  buildCats(); buildTools(); setTool('select'); renderAll(); resetHistory(); updateChrome(); renderTabs();
   $('#recents').addEventListener('click', (e) => { const x = e.target.closest('[data-forget]'); if (x) { e.stopPropagation(); forgetRecent(x.dataset.forget); return; } const c = e.target.closest('[data-rid]'); if (c) openRecent(c.dataset.rid); });
   $('#recents').addEventListener('keydown', (e) => { const c = e.target.closest('[data-rid]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRecent(c.dataset.rid); } });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   const mq = matchMedia('(max-width: 760px)');
-  const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('.toolbar')) $('.toolbar').insertBefore(t, $('.tb-right')); };
+  const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('#ribbon')) $('#ribbon').appendChild(t); };
   placeTools(); mq.addEventListener('change', placeTools);
   return restoreSession().catch((e) => console.warn(e));
 }
