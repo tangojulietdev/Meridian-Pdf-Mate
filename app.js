@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.8.0';
+const VERSION = '3.8.1';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -66,6 +66,8 @@ const IC = {
   offline: '<path d="M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5M5 12.6a10 10 0 0 1 5.2-2.6M19 12.6a10 10 0 0 0-1.9-1.4M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>',
   dup: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   fit: '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
   theme: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/>',
   merge: '<path d="M8 3v4a4 4 0 0 0 4 4 4 4 0 0 1 4 4v6"/><path d="M16 3v4a4 4 0 0 1-4 4"/><path d="m13 18 3 3 3-3"/>',
@@ -924,11 +926,41 @@ function openOrganiser() {
 }
 function markViewBtns() { $$('#tools [data-act="nav"]').forEach((x) => x.setAttribute('aria-pressed', NAV.on)); $$('#tools [data-act="ruler"]').forEach((x) => x.setAttribute('aria-pressed', RUL.on)); }
 
+
+/* Scrollbars for the page area. The pages scroll under the glass top bars, so the scrollbar is drawn
+   by the app and starts below them instead of running up behind the toolbars. */
+function initScrollbars() {
+  const st = $('.stage'); const mk = (c) => { const d = document.createElement('div'); d.className = 'sbar ' + c; d.innerHTML = '<i></i>'; st.appendChild(d); return d; };
+  const V = mk('v'), H = mk('h'); let raf = 0, hideT = 0;
+  const upd = () => {
+    raf = 0; const ch = chromeH(); const vis = viewer.clientHeight - ch, tot = viewer.scrollHeight - ch, maxY = viewer.scrollHeight - viewer.clientHeight;
+    const canV = maxY > 2; V.hidden = !canV;
+    if (canV) { const tr = V.clientHeight; const th = Math.max(28, tr * vis / tot); V.firstChild.style.height = th + 'px'; V.firstChild.style.transform = `translateY(${(tr - th) * viewer.scrollTop / maxY}px)`; }
+    const maxX = viewer.scrollWidth - viewer.clientWidth; const canH = maxX > 2; H.hidden = !canH; V.classList.toggle('both', canH);
+    if (canH) { const tr = H.clientWidth; const tw = Math.max(28, tr * viewer.clientWidth / viewer.scrollWidth); H.firstChild.style.width = tw + 'px'; H.firstChild.style.transform = `translateX(${(tr - tw) * viewer.scrollLeft / maxX}px)`; }
+  };
+  const kick = () => { if (!raf) raf = requestAnimationFrame(upd); st.classList.add('sb-live'); clearTimeout(hideT); hideT = setTimeout(() => st.classList.remove('sb-live'), 1200); };
+  viewer.addEventListener('scroll', kick, { passive: true }); addEventListener('resize', kick); new ResizeObserver(kick).observe(pagesEl); new ResizeObserver(kick).observe(viewer);
+  const drag = (bar, vert) => {
+    let d = null;
+    bar.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); bar.setPointerCapture(e.pointerId); const th = bar.firstChild.getBoundingClientRect(); const br = bar.getBoundingClientRect();
+      const onThumb = vert ? e.clientY >= th.top && e.clientY <= th.bottom : e.clientX >= th.left && e.clientX <= th.right;
+      if (!onThumb) { const f = vert ? (e.clientY - br.top - th.height / 2) / (br.height - th.height) : (e.clientX - br.left - th.width / 2) / (br.width - th.width); if (vert) viewer.scrollTop = clamp(f, 0, 1) * (viewer.scrollHeight - viewer.clientHeight); else viewer.scrollLeft = clamp(f, 0, 1) * (viewer.scrollWidth - viewer.clientWidth); }
+      d = { p: vert ? e.clientY : e.clientX, s: vert ? viewer.scrollTop : viewer.scrollLeft, k: vert ? (viewer.scrollHeight - viewer.clientHeight) / Math.max(1, br.height - th.height) : (viewer.scrollWidth - viewer.clientWidth) / Math.max(1, br.width - th.width) };
+      if (!onThumb) d.s = vert ? viewer.scrollTop : viewer.scrollLeft; bar.classList.add('drag');
+    });
+    bar.addEventListener('pointermove', (e) => { if (!d) return; const v = d.s + ((vert ? e.clientY : e.clientX) - d.p) * d.k; if (vert) viewer.scrollTop = v; else viewer.scrollLeft = v; });
+    const end = () => { d = null; bar.classList.remove('drag'); }; bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
+  };
+  drag(V, true); drag(H, false); kick();
+}
+
 /* ---------- Bridge night mode (3.7) ---------- */
 const NIGHT_LEVELS = [[1, 'Brightest'], [0.8, 'Bright'], [0.6, 'Medium'], [0.42, 'Dim'], [0.28, 'Darkest']];
 function applyNight() {
   const v = lsGet('pdfmate.night', 'off'); const root = document.documentElement; const on = v !== 'off';
-  if (on) { root.dataset.night = 'on'; root.style.setProperty('--night-b', String(v)); root.setAttribute('data-theme', 'dark'); } else if (root.dataset.night) { delete root.dataset.night; root.style.removeProperty('--night-b'); const t = lsGet('pdfmate.theme', 'system'); if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme'); }
+  if (on) { root.dataset.night = 'on'; root.style.setProperty('--night-b', String(v)); root.setAttribute('data-theme', 'dark'); } else if (root.dataset.night) { delete root.dataset.night; root.style.removeProperty('--night-b'); root.setAttribute('data-theme', curTheme()); }
   $$('meta[name="theme-color"]').forEach((m) => { if (!m.dataset.orig) m.dataset.orig = m.content; m.content = on ? '#000000' : m.dataset.orig; });
   const b = $('#btnNight'); if (b) b.setAttribute('aria-pressed', on);
   $$('#tools [data-act="night"]').forEach((x) => x.setAttribute('aria-pressed', on));
@@ -2787,7 +2819,7 @@ const lastInGroup = { shape: 'rect', mark: 'tick' };
 const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 // Tool categories: the bar shows the categories, the ribbon under it shows the tools of the chosen one.
 const CATS = [
-  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sview', 'a:reading', 'a:ruler', 'a:nav', '|', 'a:sidebar', 'a:theme', 'a:night', 'a:glass', 'a:keys', 'a:tour']],
+  ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sview', 'a:reading', 'a:ruler', 'a:nav', '|', 'a:sidebar']],
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
@@ -2812,7 +2844,6 @@ const RIB_ACT = {
   split: ['Split', 'split', 'Split into separate PDFs', () => openSplit()], export: ['Export', 'download', 'Export pages as images or text', () => openExport()],
   ocr: ['Recognise text', 'ocr', 'Make scanned pages searchable (OCR)', () => openOcr()], compare: ['Compare', 'compare', 'Compare with another PDF', () => openCompare()],
   print: ['Print', 'print', 'Print (Ctrl+P)', () => openPrint()], props: ['Properties', 'props', 'Document title, author and details', () => openProps(), true],
-  glass: ['Glass', 'theme', 'Turn the frosted glass look on or off. Off is lighter for older computers', () => { const off = document.documentElement.dataset.glass !== 'off'; if (off) document.documentElement.dataset.glass = 'off'; else delete document.documentElement.dataset.glass; lsSet('pdfmate.glass', off ? 'off' : 'on'); toast(off ? 'Glass effects off' : 'Glass effects on'); }, true],
   actual: ['Actual size', 'zin', 'Show at real paper size', () => setZoom(96 / 72), true], tour: ['Tour', 'tour', 'Show the quick tour', () => startTour(true), true],
   hlt: ['Highlight', 'hltext', 'Highlight the selected text', () => selMark('hl')], ul: ['Underline', 'ul', 'Underline the selected text', () => selMark('ul')], stk: ['Strikeout', 'stk', 'Strike through the selected text', () => selMark('st')],
   extract: ['Extract', 'extract', 'Save the current or selected pages as a new PDF', () => extractPages()], reverse: ['Reverse', 'reverse', 'Reverse the page order', () => reversePages(), true],
@@ -4452,36 +4483,36 @@ $('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]
 $('#fileImg').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });
 $('#docName').addEventListener('input', updateMeta);
 $('#docName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
-function themeLabel() { const t = lsGet('pdfmate.theme', 'system'); return t === 'light' ? 'Light' : t === 'dark' ? 'Dark' : 'System'; }
-function cycleTheme() { const order = ['system', 'light', 'dark']; const t = lsGet('pdfmate.theme', 'system'); const n = order[(order.indexOf(t) + 1) % 3]; lsSet('pdfmate.theme', n); if (n === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', n); toast(`Appearance: ${themeLabel()}`); }
-$('#btnMore').addEventListener('click', () => about());
+const sysTheme = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+function curTheme() { const t = lsGet('pdfmate.theme', null); return t === 'light' || t === 'dark' ? t : sysTheme(); }
+function themeLabel() { return curTheme() === 'dark' ? 'Dark' : 'Light'; }
+function markThemeBtn() { const b = $('#btnTheme'); if (!b) return; const d = curTheme() === 'dark'; b.innerHTML = icon(d ? 'sun' : 'theme'); b.title = d ? 'Switch to light mode' : 'Switch to dark mode'; b.setAttribute('aria-label', b.title); }
+function cycleTheme() {
+  if (lsGet('pdfmate.night', 'off') !== 'off') { lsSet('pdfmate.night', 'off'); applyNight(); }
+  const n = curTheme() === 'dark' ? 'light' : 'dark'; lsSet('pdfmate.theme', n); document.documentElement.setAttribute('data-theme', n); markThemeBtn();
+}
+$('#btnMore').addEventListener('click', (e) => infoMenu(e.currentTarget));
 $('#btnNight').addEventListener('click', (e) => toggleNight(e.currentTarget));
+$('#btnTheme').addEventListener('click', () => cycleTheme());
+function infoMenu(anchor) {
+  if (menuEl && menuEl.classList.contains('infopop')) { closeMenu(); return; }
+  closeMenu(); const m = document.createElement('div'); m.className = 'menu infopop'; m.setAttribute('role', 'menu');
+  const T = (k, ic, t, d) => `<button class="ip-tile" role="menuitem" data-k="${k}"><span class="ip-ic">${icon(ic)}</span><span class="ip-tx"><b>${t}</b><small>${d}</small></span></button>`;
+  m.innerHTML = T('keys', 'kbd', 'Keyboard shortcuts', 'Every tool has a key') + T('tour', 'tour', 'Quick tour', 'A one minute walk through') + T('about', 'info', 'About', `Version ${VERSION}, contact`);
+  m.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeMenu(); const k = b.dataset.k; if (k === 'keys') openShortcuts(); else if (k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else about(); });
+  document.body.appendChild(m); menuEl = m; const r = anchor.getBoundingClientRect();
+  m.style.left = clamp(r.right - m.offsetWidth, 8, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = (r.bottom + 8) + 'px';
+  setTimeout(() => { document.addEventListener('pointerdown', menuOutside, true); document.addEventListener('keydown', menuKey); const f = m.querySelector('button'); if (f) f.focus(); }, 0);
+}
 function about() {
-  const off = navigator.onLine === false;
-  const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · by Tango Juliet Dev</p></div></div>
-    <p class="about-lead">A full PDF editor built for seafarers. Fill, sign, stamp, edit and organise ship's paperwork on any laptop, tablet or phone, at sea or in port.</p>
-    <div class="about-grid">
-      <div class="about-card"><b>${icon('offline')} Works without internet</b><span>After the first visit everything is saved on this device. Open it mid-ocean with no signal and it still works. ${off ? '<em>You are offline right now.</em>' : ''}</span></div>
-      <div class="about-card"><b>${icon('open')} Nothing to install</b><span>Runs in your browser: Chrome, Edge, Safari or Firefox. You can add it to the home screen or desktop if you like, but you don't have to.</span></div>
-      <div class="about-card"><b>${icon('lock')} Your files stay with you</b><span>PDFs are opened and saved on this device only. Nothing is uploaded, there is no account and no tracking.</span></div>
-      <div class="about-card"><b>${icon('ocr')} Made for ship documents</b><span>Checklists, permits, SOFs, NORs, cargo plans, drawings and crew forms: fill, sign, stamp, measure and send back by email or WhatsApp.</span></div>
-    </div>
-    <h3 class="about-h">What it does</h3>
-    <ul class="about-list">
-      <li><b>View</b> search text, deep zoom up to 3600% for drawings, pages panel, light and dark</li>
-      <li><b>Comment</b> highlight, underline, strikeout, notes, pen, a Word-style Shapes gallery (80+ shapes: lines, arrows, block arrows, stars, banners, callouts, flowchart) with fill colours, revision clouds, ticks, stamps</li>
-      <li><b>Edit</b> change existing text (any angle), move and recolour the PDF's own text, lines and images, text boxes with Word style formatting, whiteout</li>
-      <li><b>Fill & Sign</b> form fields, signatures, ship's stamps with white background removal, date stamps, templates</li>
-      <li><b>Pages</b> merge, insert, scan with camera, rotate, reorder, extract, split, crop, page numbers, watermark</li>
-      <li><b>Tools</b> measure distance and area to scale, true redaction, password protection (AES-256), text recognition for scans, compare two PDFs, export to Word, images or text, print with current page, odd or even pages, copies, several pages per sheet, booklets, fit to paper, black and white, markup only and two-sided</li>
-    </ul>
-    <h3 class="about-h">Tips</h3>
-    <ul class="about-list"><li>Every tool has a one-letter shortcut. Press <kbd>?</kbd> to see them all.</li><li>Your open files and changes are kept if the browser is closed, and come back next time.</li><li>For best results at sea, open the app once while connected so the latest version is saved.</li></ul>
-    <div class="about-mail"><div><b>Ideas, problems or a tool you need on board?</b><span>Write to Tango Juliet Dev. Suggestions from seafarers shape every update.</span></div><a class="btn primary" href="mailto:tangojulietdev@gmail.com?subject=Meridian%20PDF%20Mate%20${encodeURIComponent(VERSION)}%20suggestion">${icon('share')} tangojulietdev@gmail.com</a></div>
-    <p class="about-small">Built with pdf.js (Apache 2.0), pdf-lib (MIT) and Tesseract (Apache 2.0). Edit text covers the original line and types over it; use Redact where content must be removed.</p>
-    <div class="acts" style="justify-content:space-between"><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-k="keys">${icon('kbd')} Shortcuts</button><button class="btn" data-k="tour">${icon('tour')} Tour</button>${isStandalone() ? '' : `<button class="btn" data-k="install">${icon('install')} Add to home screen</button>`}</span><button class="btn primary" data-x>Done</button></div>`, { wide: true });
-  sh.querySelector('[data-x]').onclick = closeSheet; setTimeout(() => { sh.scrollTop = 0; }, 60);
-  sh.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeSheet(); if (b.dataset.k === 'keys') openShortcuts(); else if (b.dataset.k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else doInstall(); });
+  const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · Tango Juliet Dev</p></div></div>
+    <p class="about-lead">PDF editor for seafarers. Fill, sign, mark up and organise ship's documents.</p>
+    <div class="about-facts"><span>${icon('offline')} Works offline</span><span>${icon('open')} No installation</span><span>${icon('lock')} Files stay on this device</span></div>
+    <div class="about-mail"><div><b>Suggestions or problems</b><span>tangojulietdev@gmail.com</span></div><a class="btn" href="mailto:tangojulietdev@gmail.com?subject=Meridian%20PDF%20Mate%20${VERSION}">${icon('mail')} Email</a></div>
+    <p class="about-small">Uses pdf.js and Tesseract (Apache 2.0) and pdf-lib (MIT).</p>
+    <div class="acts">${isStandalone() ? '' : `<button class="btn" data-k="install">${icon('install')} Install</button>`}<button class="btn primary" data-x>Done</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  const ib = sh.querySelector('[data-k="install"]'); if (ib) ib.onclick = () => { closeSheet(); doInstall(); };
 }
 
 /* ---------- Keyboard ---------- */
@@ -4602,7 +4633,7 @@ addEventListener('beforeunload', (e) => { saveTab(); if (WS.list.some((t) => t.d
 /* ---------- Boot ---------- */
 function boot() {
   $('#btnSidebar').innerHTML = icon('sidebar'); $('#btnUndo').innerHTML = icon('undo'); $('#btnRedo').innerHTML = icon('redo');
-  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#btnNight').innerHTML = icon('moon'); $('#saveIc').outerHTML = icon('share');
+  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#btnNight').innerHTML = icon('moon'); markThemeBtn(); $('#saveIc').outerHTML = icon('share');
   $('#zoomIn').innerHTML = icon('zin'); $('#zoomOut').innerHTML = icon('zout');
   for (const b of $$('.toolbar .tbtn[title], #tsIc[title]')) { b.dataset.tip = b.getAttribute('title'); b.removeAttribute('title'); }
   const fi = { rotl: 'rotl', rotr: 'rotr', up: 'up', down: 'down', blank: 'blank', del: 'trash' };
@@ -4618,7 +4649,7 @@ function boot() {
   $('#recents').addEventListener('keydown', (e) => { const c = e.target.closest('[data-rid]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openRecent(c.dataset.rid); } });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   { const tc = document.getElementById('topchrome'); const setH = () => document.documentElement.style.setProperty('--chrome-h', tc.offsetHeight + 'px'); setH(); try { new ResizeObserver(setH).observe(tc); } catch (e) { addEventListener('resize', setH); } }
-  try { if (lsGet('pdfmate.glass', 'on') === 'off') document.documentElement.dataset.glass = 'off'; } catch (e) {}
+  try { localStorage.removeItem('pdfmate.glass'); } catch (e) {}
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('#ribbon')) $('#ribbon').appendChild(t); };
   placeTools(); mq.addEventListener('change', placeTools);
@@ -4683,5 +4714,5 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
-applyNight(); initSplit(); initNav(); initRuler();
+applyNight(); initSplit(); initNav(); initRuler(); initScrollbars();
 window.__pdfmate = { WS, SPL, openSplitView, NAV, RUL, recogniseStroke, openReading, openOrganiser, S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };

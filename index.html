@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest?v=3">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<script>(function(){try{var t=localStorage.getItem('pdfmate.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script>(function(){try{var t=localStorage.getItem('pdfmate.theme');try{t=JSON.parse(t)}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t);var n=JSON.parse(localStorage.getItem('pdfmate.night')||'"off"');if(n!=='off'){document.documentElement.setAttribute('data-theme','dark');document.documentElement.dataset.night='on';document.documentElement.style.setProperty('--night-b',String(n));}}catch(e){}})();</script>
 <style>
 /* Layout: macOS document window. Glass toolbar on top, glass page sidebar left, document canvas centre,
    format bar under the toolbar. On phones the tool strip becomes a floating glass dock at the bottom. */
@@ -685,6 +685,37 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 
 
 
+
+/* ===== 3.8.1: app-drawn scrollbars below the top bars, info menu, short About ===== */
+.viewer{scrollbar-width:none}
+.viewer::-webkit-scrollbar{display:none}
+.sbar{position:absolute;z-index:7;opacity:.45;transition:opacity .25s ease;touch-action:none}
+.sbar[hidden]{display:none}
+.stage:hover .sbar,.stage.sb-live .sbar,.sbar.drag{opacity:1}
+.sbar.v{right:1px;top:calc(var(--chrome-h,0px) + 4px);bottom:4px;width:12px}
+.sbar.v.both{bottom:14px}
+.sbar.h{left:4px;right:14px;bottom:1px;height:12px}
+.sbar i{position:absolute;border-radius:6px;background:rgba(0,0,0,.42);transition:background .15s,left .15s,right .15s,top .15s,bottom .15s}
+.sbar.v i{left:3px;right:3px;top:0}
+.sbar.h i{top:3px;bottom:3px;left:0}
+.sbar:hover i,.sbar.drag i{background:rgba(0,0,0,.6)}
+.sbar.v:hover i,.sbar.v.drag i{left:2px;right:2px}
+.sbar.h:hover i,.sbar.h.drag i{top:2px;bottom:2px}
+:root[data-theme="dark"] .sbar i{background:rgba(255,255,255,.38)}
+:root[data-theme="dark"] .sbar:hover i,:root[data-theme="dark"] .sbar.drag i{background:rgba(255,255,255,.58)}
+@media (hover:none){.sbar{display:none!important}}
+.menu.infopop{min-width:0;width:286px;padding:6px}
+.ip-tile{display:flex!important;align-items:center;gap:12px!important;padding:9px 10px!important;border-radius:10px!important}
+.ip-ic{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--fill-2);color:var(--accent)}
+.ip-ic .i{width:19px;height:19px}
+.ip-tile:hover .ip-ic,.ip-tile:focus-visible .ip-ic{background:rgba(255,255,255,.22);color:inherit}
+.ip-tx{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ip-tx b{font-size:13.5px;font-weight:600}
+.ip-tx small{font-size:11.5px;opacity:.65}
+.about-facts{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 14px}
+.about-facts span{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;background:var(--fill-2);font-size:12.5px;font-weight:500;color:var(--label-2)}
+.about-facts .i{width:15px;height:15px;color:var(--accent)}
+#btnNight[aria-pressed="true"]{color:#ff453a}
 /* ===== 3.8: navigator, reading ruler, reading mode, organiser ===== */
 .stage{position:relative}
 .navmap{position:absolute;right:16px;bottom:72px;z-index:30;padding:6px;border-radius:12px;background:var(--mat-strong,var(--glass-strong));-webkit-backdrop-filter:var(--blur,blur(20px));backdrop-filter:var(--blur,blur(20px));box-shadow:var(--glass-shadow,var(--pop-shadow));user-select:none;box-sizing:content-box}
@@ -906,8 +937,9 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
         <span class="psep" aria-hidden="true"></span>
         <button class="tbtn" id="btnOpen" aria-label="Open or add files" title="Open or add files (Ctrl+O)"></button>
         <button class="tbtn tb-print" id="btnPrint" aria-label="Print" title="Print (Ctrl+P)" disabled></button>
-        <button class="tbtn" id="btnInstall" aria-label="Install app" title="Install Meridian PDF Mate" hidden></button>
+        <button class="tbtn" id="btnTheme" aria-label="Switch to dark mode" title="Switch to dark mode"></button>
         <button class="tbtn" id="btnNight" aria-label="Bridge night mode" title="Bridge night mode: red light, keeps your night vision" aria-pressed="false"></button>
+        <button class="tbtn" id="btnInstall" aria-label="Install app" title="Install Meridian PDF Mate" hidden></button>
         <button class="tbtn" id="btnMore" aria-label="About and help" title="About Meridian PDF Mate"></button>
       </div>
       <button class="tbtn primary" id="btnSave" disabled><span id="saveIc"></span><span class="tb-hide-m">Save</span></button>
