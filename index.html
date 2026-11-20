@@ -686,6 +686,9 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 
 
 
+/* ===== 3.8.2: Select and Hand in the zoom dock ===== */
+.viewdock .vd-tool[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.viewdock .vd-tool[aria-pressed="true"]:hover{background:var(--accent)}
 /* ===== 3.8.1: app-drawn scrollbars below the top bars, info menu, short About ===== */
 .viewer{scrollbar-width:none}
 .viewer::-webkit-scrollbar{display:none}
@@ -990,6 +993,9 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
       </div>
     </main>
     <div class="viewdock glass" id="viewDock" role="group" aria-label="Zoom and page">
+      <button class="tbtn vd-tool" data-dtool="select" aria-label="Select" title="Select text and objects (V)" aria-pressed="true"></button>
+      <button class="tbtn vd-tool" data-dtool="hand" aria-label="Hand" title="Hand: drag to move around (H, or hold Space)" aria-pressed="false"></button>
+      <span class="psep" aria-hidden="true"></span>
       <button class="tbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out (Ctrl -)"></button>
       <button class="zoomlbl" id="zoomLbl" title="Zoom options (Ctrl 0 fits width)">100%</button>
       <button class="tbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in (Ctrl +)"></button>

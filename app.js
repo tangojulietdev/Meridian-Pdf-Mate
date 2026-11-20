@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.8.1';
+const VERSION = '3.8.2';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -2891,6 +2891,7 @@ function setTool(t, keepCat) {
   $$('#tools .tool').forEach((b) => { if (!b.dataset.tool && !b.dataset.group) return; b.setAttribute('aria-pressed', b.dataset.tool ? b.dataset.tool === t : (b.dataset.group === 'sign' ? (t === 'image' || t === 'stamp') : b.dataset.group === 'shapes' ? SHAPE_TOOLS.has(t) : toolGroup(t) === b.dataset.group)); });
   if (t !== 'select' && S.sel && !S.editing) select(null);
   if (t === 'hand') { const sel = getSelection(); if (sel) sel.removeAllRanges(); }
+  $$('#viewDock [data-dtool]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.dtool === t));
   hideBubble(); refreshFormatBar();
 }
 function signMenu(anchor) {
@@ -4494,6 +4495,7 @@ function cycleTheme() {
 $('#btnMore').addEventListener('click', (e) => infoMenu(e.currentTarget));
 $('#btnNight').addEventListener('click', (e) => toggleNight(e.currentTarget));
 $('#btnTheme').addEventListener('click', () => cycleTheme());
+$$('#viewDock [data-dtool]').forEach((b) => { b.innerHTML = icon(b.dataset.dtool); b.addEventListener('click', () => { if (!S.pages.length) return; closeEditor(false); setTool(b.dataset.dtool); }); });
 function infoMenu(anchor) {
   if (menuEl && menuEl.classList.contains('infopop')) { closeMenu(); return; }
   closeMenu(); const m = document.createElement('div'); m.className = 'menu infopop'; m.setAttribute('role', 'menu');
