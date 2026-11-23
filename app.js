@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.9.0';
+const VERSION = '3.10.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -688,37 +688,95 @@ async function addFiles(files, at = S.pages.length) {
 }
 function newBlank(at = S.pages.length, like) {
   const view = like ? (tr(like) % 180 ? [0, 0, like.view[3] - like.view[1], like.view[2] - like.view[0]] : [0, 0, like.view[2] - like.view[0], like.view[3] - like.view[1]]) : [0, 0, 595.28, 841.89];
-  S.pages.splice(at, 0, { id: uid('p'), kind: 'blank', view, baseRot: 0, rot: 0, annots: [] });
+  const np = { id: uid('p'), kind: 'blank', view, baseRot: 0, rot: 0, annots: [] }; if (defPaper() !== 'plain') np.paper = defPaper(); S.pages.splice(at, 0, np);
   if (S.pages.length === 1) { $('#docName').value = 'Untitled'; if (innerWidth > 760) setSidebar(true); }
   renderAll(); commit(); scrollToPage(at);
+}
+
+/* ---------- 3.10: paper templates for blank pages ---------- */
+const PAPERS_T = [['plain', 'Plain'], ['narrow', 'Lined, narrow (6 mm)'], ['lined', 'Lined (8 mm)'], ['wide', 'Lined, wide (10 mm)'], ['grid5', 'Grid 5 mm'], ['grid10', 'Grid 1 cm'], ['graph', 'Graph paper (mm)'], ['dots', 'Dots 5 mm'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist'], ['log', 'Log sheet'], ['meeting', 'Meeting notes'], ['music', 'Music staves']];
+const paperName = (k) => (PAPERS_T.find((x) => x[0] === k) || PAPERS_T[0])[1];
+const defPaper = () => lsGet('pdfmate.paper', 'plain');
+// Drawing instructions in page units (points, y up from the bottom left of the page box).
+function paperPrims(kind, W, H) {
+  const mm = 72 / 25.4, o = []; const L = [0.78, 0.82, 0.88], M = [0.62, 0.69, 0.78], D = [0.58, 0.62, 0.68], R = [0.93, 0.6, 0.6], T = [0.42, 0.47, 0.55];
+  const ln = (x1, y1, x2, y2, w = 0.5, c = L) => o.push({ l: [x1, y1, x2, y2], w, c }); const tx = (s, x, y, size = 8, b = false, c = T) => o.push({ t: s, x, y, s: size, b, c });
+  const rule = (x1, x2, top, bot, step, c = L) => { for (let y = top; y > bot - 0.1; y -= step) ln(x1, y, x2, y, 0.5, c); };
+  const grid = (x0, y0, x1, y1, step, majorEvery, cMinor = L, cMajor = M, wMin = 0.3, wMaj = 0.6) => { let i = 0; for (let x = x0; x <= x1 + 0.1; x += step, i++) ln(x, y0, x, y1, majorEvery && i % majorEvery === 0 ? wMaj : wMin, majorEvery && i % majorEvery === 0 ? cMajor : cMinor); i = 0; for (let y = y0; y <= y1 + 0.1; y += step, i++) ln(x0, y, x1, y, majorEvery && i % majorEvery === 0 ? wMaj : wMin, majorEvery && i % majorEvery === 0 ? cMajor : cMinor); };
+  if (kind === 'narrow' || kind === 'lined' || kind === 'wide') { const st = { narrow: 6, lined: 8, wide: 10 }[kind] * mm; rule(12 * mm, W - 12 * mm, H - 25 * mm, 15 * mm, st); ln(28 * mm, 10 * mm, 28 * mm, H - 10 * mm, 0.6, R); }
+  else if (kind === 'grid5') { const s = 5 * mm; const nx = Math.floor((W - 20 * mm) / s), ny = Math.floor((H - 20 * mm) / s); const x0 = (W - nx * s) / 2, y0 = (H - ny * s) / 2; grid(x0, y0, x0 + nx * s, y0 + ny * s, s, 5); }
+  else if (kind === 'grid10') { const s = 10 * mm; const nx = Math.floor((W - 20 * mm) / s), ny = Math.floor((H - 20 * mm) / s); const x0 = (W - nx * s) / 2, y0 = (H - ny * s) / 2; grid(x0, y0, x0 + nx * s, y0 + ny * s, s, 0, M, M, 0.45); }
+  else if (kind === 'graph') { const s = mm; const nx = Math.floor((W - 20 * mm) / (10 * mm)) * 10, ny = Math.floor((H - 20 * mm) / (10 * mm)) * 10; const x0 = (W - nx * s) / 2, y0 = (H - ny * s) / 2; for (let i = 0; i <= nx; i++) { const x = x0 + i * s; ln(x, y0, x, y0 + ny * s, i % 10 === 0 ? 0.7 : i % 5 === 0 ? 0.4 : 0.2, i % 10 === 0 ? [0.55, 0.72, 0.62] : i % 5 === 0 ? [0.68, 0.82, 0.72] : [0.84, 0.92, 0.86]); } for (let j = 0; j <= ny; j++) { const y = y0 + j * s; ln(x0, y, x0 + nx * s, y, j % 10 === 0 ? 0.7 : j % 5 === 0 ? 0.4 : 0.2, j % 10 === 0 ? [0.55, 0.72, 0.62] : j % 5 === 0 ? [0.68, 0.82, 0.72] : [0.84, 0.92, 0.86]); } }
+  else if (kind === 'dots') { const s = 5 * mm; for (let x = s; x < W - 1; x += s) for (let y = s; y < H - 1; y += s) o.push({ d: [x, y, 0.5], c: D }); }
+  else if (kind === 'cornell') { const top = H - 32 * mm, cue = 62 * mm, sum = 52 * mm; tx('TOPIC', 12 * mm, H - 16 * mm, 7, true); tx('DATE', W - 60 * mm, H - 16 * mm, 7, true); ln(12 * mm, H - 22 * mm, W - 70 * mm, H - 22 * mm, 0.5, M); ln(W - 60 * mm, H - 22 * mm, W - 12 * mm, H - 22 * mm, 0.5, M); ln(10 * mm, top, W - 10 * mm, top, 1, M); ln(cue, top, cue, sum, 1, M); ln(10 * mm, sum, W - 10 * mm, sum, 1, M); tx('CUES', 12 * mm, top - 5 * mm, 7, true); tx('NOTES', cue + 3 * mm, top - 5 * mm, 7, true); tx('SUMMARY', 12 * mm, sum - 6 * mm, 7, true); rule(cue + 3 * mm, W - 10 * mm, top - 10 * mm, sum + 6 * mm, 8 * mm); rule(12 * mm, W - 10 * mm, sum - 14 * mm, 12 * mm, 8 * mm); }
+  else if (kind === 'checklist') { tx('CHECKLIST', 14 * mm, H - 18 * mm, 9, true); tx('DATE', W - 62 * mm, H - 18 * mm, 7, true); ln(W - 50 * mm, H - 18 * mm, W - 14 * mm, H - 18 * mm, 0.5, M); ln(14 * mm, H - 24 * mm, W - 14 * mm, H - 24 * mm, 1, M); for (let y = H - 36 * mm; y > 16 * mm; y -= 10 * mm) { o.push({ r: [14 * mm, y, 4.2 * mm, 4.2 * mm], w: 0.8, c: M }); ln(22 * mm, y, W - 14 * mm, y, 0.5, L); } }
+  else if (kind === 'log') { const x0 = 12 * mm, x1 = W - 12 * mm; const cols = [[x0, 'DATE'], [x0 + 24 * mm, 'TIME'], [x0 + 42 * mm, 'DETAILS'], [x1 - 26 * mm, 'SIGN']]; tx('LOG SHEET', x0, H - 16 * mm, 9, true); const top = H - 22 * mm, hh = 8 * mm, rh = 8.5 * mm; o.push({ r: [x0, top - hh, x1 - x0, hh], w: 0, c: [0.93, 0.95, 0.98], fill: true }); for (const [x, l] of cols) tx(l, x + 2 * mm, top - 5.4 * mm, 7, true); let y = top - hh; const bottom = 14 * mm; while (y - rh >= bottom) y -= rh; for (let yy = top; yy >= y - 0.1; yy -= (yy === top ? hh : rh)) ln(x0, yy, x1, yy, yy === top || yy === top - hh ? 0.8 : 0.45, yy === top || yy === top - hh ? M : L); for (const [x] of cols.slice(1)) ln(x, top, x, y, 0.45, L); ln(x0, top, x0, y, 0.8, M); ln(x1, top, x1, y, 0.8, M); ln(x0, y, x1, y, 0.8, M); }
+  else if (kind === 'meeting') { const x0 = 14 * mm, x1 = W - 14 * mm; let y = H - 18 * mm; tx('MEETING NOTES', x0, y, 10, true); y -= 10 * mm; for (const [a, b] of [['DATE', 'TIME'], ['PLACE', 'CHAIR']]) { tx(a, x0, y, 7, true); ln(x0 + 16 * mm, y, (x0 + x1) / 2 - 6 * mm, y, 0.5, M); tx(b, (x0 + x1) / 2, y, 7, true); ln((x0 + x1) / 2 + 16 * mm, y, x1, y, 0.5, M); y -= 8 * mm; } tx('ATTENDEES', x0, y, 7, true); ln(x0 + 24 * mm, y, x1, y, 0.5, M); y -= 7 * mm; ln(x0, y, x1, y, 0.5, L); y -= 10 * mm; tx('AGENDA', x0, y, 7, true); y -= 2 * mm; for (let k = 0; k < 4; k++) { y -= 7 * mm; ln(x0, y, x1, y, 0.5, L); } y -= 10 * mm; tx('NOTES', x0, y, 7, true); y -= 2 * mm; const act = 62 * mm; while (y - 8 * mm > act + 10 * mm) { y -= 8 * mm; ln(x0, y, x1, y, 0.5, L); } tx('ACTIONS', x0, act, 7, true); const ty = act - 3 * mm; const c2 = x1 - 60 * mm, c3 = x1 - 26 * mm; tx('ACTION', x0 + 2 * mm, ty - 5 * mm, 6.5, true); tx('BY', c2 + 2 * mm, ty - 5 * mm, 6.5, true); tx('DUE', c3 + 2 * mm, ty - 5 * mm, 6.5, true); let yy = ty; ln(x0, yy, x1, yy, 0.8, M); yy -= 7 * mm; ln(x0, yy, x1, yy, 0.8, M); while (yy - 8 * mm > 12 * mm) { yy -= 8 * mm; ln(x0, yy, x1, yy, 0.45, L); } ln(c2, ty, c2, yy, 0.45, L); ln(c3, ty, c3, yy, 0.45, L); }
+  else if (kind === 'music') { const x0 = 15 * mm, x1 = W - 15 * mm, gap = 2 * mm; let y = H - 25 * mm; while (y - 4 * gap > 15 * mm) { for (let k = 0; k < 5; k++) ln(x0, y - k * gap, x1, y - k * gap, 0.5, M); y -= 4 * gap + 13 * mm; } }
+  return o;
+}
+function drawPaperCanvas(ctx, p, s) {
+  const k = p.paper; if (!k || k === 'plain' || p.kind !== 'blank') return; const g = geo(p); const t = g.t; const [vx, vy, vx1, vy1] = p.view;
+  ctx.save(); ctx.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s); ctx.translate(vx, vy); ctx.lineCap = 'butt';
+  const col = (c) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`;
+  for (const q of paperPrims(k, vx1 - vx, vy1 - vy)) {
+    if (q.l) { ctx.strokeStyle = col(q.c); ctx.lineWidth = Math.max(q.w, 0.6 / s); ctx.beginPath(); ctx.moveTo(q.l[0], q.l[1]); ctx.lineTo(q.l[2], q.l[3]); ctx.stroke(); }
+    else if (q.d) { ctx.fillStyle = col(q.c); ctx.beginPath(); ctx.arc(q.d[0], q.d[1], Math.max(q.d[2], 0.7 / s), 0, Math.PI * 2); ctx.fill(); }
+    else if (q.r) { if (q.fill) { ctx.fillStyle = col(q.c); ctx.fillRect(...q.r); } else { ctx.strokeStyle = col(q.c); ctx.lineWidth = q.w; ctx.strokeRect(...q.r); } }
+    else if (q.t) { ctx.save(); ctx.translate(q.x, q.y); ctx.scale(1, -1); ctx.fillStyle = col(q.c); ctx.font = `${q.b ? 700 : 400} ${q.s}px Helvetica, Arial, sans-serif`; ctx.fillText(q.t, 0, 0); ctx.restore(); }
+  }
+  ctx.restore();
+}
+async function drawPaperPdf(page, p, font) {
+  const k = p.paper; if (!k || k === 'plain' || p.kind !== 'blank') return; const [vx, vy, vx1, vy1] = p.view; const C = (c) => PL.rgb(c[0], c[1], c[2]);
+  for (const q of paperPrims(k, vx1 - vx, vy1 - vy)) {
+    if (q.l) page.drawLine({ start: { x: vx + q.l[0], y: vy + q.l[1] }, end: { x: vx + q.l[2], y: vy + q.l[3] }, thickness: q.w, color: C(q.c) });
+    else if (q.d) page.drawCircle({ x: vx + q.d[0], y: vy + q.d[1], size: q.d[2], color: C(q.c) });
+    else if (q.r) { if (q.fill) page.drawRectangle({ x: vx + q.r[0], y: vy + q.r[1], width: q.r[2], height: q.r[3], color: C(q.c) }); else page.drawRectangle({ x: vx + q.r[0], y: vy + q.r[1], width: q.r[2], height: q.r[3], borderColor: C(q.c), borderWidth: q.w }); }
+    else if (q.t) page.drawText(q.t, { x: vx + q.x, y: vy + q.y, size: q.s, font: await font('helv', q.b ? 1 : 0), color: C(q.c) });
+  }
+}
+function setPaper(pages, k) {
+  const bl = pages.filter((p) => p.kind === 'blank'); if (!bl.length) { toast('Paper styles apply to blank pages. Insert a blank page or create a new PDF first.', { ms: 4500 }); return; }
+  for (const p of bl) { if (k === 'plain') delete p.paper; else p.paper = k; for (const key of [...thumbCache.keys()]) if (key.startsWith(p.id + '|')) thumbCache.delete(key); const el = pageEl(p.id); if (el) el._key = null; }
+  renderAll(); commit(); toast(`${paperName(k)} on ${bl.length} page${bl.length > 1 ? 's' : ''}${bl.length < pages.length ? '. Other pages are not blank and stay as they are' : ''}`);
+}
+function paperMenu(anchor) {
+  const tps = targetPages(); const cur = tps.length && tps[0].kind === 'blank' ? tps[0].paper || 'plain' : null; const d = defPaper();
+  openMenu(anchor, [{ h: tps.length > 1 ? `Paper for ${tps.length} selected pages` : 'Paper for this page' }, ...PAPERS_T.map(([k, l]) => ({ label: l, icon: k === cur ? 'check' : 'blank', run: () => setPaper(tps, k) })), '-', { label: `Default for new blank pages: ${paperName(d)}…`, icon: 'props', run: () => setTimeout(() => defaultPaperMenu(anchor), 0) }, { label: 'Use on every blank page', icon: 'dup', run: () => { if (!cur) { toast('Choose a blank page first', { err: true }); return; } setPaper(S.pages, cur); } }]);
+}
+function defaultPaperMenu(anchor) { const d = defPaper(); openMenu(anchor, [{ h: 'Default paper for new blank pages' }, ...PAPERS_T.map(([k, l]) => ({ label: l, icon: k === d ? 'check' : 'blank', run: () => { lsSet('pdfmate.paper', k); toast(`New blank pages will use ${paperName(k)}`); } }))]); }
+function createBlankDoc(name, W, H, n, paper) {
+  if (S.pages.length) newTab();
+  const pages = []; for (let i = 0; i < n; i++) { const p = { id: uid('p'), kind: 'blank', view: [0, 0, W, H], baseRot: 0, rot: 0, annots: [] }; if (paper && paper !== 'plain') p.paper = paper; pages.push(p); }
+  S.pages = pages; $('#docName').value = name; S.current = 0; if (innerWidth > 760) setSidebar(true); renderAll(); resetHistory(); setDirty(true); renderTabs(); updateChrome(); scheduleSave();
 }
 
 /* ---------- 3.9: new blank PDF ---------- */
 const NEW_SIZES = { a4: ['A4', 210, 297], a3: ['A3', 297, 420], a5: ['A5', 148, 210], letter: ['Letter', 215.9, 279.4], legal: ['Legal', 215.9, 355.6], custom: ['Custom'] };
 function openNewPdf() {
-  const st = Object.assign({ size: 'a4', land: false, n: 1, paper: 'plain', cw: 210, ch: 297 }, lsGet('pdfmate.newpdf', {}));
+  const st = Object.assign({ size: 'a4', land: false, n: 1, cw: 210, ch: 297 }, lsGet('pdfmate.newpdf', {}), { paper: defPaper() }); if (!PAPERS_T.some((x) => x[0] === st.paper)) st.paper = 'plain';
   const sh = sheet(`<h2>New blank PDF</h2><p class="sub">Opens in a new tab, ready to fill, sign or draw on.</p>
     <div class="field"><span class="flabel">Name</span><input id="npName" class="inp" value="Untitled" autocomplete="off"></div>
     <div class="field"><span class="flabel">Page size</span><select id="npSize" class="inp">${Object.entries(NEW_SIZES).map(([k, v]) => `<option value="${k}" ${k === st.size ? 'selected' : ''}>${v[0]}${v[1] ? ` (${v[1]} × ${v[2]} mm)` : ''}</option>`).join('')}</select>
       <div class="pr-row" id="npCustom"><input id="npW" class="inp" inputmode="decimal" value="${st.cw}" aria-label="Width in mm" style="width:90px"> × <input id="npH" class="inp" inputmode="decimal" value="${st.ch}" aria-label="Height in mm" style="width:90px"> mm</div></div>
     <div class="field"><span class="flabel">Orientation</span><div class="seg" role="group"><button data-or="p">Portrait</button><button data-or="l">Landscape</button></div></div>
-    <div class="field"><span class="flabel">Paper</span><div class="seg" role="group"><button data-pp="plain">Plain</button><button data-pp="lined">Lined</button><button data-pp="grid">Grid</button><button data-pp="dots">Dots</button></div></div>
+    <div class="field"><span class="flabel">Paper</span><select id="npPaper" class="inp">${PAPERS_T.map(([k, l]) => `<option value="${k}" ${k === st.paper ? 'selected' : ''}>${l}</option>`).join('')}</select><label class="chkrow"><input type="checkbox" id="npDef"> Also use for blank pages I insert later</label></div>
     <div class="field"><span class="flabel">Pages</span><div class="stepper pr-step"><button type="button" data-np="-1">−</button><input id="npN" class="inp" value="${st.n}" inputmode="numeric" aria-label="Number of pages"><button type="button" data-np="1">+</button></div></div>
     <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('blank')} Create</button></div>`);
   const $s = (q) => sh.querySelector(q);
-  const paint = () => { $s('#npCustom').hidden = $s('#npSize').value !== 'custom'; sh.querySelectorAll('[data-or]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.or === 'l') === st.land)); sh.querySelectorAll('[data-pp]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.pp === st.paper)); };
+  const paint = () => { $s('#npCustom').hidden = $s('#npSize').value !== 'custom'; sh.querySelectorAll('[data-or]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.or === 'l') === st.land)); };
   sh.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.or) { st.land = b.dataset.or === 'l'; paint(); return; }
-    if (b.dataset.pp) { st.paper = b.dataset.pp; paint(); return; }
     if (b.dataset.np) { $s('#npN').value = clamp((parseInt($s('#npN').value, 10) || 1) + +b.dataset.np, 1, 500); return; }
     if (b.hasAttribute('data-x')) { closeSheet(); return; }
     if (b.hasAttribute('data-go')) {
       st.size = $s('#npSize').value; st.n = clamp(parseInt($s('#npN').value, 10) || 1, 1, 500); st.cw = parseFloat(String($s('#npW').value).replace(',', '.')) || 210; st.ch = parseFloat(String($s('#npH').value).replace(',', '.')) || 297; lsSet('pdfmate.newpdf', st);
       let [wmm, hmm] = st.size === 'custom' ? [clamp(st.cw, 20, 5000), clamp(st.ch, 20, 5000)] : NEW_SIZES[st.size].slice(1); if (st.land !== wmm > hmm) [wmm, hmm] = [hmm, wmm];
       const name = ($s('#npName').value || 'Untitled').trim().replace(/[\\/:*?"<>|]/g, '') || 'Untitled';
-      closeSheet(); const bytes = await blankPdfBytes(wmm, hmm, st.n, st.paper);
-      await openFilesInTabs([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); toast(`Created ${name} with ${st.n} page${st.n > 1 ? 's' : ''}`);
+      st.paper = $s('#npPaper').value; if ($s('#npDef').checked) lsSet('pdfmate.paper', st.paper); lsSet('pdfmate.newpdf', st);
+      closeSheet(); const mm = 72 / 25.4; createBlankDoc(name, wmm * mm, hmm * mm, st.n, st.paper); toast(`Created ${name}: ${st.n} page${st.n > 1 ? 's' : ''}, ${paperName(st.paper)} paper. Change it any time under Pages, Paper`);
     }
   });
   $s('#npSize').addEventListener('change', paint); paint(); setTimeout(() => { const i = $s('#npName'); i.focus(); i.select(); }, 60);
@@ -1234,6 +1292,7 @@ async function paintSplitPage(el) {
   cv.width = Math.round(W * k); cv.height = Math.round(H * k); const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
   try {
     if (p.kind === 'pdf') { const d = S.docs.get(p.docId); if (!d || !d.pdf) return; const pg = await d.pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: s * k, rotation: tr(p) }) }).promise; }
+    else if (p.kind === 'blank') drawPaperCanvas(x, p, s * k);
     else if (p.kind === 'img') { const im = S.imgs.get(p.imgId); if (!im) return; const tt = g.t, sk = s * k; x.setTransform(tt[0] * sk, tt[1] * sk, tt[2] * sk, tt[3] * sk, tt[4] * sk, tt[5] * sk); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(im.el, 0, 0, 1, 1); }
   } catch (err) { console.warn('split render', err); }
 }
@@ -1597,7 +1656,7 @@ async function paintCanvas(el) {
         ctx.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s);
         const [x0, y0, x1, y1] = p.view; ctx.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1);
         ctx.drawImage(im.el, 0, 0, 1, 1);
-      }
+      } else drawPaperCanvas(ctx, p, base);
     }
     if (el._key !== key) return;
     if (p.kind !== 'pdf' && p.ocr && p.ocr.length && !el._ocrDone) { buildOcrLayer(el, p); el._tlReady = true; }
@@ -1844,7 +1903,8 @@ async function basePageBitmap(p, s) {
     else if (sn) { const bmp = await createImageBitmap(sn.blob); x.imageSmoothingQuality = 'high'; x.drawImage(bmp, 0, 0, c.width, c.height); }
     else { const pg = await S.docs.get(p.docId).pdf.getPage(p.index + 1); await pg.render({ canvasContext: x, viewport: pg.getViewport({ scale: s, rotation: tr(p) }) }).promise; }
   }
-  else if (p.kind === 'img') { const t = g.t; x.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(S.imgs.get(p.imgId).el, 0, 0, 1, 1); }
+  else drawPaperCanvas(x, p, s);
+  if (p.kind === 'img') { const t = g.t; x.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(S.imgs.get(p.imgId).el, 0, 0, 1, 1); }
   thumbCache.set(key, c); return c;
 }
 async function paintThumb(p, cv) {
@@ -3042,7 +3102,7 @@ const CATS = [
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
 const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
@@ -3071,6 +3131,7 @@ const RIB_ACT = {
   reading: ['Reading', 'reading', 'Reading mode: the text as one clean column with adjustable size', () => openReading()],
   ruler: ['Ruler', 'ruler', 'Reading ruler: highlights the line you are reading. Click a line or use the arrow keys', () => toggleRuler()],
   nav: ['Navigator', 'navmap', 'Navigator: a small map of the page when zoomed in', () => toggleNav(), true],
+  paper: ['Paper', 'grid', 'Lined, grid, dots and other paper for blank pages, and the default for new ones', () => paperMenu($('#tools [data-act="paper"]'))],
   newpdf: ['New PDF', 'blank', 'Create a new blank PDF: size, orientation, pages, lined or grid paper', () => openNewPdf()],
   organise: ['Organise', 'grid', 'Organise pages in a large grid: sort, rotate, copy, extract, delete', () => openOrganiser()],
   sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
@@ -3614,6 +3675,7 @@ async function buildPdf(list, onProgress, opts = {}) {
     } else {
       const [x0, y0, x1, y1] = p.view; page = out.addPage([x1 - x0, y1 - y0]); if (x0 || y0) page.setMediaBox(x0, y0, x1 - x0, y1 - y0);
       if (p.kind === 'img') page.drawImage(await embedImg(p.imgId), { x: 0, y: 0, width: x1 - x0, height: y1 - y0 });
+      else await drawPaperPdf(page, p, font);
       page.setRotation(PL.degrees(tr(p)));
     }
     for (const a of p.annots) await drawAnn(page, a, font, embedImg);
