@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.10.0';
+const VERSION = '3.11.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -66,6 +66,16 @@ const IC = {
   offline: '<path d="M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5M5 12.6a10 10 0 0 1 5.2-2.6M19 12.6a10 10 0 0 0-1.9-1.4M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>',
   dup: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   fit: '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/>',
+  pen_ballpoint: '<path d="M15.5 4.5l4 4L9 19l-5 1 1-5z"/><path d="M13.5 6.5l4 4"/>',
+  pen_fountain: '<path d="M12 3l5 6-3 9h-4L7 9z"/><path d="M12 3v8"/><circle cx="12" cy="12" r="1.2"/><path d="M10 18h4v3h-4z"/>',
+  pen_gel: '<path d="M17 3l4 4-11 11-4 1 1-4z"/><path d="M4 20l2-2"/>',
+  pen_pencil: '<path d="M16 3.5l4.5 4.5L9 19.5H4.5V15z"/><path d="M14 5.5l4.5 4.5"/><path d="M4.5 15l4.5 4.5" opacity=".5"/>',
+  pen_marker: '<path d="M14 4l6 6-7 7-6-6z"/><path d="M7 11l-3 6 3 3 6-3"/>',
+  pen_brush: '<path d="M20 4c-4 1-8 5-10 9l2 2c4-2 8-6 8-11z"/><path d="M10 13c-2 0-4 1.5-4 4 0 1.5-1 2.5-2 3 3 .5 7-.5 8-5z"/>',
+  pen_calligraphy: '<path d="M5 19l9-9"/><path d="M14 4l6 6-4 4-6-6z"/><path d="M4 20l2.5-.5L5 18z"/>',
+  pen_highlighter: '<path d="M15 4l5 5-8 8H8v-4z"/><path d="M8 17l-3 3h6"/><path d="M4 21h16" opacity=".5"/>',
+  eraser: '<path d="M8.5 20H20"/><path d="M14.5 4.5l5 5-9 9.5H7l-3-3z"/><path d="M9.5 9.5l5 5"/>',
+  lasso: '<path d="M12 5c-4.4 0-8 2.2-8 5s3.6 5 8 5 8-2.2 8-5-3.6-5-8-5z" stroke-dasharray="2.5 2"/><path d="M8 14.5c-1 1.5-1 4 1.5 5.5"/><circle cx="9.5" cy="20.5" r="1"/>',
   eyedrop: '<path d="m14 7 3 3"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4z"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
@@ -160,7 +170,7 @@ const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#00
 const SHP_FILLS = [['No fill', 'none'], ['White', '#ffffff'], ['Light yellow', '#fff3a6'], ['Light blue', '#d6ecff'], ['Light green', '#d4f5c9'], ['Light pink', '#ffd9ec'], ['Light grey', '#e5e5ea'], ['See-through, line colour', 'tint']];
 const c0eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'darrow', 'shape', 'pen', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'darrow', 'shape', 'pen', 'eraser', 'lasso', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -693,6 +703,152 @@ function newBlank(at = S.pages.length, like) {
   renderAll(); commit(); scrollToPage(at);
 }
 
+/* ---------- 3.11: Draw toolbar, pens, eraser, lasso ---------- */
+const PENS = [
+  ['ballpoint', 'Ballpoint', 'Even line, like a ballpoint pen', { color: '#0b3d91', width: 1.2, op: 1 }],
+  ['fountain', 'Fountain pen', 'Line swells and thins with speed and pressure', { color: '#111111', width: 1.8, op: 1 }],
+  ['gel', 'Fineliner', 'Crisp, thin technical line', { color: '#000000', width: 0.6, op: 1 }],
+  ['pencil', 'Pencil', 'Soft graphite, slightly see-through', { color: '#4a4a4a', width: 1, op: 0.8 }],
+  ['marker', 'Marker', 'Bold felt tip', { color: '#d70015', width: 4, op: 0.95 }],
+  ['brush', 'Brush pen', 'Tapered strokes for signatures and lettering', { color: '#111111', width: 5, op: 1 }],
+  ['calligraphy', 'Calligraphy', 'Angled nib, thick and thin by direction', { color: '#1c1c1e', width: 4, op: 1 }],
+  ['highlighter', 'Highlighter', 'See-through, never hides the text', { color: '#ffd60a', width: 14, op: 0.4 }]
+];
+const INK_COLS = ['#000000', '#0b3d91', '#0a84ff', '#d70015', '#1a7f37', '#ff9500', '#8e44ad', '#8b5a2b', '#8e8e93', '#ffffff'];
+const HL_COLS = ['#ffd60a', '#8be28b', '#ff9ecf', '#7cc7ff', '#ffb35c', '#c7a6ff'];
+const INK_SIZES = { ballpoint: [0.5, 0.8, 1.2, 1.8, 2.5], fountain: [1, 1.5, 2, 3, 4.5], gel: [0.3, 0.45, 0.6, 0.9, 1.3], pencil: [0.5, 0.8, 1.2, 1.8, 2.8], marker: [2, 3, 4, 6, 9], brush: [2.5, 4, 5.5, 8, 12], calligraphy: [2, 3, 4, 6, 9], highlighter: [6, 10, 14, 20, 28] };
+const INK = Object.assign({ pen: 'ballpoint', set: {}, smooth: 2, pressure: true, snap: true, stylus: false, nib: 45, recent: [], favs: null, esz: 16, emode: 'ink' }, lsGet('pdfmate.ink', {}));
+if (!INK.favs) INK.favs = [['ballpoint', '#0b3d91', 1.2], ['ballpoint', '#000000', 0.8], ['fountain', '#111111', 1.8], ['ballpoint', '#d70015', 1.2], ['pencil', '#4a4a4a', 1], ['highlighter', '#ffd60a', 14]];
+const saveInk = () => lsSet('pdfmate.ink', INK);
+const penDef = (k) => PENS.find((x) => x[0] === k) || PENS[0];
+const inkCfg = (k = INK.pen) => Object.assign({}, penDef(k)[3], INK.set[k] || {});
+function setInkCfg(o, k = INK.pen) { INK.set[k] = Object.assign(inkCfg(k), o); if (o.color) { INK.recent = [o.color, ...INK.recent.filter((c) => c !== o.color)].slice(0, 6); } saveInk(); }
+const INK_TOOLS = new Set(['pen', 'eraser', 'lasso']);
+// Width at each point for pens whose line varies.
+function inkWidths(a) {
+  const n = a.pts.length, b = a.width || 1.5, k = a.pen; const pr = a.pr || []; const w = new Array(n);
+  let len = 0; const cum = [0]; for (let i = 1; i < n; i++) { len += Math.hypot(a.pts[i][0] - a.pts[i - 1][0], a.pts[i][1] - a.pts[i - 1][1]); cum.push(len); }
+  const taper = (i, frac) => { const t = Math.min(len * frac, b * 6); if (t <= 0) return 1; const s = Math.min(cum[i] / t, (len - cum[i]) / t, 1); return 0.25 + 0.75 * Math.sin(Math.max(0, s) * Math.PI / 2); };
+  for (let i = 0; i < n; i++) { const p = pr[i] == null ? 0.5 : pr[i];
+    if (k === 'fountain') w[i] = b * (0.45 + 0.9 * p) * taper(i, 0.12);
+    else if (k === 'brush') w[i] = b * (0.12 + 1.15 * p) * taper(i, 0.2);
+    else w[i] = b; }
+  for (let r = 0; r < 2; r++) for (let i = 1; i < n - 1; i++) w[i] = (w[i - 1] + w[i] * 2 + w[i + 1]) / 4;
+  return w;
+}
+const VARIABLE = new Set(['fountain', 'brush', 'calligraphy']);
+// Filled outline for variable pens, as an SVG path in page units. ymul -1 flips for PDF export.
+function inkOutline(a, ymul = 1) {
+  const P = a.pts, n = P.length; if (n < 2) { const [x, y] = P[0]; const r = (a.width || 1.5) / 2; return `M${x - r} ${y * ymul}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`; }
+  const L = [], R = [];
+  if (a.pen === 'calligraphy') { const ph = (a.nib == null ? 45 : a.nib) * Math.PI / 180; const nx = Math.cos(ph), ny = Math.sin(ph); const h = (a.width || 4) / 2, m = Math.max(0.35, h * 0.12); for (let i = 0; i < n; i++) { const [x, y] = P[i]; let tx = (P[Math.min(n - 1, i + 1)][0] - P[Math.max(0, i - 1)][0]), ty = (P[Math.min(n - 1, i + 1)][1] - P[Math.max(0, i - 1)][1]); const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl; const ex = nx * h - ty * m, ey = ny * h + tx * m; L.push([x + ex, y + ey]); R.push([x - nx * h + ty * m, y - ny * h - tx * m]); } }
+  else { const w = inkWidths(a); for (let i = 0; i < n; i++) { const [x, y] = P[i]; let tx = P[Math.min(n - 1, i + 1)][0] - P[Math.max(0, i - 1)][0], ty = P[Math.min(n - 1, i + 1)][1] - P[Math.max(0, i - 1)][1]; const tl = Math.hypot(tx, ty) || 1; const ox = -ty / tl * w[i] / 2, oy = tx / tl * w[i] / 2; L.push([x + ox, y + oy]); R.push([x - ox, y - oy]); } }
+  const f = (q) => `${Math.round(q[0] * 100) / 100} ${Math.round(q[1] * ymul * 100) / 100}`; const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  const side = (S2) => { let d = ''; for (let i = 1; i < S2.length - 1; i++) d += `Q${f(S2[i])} ${f(mid(S2[i], S2[i + 1]))}`; return d + `L${f(S2[S2.length - 1])}`; };
+  const Rr = R.slice().reverse(); const end = P[n - 1], st = P[0];
+  return `M${f(L[0])}${side(L)}Q${f([end[0] + (L[n - 1][0] - R[n - 1][0]) * 0 + (end[0] - P[n - 2][0]) * 0.6, end[1] + (end[1] - P[n - 2][1]) * 0.6])} ${f(Rr[0])}${side(Rr)}Q${f([st[0] - (P[1][0] - st[0]) * 0.6, st[1] - (P[1][1] - st[1]) * 0.6])} ${f(L[0])}Z`;
+}
+function inkSvg(g, a) {
+  const op = a.op == null ? 1 : a.op; const w = a.width || 1.5;
+  if (a.pen && VARIABLE.has(a.pen)) { g.appendChild(sv('path', { d: inkOutline(a), fill: a.color, 'fill-opacity': op, stroke: a.color, 'stroke-width': 0.15, 'stroke-opacity': op })); return; }
+  const pts = a.pts.length === 1 ? [a.pts[0], [a.pts[0][0] + 0.01, a.pts[0][1]]] : a.pts;
+  const at = { points: pts.map((p) => p[0] + ',' + p[1]).join(' '), fill: 'none', stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  if (op < 1) at['stroke-opacity'] = op;
+  if (a.pen === 'highlighter') { at['stroke-linecap'] = 'butt'; at.style = 'mix-blend-mode:multiply'; }
+  g.appendChild(sv('polyline', at));
+}
+async function inkPdf(page, a, col) {
+  const op = a.op == null ? 1 : a.op;
+  if (a.pen && VARIABLE.has(a.pen)) { page.drawSvgPath(inkOutline(a, -1), { x: 0, y: 0, color: col, opacity: op, borderColor: col, borderWidth: 0.15, borderOpacity: op }); return; }
+  const pts = a.pts.length === 1 ? [a.pts[0], [a.pts[0][0] + 0.01, a.pts[0][1]]] : a.pts;
+  const d = 'M' + pts.map(([x, y]) => `${x} ${-y}`).join(' L');
+  const o = { x: 0, y: 0, borderColor: col, borderWidth: a.width || 1.5, borderOpacity: op, borderLineCap: a.pen === 'highlighter' ? PL.LineCapStyle.Butt : PL.LineCapStyle.Round };
+  if (a.pen === 'highlighter') o.blendMode = PL.BlendMode.Multiply;
+  page.pushOperators(PL.pushGraphicsState(), PL.setLineJoin(PL.LineJoinStyle.Round)); page.drawSvgPath(d, o); page.pushOperators(PL.popGraphicsState());
+}
+function newInk(pdfPt, e) {
+  const k = INK.pen; const c = inkCfg(k); const a = { id: uid('a'), t: 'pen', pts: [pdfPt], color: c.color, width: c.width };
+  if (k !== 'ballpoint') a.pen = k; if (c.op != null && c.op < 1) a.op = c.op; if (k === 'calligraphy') a.nib = INK.nib;
+  if (VARIABLE.has(k)) a.pr = [inkPressure(e, 0)];
+  return a;
+}
+function inkPressure(e, speed) { if (INK.pressure && e.pointerType === 'pen' && e.pressure > 0) return clamp(e.pressure, 0.05, 1); return clamp(1 - speed * 0.9, 0.3, 1); }
+// Add points from a move, with the stabiliser and pressure.
+function inkMove(d, e, el, g) {
+  const a = d.a; const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : []; const list = evs.length ? evs : [e]; const k = [0, 0.35, 0.55, 0.72, 0.84][INK.smooth] || 0;
+  for (const ev of list) {
+    const q = ap(g.i, ...ptFromEvent(ev, el)); const lp = a.pts[a.pts.length - 1];
+    const nx = lp[0] + (q[0] - lp[0]) * (1 - k), ny = lp[1] + (q[1] - lp[1]) * (1 - k);
+    const dist = Math.hypot(nx - lp[0], ny - lp[1]); if (dist <= 0.6 / S.zoom + 0.25) continue;
+    const now = ev.timeStamp || performance.now(); const dt = Math.max(1, now - (d.lt || now - 16)); d.lt = now; const sp = clamp(dist * S.zoom / dt / 2.2, 0, 1); d.sp = d.sp == null ? sp : d.sp * 0.7 + sp * 0.3;
+    a.pts.push([nx, ny]); if (a.pr) a.pr.push(inkPressure(ev, d.sp));
+  }
+  d.raw = ap(g.i, ...ptFromEvent(e, el));
+}
+function inkFinish(d) { const a = d.a; if (!a || a.t !== 'pen') return; if (d.raw && INK.smooth) { const lp = a.pts[a.pts.length - 1]; if (Math.hypot(d.raw[0] - lp[0], d.raw[1] - lp[1]) > 0.5) { a.pts.push(d.raw); if (a.pr) a.pr.push(a.pr[a.pr.length - 1]); } } }
+
+/* Eraser */
+function inkSegDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1]; const L = dx * dx + dy * dy; let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = clamp(t, 0, 1); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
+function eraseAt(d, pt) {
+  const p = d.p, g = d.g; const q = ap(g.i, pt[0], pt[1]); const r = INK.esz / 2 / S.zoom; const gone = [];
+  for (const a of p.annots) {
+    if (a.pts && (a.t === 'pen' || INK.emode === 'all')) { const w = (a.width || 1.5) / 2 + r; let hit = false; if (a.pts.length === 1) hit = Math.hypot(q[0] - a.pts[0][0], q[1] - a.pts[0][1]) < w; for (let i = 1; i < a.pts.length && !hit; i++) if (inkSegDist(q[0], q[1], a.pts[i - 1], a.pts[i]) < w) hit = true; if (hit) gone.push(a.id); }
+    else if (INK.emode === 'all' && !a.pts) { const b = dispBox(a, g); const rr = INK.esz / 2; if (pt[0] > b.L - rr && pt[0] < b.R + rr && pt[1] > b.T - rr && pt[1] < b.B + rr) gone.push(a.id); }
+  }
+  if (gone.length) { const s = new Set(gone); p.annots = p.annots.filter((a) => !s.has(a.id)); d.n = (d.n || 0) + gone.length; drawOverlay(p, d.el); }
+}
+function eraserCursor() { const s = clamp(INK.esz, 6, 64), h = s / 2; const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${s + 2}' height='${s + 2}'><circle cx='${h + 1}' cy='${h + 1}' r='${h}' fill='rgba(255,255,255,.35)' stroke='%23555' stroke-width='1'/></svg>`; viewer.style.setProperty('--erase-cur', `url("data:image/svg+xml;utf8,${svg}") ${h + 1} ${h + 1}, crosshair`); }
+
+/* Lasso */
+let LASSO = null;
+function inPoly(x, y, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi || 1e-9) + xi) c = !c; } return c; }
+function lassoSelect(d) {
+  const p = d.p, g = d.g; const poly = LASSO ? LASSO.pts : []; LASSO = null; if (poly.length < 3) { drawOverlay(p, d.el); return; }
+  const ids = p.annots.filter((a) => { if (a.pts && a.pts.length) { const dp = a.pts.map(([x, y]) => ap(g.t, x, y)); const inside = dp.filter(([x, y]) => inPoly(x, y, poly)).length; return inside >= Math.max(1, dp.length * 0.5); } const b = dispBox(a, g); return inPoly((b.L + b.R) / 2, (b.T + b.B) / 2, poly); }).map((a) => a.id);
+  if (!ids.length) { drawOverlay(p, d.el); toast('Nothing inside the loop'); return; }
+  setTool('select'); select(p.id, null, { ids }); toast(`${ids.length} item${ids.length > 1 ? 's' : ''} selected. Drag to move${p.annots.filter((a) => ids.includes(a.id)).every((a) => a.t === 'pen') ? ', or change pen, colour and size in the bar' : ', align or delete from the bar'}`);
+}
+
+/* The Draw bar: shown in the format bar while a drawing tool is active or ink is selected. */
+function inkBarHtml(sel) {
+  const tool = S.tool; const selA = sel && sel.a.t === 'pen' ? sel.a : null;
+  if (tool === 'eraser' && !selA) return `<span class="fb-label">${icon('eraser')} Eraser</span><div class="seg ink-seg" role="group" aria-label="Erase">${[['ink', 'Ink only'], ['all', 'All markup']].map(([k, l]) => `<button data-emode="${k}" aria-pressed="${INK.emode === k}">${l}</button>`).join('')}</div><div class="ink-sizes">${[8, 16, 28, 48].map((v) => `<button class="ink-sz" data-esz="${v}" aria-pressed="${INK.esz === v}" title="${v} px"><i style="width:${Math.min(22, v / 2 + 4)}px;height:${Math.min(22, v / 2 + 4)}px"></i></button>`).join('')}</div><span class="fb-spacer"></span><button class="tbtn" data-ink="clearpage" style="color:var(--danger)">${icon('trash')}<span class="tb-hide-m">Clear ink on page</span></button><span class="fb-hint">Drag over strokes to rub them out.</span><button class="tbtn" data-act="done">Done</button>`;
+  if (tool === 'lasso' && !selA) return `<span class="fb-label">${icon('lasso')} Lasso</span><span class="fb-hint">Draw a loop around strokes or any markup to select them, then move, recolour or delete.</span><span class="fb-spacer"></span><button class="tbtn" data-act="done">Done</button>`;
+  const k = selA ? (selA.pen || 'ballpoint') : INK.pen; const c = selA ? { color: selA.color, width: selA.width, op: selA.op == null ? 1 : selA.op } : inkCfg(k); const hl = k === 'highlighter';
+  const cols = hl ? HL_COLS : INK_COLS; const rec = INK.recent.filter((x) => !cols.includes(x)).slice(0, 3);
+  const favs = INK.favs.map((f, i) => `<button class="ink-fav" data-fav="${i}" title="${penDef(f[0])[1]}, ${f[2]} pt. Right-click to save the current pen here" aria-pressed="${!selA && f[0] === k && f[1].toLowerCase() === String(c.color).toLowerCase() && Math.abs(f[2] - c.width) < 0.01}">${icon('pen_' + f[0])}<i style="background:${f[1]}"></i></button>`).join('');
+  return `<div class="ink-favs" role="group" aria-label="Favourite pens">${favs}</div><span class="fb-sep"></span>
+    <button class="tbtn ink-pen" data-ink="pens" title="Choose pen type">${icon('pen_' + k)}<span>${penDef(k)[1]}</span>${CHEV}</button>
+    <div class="swatches ink-cols" role="group" aria-label="Ink colour">${[...cols, ...rec].map((x) => `<button class="sw" data-inkc="${x}" style="background:${x}" title="${x}" aria-pressed="${x.toLowerCase() === String(c.color).toLowerCase()}"></button>`).join('')}<label class="sw sw-pick" title="Any colour"><input type="color" data-inkpick value="${c.color}"></label></div>
+    <div class="ink-sizes" role="group" aria-label="Nib size">${INK_SIZES[k].map((v) => `<button class="ink-sz" data-inksz="${v}" aria-pressed="${Math.abs(v - c.width) < 0.01}" title="${v} pt"><i style="width:${Math.max(3, Math.min(20, v * (hl ? 0.7 : 2.6)))}px;height:${Math.max(3, Math.min(20, v * (hl ? 0.7 : 2.6)))}px;background:${c.color};${hl ? 'border-radius:2px;opacity:.7' : ''}"></i></button>`).join('')}</div>
+    <label class="ink-range" title="Nib thickness"><input type="range" data-inkw min="0.2" max="${hl ? 40 : 24}" step="0.1" value="${c.width}"><output>${Math.round(c.width * 10) / 10} pt</output></label>
+    <label class="ink-range ink-op" title="Opacity"><span>${icon('theme')}</span><input type="range" data-inkop min="0.1" max="1" step="0.05" value="${c.op}"><output>${Math.round(c.op * 100)}%</output></label>
+    <button class="tbtn" data-ink="more" title="Smoothing, pressure, nib angle, stylus only, shape snapping">${icon('props')}<span class="tb-hide-m">Pen options</span></button>
+    <span class="fb-spacer"></span>${selA ? '' : '<button class="tbtn" data-act="done">Done</button>'}`;
+}
+function inkApply(o, quiet) {
+  const s = selectedAnn(); const ids = selIds ? selIds() : [];
+  if (s && s.a.t === 'pen') { const p = s.p; const set = new Set(ids.length ? ids : [s.a.id]); for (const a of p.annots) if (set.has(a.id) && a.t === 'pen') { if (o.color) a.color = o.color; if (o.width != null) a.width = o.width; if (o.op != null) { if (o.op < 1) a.op = o.op; else delete a.op; } if (o.pen) { if (o.pen === 'ballpoint') delete a.pen; else a.pen = o.pen; if (VARIABLE.has(o.pen) && !a.pr) a.pr = a.pts.map(() => 0.6); if (o.pen === 'calligraphy') a.nib = INK.nib; const d = penDef(o.pen)[3]; if (o.color == null && o.pen === 'highlighter') a.color = inkCfg('highlighter').color; if (o.width == null) a.width = inkCfg(o.pen).width; if (o.op == null) { const op = inkCfg(o.pen).op; if (op < 1) a.op = op; else delete a.op; } void d; } } drawOverlay(p); clearTimeout(styleCommitT); styleCommitT = setTimeout(commit, 350); }
+  else { if (o.pen) { INK.pen = o.pen; saveInk(); } const r = Object.assign({}, o); delete r.pen; if (Object.keys(r).length) setInkCfg(r); }
+  refreshFormatBar();
+}
+function inkApplyQuiet(o) { inkApply(o, true); }
+function inkClick(e) {
+  const b = e.target.closest('button,[data-inkpick]'); if (!b) return false; const fb = $('#formatBar');
+  if (b.dataset.inkc) { inkApply({ color: b.dataset.inkc }); return true; }
+  if (b.dataset.inksz) { inkApply({ width: +b.dataset.inksz }); return true; }
+  if (b.dataset.fav != null) { const f = INK.favs[+b.dataset.fav]; if (selectedAnn() && selectedAnn().a.t === 'pen') inkApply({ pen: f[0], color: f[1], width: f[2] }); else { INK.pen = f[0]; setInkCfg({ color: f[1], width: f[2] }, f[0]); if (S.tool !== 'pen') setTool('pen'); else refreshFormatBar(); buildToolsPressed(); } return true; }
+  if (b.dataset.emode) { INK.emode = b.dataset.emode; saveInk(); refreshFormatBar(); return true; }
+  if (b.dataset.esz) { INK.esz = +b.dataset.esz; saveInk(); eraserCursor(); refreshFormatBar(); return true; }
+  const k = b.dataset.ink; if (!k) return false;
+  if (k === 'pens') { openMenu(b, PENS.map(([p, l, d]) => ({ label: `${l}`, icon: 'pen_' + p, kbd: '', run: () => { inkApply({ pen: p }); if (!selectedAnn() && S.tool !== 'pen') setTool('pen'); buildToolsPressed(); } }))); return true; }
+  if (k === 'more') { const on = (v) => (v ? 'check' : 'blank'); openMenu(b, [{ h: 'Smoothing' }, ...['Off', 'Light', 'Medium', 'Strong', 'Strongest'].map((l, i) => ({ label: l, icon: on(INK.smooth === i), run: () => { INK.smooth = i; saveInk(); } })), '-', { label: 'Use stylus pressure', icon: on(INK.pressure), run: () => { INK.pressure = !INK.pressure; saveInk(); } }, { label: 'Stylus only, finger scrolls', icon: on(INK.stylus), run: () => { INK.stylus = !INK.stylus; saveInk(); viewer.classList.toggle('stylus-only', INK.stylus); toast(INK.stylus ? 'Only the stylus draws. Fingers scroll and zoom' : 'Fingers and stylus both draw'); } }, { label: 'Hold to snap shapes', icon: on(INK.snap), run: () => { INK.snap = !INK.snap; lsSet('pdfmate.snap', INK.snap); saveInk(); } }, '-', { h: 'Opacity' }, ...[1, 0.8, 0.6, 0.4].map((v) => ({ label: Math.round(v * 100) + '%', icon: on(Math.abs((inkCfg().op == null ? 1 : inkCfg().op) - v) < 0.01), run: () => inkApply({ op: v }) })), '-', { h: 'Calligraphy nib angle' }, ...[30, 45, 60, 90].map((v) => ({ label: v + '°', icon: on(INK.nib === v), run: () => { INK.nib = v; saveInk(); } }))]); return true; }
+  if (k === 'clearpage') { const p = S.pages[S.current]; if (!p) return true; const n = p.annots.filter((a) => a.t === 'pen').length; if (!n) { toast('No ink on this page'); return true; } confirmSheet(`Clear ${n} ink stroke${n > 1 ? 's' : ''} on this page?`, 'Undo can bring them back.', 'Clear ink', () => { p.annots = p.annots.filter((a) => a.t !== 'pen'); drawOverlay(p); commit(); }); return true; }
+  void fb; return false;
+}
+function inkContext(e) { const b = e.target.closest('[data-fav]'); if (!b) return; e.preventDefault(); const i = +b.dataset.fav; const c = inkCfg(); INK.favs[i] = [INK.pen, c.color, c.width]; saveInk(); refreshFormatBar(); toast('Saved this pen to the favourite slot'); }
+function buildToolsPressed() { $$('#tools [data-pen]').forEach((b) => b.setAttribute('aria-pressed', S.tool === 'pen' && b.dataset.pen === INK.pen)); }
+
 /* ---------- 3.10: paper templates for blank pages ---------- */
 const PAPERS_T = [['plain', 'Plain'], ['narrow', 'Lined, narrow (6 mm)'], ['lined', 'Lined (8 mm)'], ['wide', 'Lined, wide (10 mm)'], ['grid5', 'Grid 5 mm'], ['grid10', 'Grid 1 cm'], ['graph', 'Graph paper (mm)'], ['dots', 'Dots 5 mm'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist'], ['log', 'Log sheet'], ['meeting', 'Meeting notes'], ['music', 'Music staves']];
 const paperName = (k) => (PAPERS_T.find((x) => x[0] === k) || PAPERS_T[0])[1];
@@ -1049,6 +1205,7 @@ function recogniseStroke(pts) {
 }
 function trySnapPen(d) {
   if (!d || d.mode !== 'create' || d.a.t !== 'pen' || d.snapped) return;
+  if (d.a.pen === 'highlighter' || d.a.pen === 'marker') { const a = d.a; if (a.pts.length < 4) return; const z = a.pts[a.pts.length - 1], s0 = a.pts[0]; let len = 0; for (let i = 1; i < a.pts.length; i++) len += Math.hypot(a.pts[i][0] - a.pts[i - 1][0], a.pts[i][1] - a.pts[i - 1][1]); if (Math.hypot(z[0] - s0[0], z[1] - s0[1]) / len < 0.8) return; d.freehand = JSON.parse(JSON.stringify(a)); a.pts = [s0, z]; delete a.pr; d.snapped = true; drawOverlay(d.p, d.el); toast('Straightened'); return; }
   const r = recogniseStroke(d.a.pts); if (!r) return;
   const a0 = d.a; const n = { id: a0.id, color: a0.color, width: a0.width };
   if (r.t === 'line' || r.t === 'arrow') Object.assign(n, { t: r.t, pts: r.pts });
@@ -1733,7 +1890,7 @@ function annNode(a) {
   else if (a.t === 'line' || a.t === 'arrow') {
     const [p0, p1] = a.pts; g.appendChild(sv('line', { x1: p0[0], y1: p0[1], x2: p1[0], y2: p1[1], stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round' }));
     if (a.t === 'arrow') for (const [s, e] of arrowHead(a)) g.appendChild(sv('line', { x1: s[0], y1: s[1], x2: e[0], y2: e[1], stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round' }));
-  } else if (a.t === 'pen') g.appendChild(sv('polyline', { points: a.pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: a.color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  } else if (a.t === 'pen') inkSvg(g, a);
   else if (ORIENTED.has(a.t)) {
     const { U, V } = UV(a.r);
     const fr = sv('g', { transform: `matrix(${U[0]} ${U[1]} ${-V[0]} ${-V[1]} ${a.ax + a.h * V[0]} ${a.ay + a.h * V[1]})` });
@@ -1812,6 +1969,7 @@ function drawOverlay(p, el = pageEl(p.id)) {
     if (GUIDES.gx != null) ui.appendChild(sv('line', { class: 'guide', x1: GUIDES.gx, y1: 0, x2: GUIDES.gx, y2: g.h }));
     if (GUIDES.gy != null) ui.appendChild(sv('line', { class: 'guide', x1: 0, y1: GUIDES.gy, x2: g.w, y2: GUIDES.gy }));
   }
+  if (LASSO && LASSO.pageId === p.id && LASSO.pts.length > 1) ui.appendChild(sv('path', { class: 'lasso', d: 'M' + LASSO.pts.map((q) => q[0] + ' ' + q[1]).join('L') + 'Z' }));
   if (MARQ && MARQ.pageId === p.id) ui.appendChild(sv('rect', { class: 'marq', x: MARQ.L, y: MARQ.T, width: MARQ.R - MARQ.L, height: MARQ.B - MARQ.T }));
   svg.appendChild(content); svg.appendChild(ui);
   scheduleThumb(p.id);
@@ -1987,6 +2145,9 @@ pagesEl.addEventListener('pointerdown', (e) => {
   closeMenu();
   if (S.editing) { closeEditor(false); if (S.tool === 'text' || S.tool === 'tbox') { return; } }
   const tool = S.tool;
+  if (INK.stylus && e.pointerType === 'touch' && INK_TOOLS.has(tool)) return;
+  if (tool === 'eraser') { e.preventDefault(); drag = { mode: 'erase', p, el, g, start: pt, id: e.pointerId }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); eraseAt(drag, pt); return; }
+  if (tool === 'lasso') { e.preventDefault(); LASSO = { pageId: p.id, pts: [pt] }; drag = { mode: 'lasso', p, el, g, start: pt, id: e.pointerId }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return; }
   if (tool === 'edittext') {
     const hit = e.target.closest('.ann'); if (hit) { const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') { e.preventDefault(); openEditor(p, a); } return; }
     const span = e.target.closest('.textLayer span'); e.preventDefault();
@@ -2055,7 +2216,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
   let a;
   if (BOXES.has(tool)) { a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width }; if (tool === 'shape') a.kind = S.shapeKind; if (FILLABLE.has(tool) && S.style.fill && S.style.fill !== 'none') { a.fill = S.style.fill === 'tint' ? a.color : S.style.fill; if (S.style.fill === 'tint') a.fop = 0.25; } }
   else if (tool === 'line' || tool === 'arrow' || tool === 'darrow' || tool === 'measure') { a = { id: uid('a'), t: tool === 'darrow' ? 'arrow' : tool, pts: [pdfPt, pdfPt.slice()], color: tool === 'measure' && S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: tool === 'measure' ? Math.min(S.style.width, 1.5) : S.style.width }; if (tool === 'measure') a.sc = Object.assign({}, mscOf({})); if (tool === 'darrow') a.both = true; }
-  else if (tool === 'pen') a = { id: uid('a'), t: 'pen', pts: [pdfPt], color: S.style.ink, width: S.style.width };
+  else if (tool === 'pen') a = newInk(pdfPt, e);
   if (!a) return;
   p.annots.push(a);
   drag = { mode: 'create', p, el, g, a, start: pt, startPdf: pdfPt, id: e.pointerId };
@@ -2068,12 +2229,14 @@ pagesEl.addEventListener('pointermove', (e) => {
   if (S.tool === 'objedit' && !drag && e.pointerType !== 'touch' && !hovRaf) { const ev = e; hovRaf = requestAnimationFrame(() => { hovRaf = 0; const el = ev.target.closest && ev.target.closest('.page'); const p = el && pageById(el.dataset.id); const c = p && objCtx(p); let nh = null; if (c && !c.parsed.err) { const g = geo(p); const pt = ptFromEvent(ev, el); const q = ap(g.i, pt[0], pt[1]); const h = objHits(c.doc, c.pi, c.parsed, q[0], q[1], 4 / S.zoom); if (h.length) nh = { pageId: p.id, id: h[0] }; } const was = OHOV; if ((was && was.pageId + was.id) !== (nh && nh.pageId + nh.id)) { OHOV = nh; if (was) { const wp = pageById(was.pageId); if (wp) drawOverlay(wp); } if (nh && (!was || was.pageId !== nh.pageId)) drawOverlay(p); } }); }
   if (!drag || e.pointerId !== drag.id) return;
   const { p, el, g, a } = drag; const pt = ptFromEvent(e, el); const pdfPt = ap(g.i, pt[0], pt[1]);
+  if (drag.mode === 'erase') { eraseAt(drag, pt); return; }
+  if (drag.mode === 'lasso') { const lp = LASSO.pts[LASSO.pts.length - 1]; if (Math.hypot(pt[0] - lp[0], pt[1] - lp[1]) * S.zoom > 2) { LASSO.pts.push(pt); drawOverlay(p, el); } return; }
   if (drag.mode === 'tbox') { MARQ = { pageId: p.id, L: Math.min(pt[0], drag.start[0]), T: Math.min(pt[1], drag.start[1]), R: Math.max(pt[0], drag.start[0]), B: Math.max(pt[1], drag.start[1]) }; drawOverlay(p, el); return; }
   if (drag.mode === 'crop') { drag.cur = pdfPt; const [x0, y0] = drag.startPdf; p.crop = [Math.min(x0, pdfPt[0]), Math.min(y0, pdfPt[1]), Math.max(x0, pdfPt[0]), Math.max(y0, pdfPt[1])]; drawOverlay(p, el); return; }
   if (drag.mode === 'create') {
     if (drag.snapped) return;
     if (BOXES.has(a.t)) { const [x0, y0] = drag.startPdf; let dx = pdfPt[0] - x0, dy = pdfPt[1] - y0; if (e.shiftKey && FILLABLE.has(a.t)) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = (dx < 0 ? -1 : 1) * m; dy = (dy < 0 ? -1 : 1) * m; } a.x = Math.min(x0, x0 + dx); a.y = Math.min(y0, y0 + dy); a.w = Math.abs(dx); a.h = Math.abs(dy); }
-    else if (a.t === 'pen') { const lp = a.pts[a.pts.length - 1]; if (Math.hypot(lp[0] - pdfPt[0], lp[1] - pdfPt[1]) > 0.6 / S.zoom + 0.3) { a.pts.push(pdfPt); const d = drag; clearTimeout(d.snapT); if (lsGet('pdfmate.snap', true)) d.snapT = setTimeout(() => { if (drag === d) trySnapPen(d); }, 650); } }
+    else if (a.t === 'pen') { const n0 = a.pts.length; inkMove(drag, e, el, g); if (a.pts.length > n0) { const d = drag; clearTimeout(d.snapT); if (INK.snap) d.snapT = setTimeout(() => { if (drag === d) trySnapPen(d); }, 650); } }
     else { let q = pdfPt; if (e.shiftKey) { const [x0, y0] = a.pts[0]; const dx = q[0] - x0, dy = q[1] - y0, an = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(dx, dy); q = [x0 + L * Math.cos(an), y0 + L * Math.sin(an)]; } a.pts[1] = q; }
     drawOverlay(p, el); return;
   }
@@ -2114,6 +2277,9 @@ function endDrag(e) {
   if (objPointerUp(e)) return;
   if (!drag || e.pointerId !== drag.id) return;
   const drag0 = drag; clearTimeout(drag0.snapT); const { p, el, a, mode, moved, group } = drag; drag = null;
+  if (mode === 'erase') { if (drag0.n) commit(); return; }
+  if (mode === 'lasso') { lassoSelect(drag0); return; }
+  if (mode === 'create' && a && a.t === 'pen' && !drag0.snapped) inkFinish(drag0);
   if (mode === 'marquee') { MARQ = null; drawOverlay(p, el); refreshFormatBar(); return; }
   if (mode === 'rotate') { ROTLBL = null; }
   if (mode === 'tbox') { const m = MARQ; MARQ = null; const g = geo(p); let L = drag0.start[0], T = drag0.start[1], W = 0, H = 0; if (m && (m.R - m.L) * S.zoom > 12) { L = m.L; T = m.T; W = m.R - m.L; H = (m.B - m.T) * S.zoom > 12 ? m.B - m.T : 0; } addTextBoxAt(p, g, L, T, W, H); return; }
@@ -2226,7 +2392,7 @@ function alignSelected(k) {
   drawOverlay(s.p); commit();
 }
 function selectAllOnPage(p) { p = p || S.pages[S.current]; if (!p || !p.annots.length) return; if (S.tool !== 'select') setTool('select'); select(p.id, null, { ids: p.annots.map((a) => a.id) }); }
-function annLabel(a) { return ({ measure: 'Measurement', area: 'Area', cloud: 'Revision cloud', text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', shape: shapeLabel(a.kind), line: 'Line', arrow: a.both ? 'Double arrow' : 'Arrow', pen: 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
+function annLabel(a) { return ({ measure: 'Measurement', area: 'Area', cloud: 'Revision cloud', text: a.box ? 'Text box' : a.bg ? 'Note' : a.border ? 'Stamp' : 'Text', white: 'Whiteout', hl: 'Highlight', redact: 'Redaction', rect: 'Rectangle', ellipse: 'Ellipse', shape: shapeLabel(a.kind), line: 'Line', arrow: a.both ? 'Double arrow' : 'Arrow', pen: a.pen ? penDef(a.pen)[1] : 'Drawing', image: 'Image', stamp: 'Stamp', sign: 'Signature', mark: a.kind === 'hl' ? 'Text highlight' : 'Text markup', tick: 'Tick', cross: 'Cross' })[a.t] || 'Item'; }
 
 /* ---------- Edit PDF objects: text, shapes, lines and images inside the page content ---------- */
 // The original content stream is parsed once per page. Edits are kept per object index and applied by
@@ -3100,14 +3266,15 @@ const CHEV = '<svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d
 const CATS = [
   ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sview', 'a:reading', 'a:ruler', 'a:nav', '|', 'a:sidebar']],
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
+  ['draw', 'Draw', 'pen', ['t:select', 't:hand', '|', 'p:ballpoint', 'p:fountain', 'p:gel', 'p:pencil', 'p:marker', 'p:brush', 'p:calligraphy', 'p:highlighter', '|', 't:eraser', 't:lasso', '|', 'a:undo', 'a:redo']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
   ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
-const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
+const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', eraser: 'Eraser', lasso: 'Lasso', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
 const TOOL_KEY = { measure: 'M', area: 'K', cloud: 'C', select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
-const TOOL_ICON = { measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
+const TOOL_ICON = { eraser: 'eraser', lasso: 'lasso', measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
 const RIB_ACT = {
   find: ['Search', 'search', 'Search text (Ctrl+F)', () => openFind()], goto: ['Go to page', 'goto', 'Go to page (Ctrl+G)', () => openGoto()],
   zin: ['Zoom in', 'zin', 'Zoom in (Ctrl +)', () => setZoom(S.zoom * 1.25)], zout: ['Zoom out', 'zout', 'Zoom out (Ctrl -)', () => setZoom(S.zoom / 1.25)],
@@ -3132,6 +3299,7 @@ const RIB_ACT = {
   ruler: ['Ruler', 'ruler', 'Reading ruler: highlights the line you are reading. Click a line or use the arrow keys', () => toggleRuler()],
   nav: ['Navigator', 'navmap', 'Navigator: a small map of the page when zoomed in', () => toggleNav(), true],
   paper: ['Paper', 'grid', 'Lined, grid, dots and other paper for blank pages, and the default for new ones', () => paperMenu($('#tools [data-act="paper"]'))],
+  undo: ['Undo', 'undo', 'Undo (Ctrl+Z)', () => undo()], redo: ['Redo', 'redo', 'Redo (Ctrl+Shift+Z)', () => redo()],
   newpdf: ['New PDF', 'blank', 'Create a new blank PDF: size, orientation, pages, lined or grid paper', () => openNewPdf()],
   organise: ['Organise', 'grid', 'Organise pages in a large grid: sort, rotate, copy, extract, delete', () => openOrganiser()],
   sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
@@ -3148,7 +3316,8 @@ function buildTools() {
   for (const it of items) {
     if (it === '|') { html += '<span class="rsep" aria-hidden="true"></span>'; continue; }
     const [kind, k] = it.split(':');
-    if (kind === 't') { const tip = ({ measure: 'Measure distance, to scale', area: 'Measure area, to scale', cloud: 'Revision cloud' })[k] || (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool${['pen', 'rect', 'ellipse', 'line', 'arrow', 'cloud', 'tick', 'cross'].includes(k) && ck === 'comment' ? ' shp' : ''}" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
+    if (kind === 't') { const tip = ({ eraser: 'Eraser: rub out ink strokes', lasso: 'Lasso: loop around strokes to select them', measure: 'Measure distance, to scale', area: 'Measure area, to scale', cloud: 'Revision cloud' })[k] || (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool${['pen', 'rect', 'ellipse', 'line', 'arrow', 'cloud', 'tick', 'cross'].includes(k) && ck === 'comment' ? ' shp' : ''}" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
+    else if (kind === 'p') { const d = penDef(k); html += `<button class="tool" data-pen="${k}" aria-pressed="${S.tool === 'pen' && INK.pen === k}" aria-label="${d[1]}" data-tip="${d[1]}: ${d[2]}">${icon('pen_' + k)}<span class="tl">${{ ballpoint: 'Ballpoint', fountain: 'Fountain', gel: 'Fineliner', pencil: 'Pencil', marker: 'Marker', brush: 'Brush', calligraphy: 'Calligraphy', highlighter: 'Highlighter' }[k]}</span></button>`; }
     else if (kind === 'g' && k === 'shapes') html += `<button class="tool grp shapesbtn" data-group="shapes" aria-haspopup="dialog" aria-pressed="${SHAPE_TOOLS.has(S.tool)}" aria-label="Shapes" data-tip="Insert shapes: lines, arrows, stars, callouts, flowchart and more">${icon('shapes')}<span class="tl">Shapes</span>${CHEV}</button>`;
     else if (kind === 'g') html += `<button class="tool grp" data-group="sign" aria-haspopup="menu" aria-label="Stamps" data-tip="Stamps, signatures and images">${icon('stamp')}<span class="tl">Stamps</span>${CHEV}</button>`;
     else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
@@ -3173,6 +3342,7 @@ function setTool(t, keepCat) {
   if (t !== 'select' && S.sel && !S.editing) select(null);
   if (t === 'hand') { const sel = getSelection(); if (sel) sel.removeAllRanges(); }
   $$('#viewDock [data-dtool]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.dtool === t));
+  try { buildToolsPressed(); } catch (e) {}
   hideBubble(); refreshFormatBar();
 }
 function signMenu(anchor) {
@@ -3191,6 +3361,7 @@ $('#tools').addEventListener('pointerdown', (e) => { if (e.target.closest('[data
 $('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat'); if (b) setCat(b.dataset.cat); });
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
+  if (b.dataset.pen) { if (!S.pages.length) { toast('Open a PDF first'); return; } closeEditor(false); INK.pen = b.dataset.pen; saveInk(); setTool('pen', true); buildToolsPressed(); return; }
   if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
   if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview', 'newpdf'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
   if (!S.pages.length) { toast('Open a PDF first'); return; }
@@ -3215,7 +3386,8 @@ function fmtBarHtml() {
 }
 function refreshFormatBar() {
   const fb = $('#formatBar');
-  if (S.sel && selIds().length > 1 && S.pages.length) {
+  const allPen = (() => { if (!S.sel) return false; const pp = pageById(S.sel.pageId); const ids = new Set(selIds()); return !!pp && pp.annots.filter((z) => ids.has(z.id)).every((z) => z.t === 'pen'); })();
+  if (S.sel && selIds().length > 1 && S.pages.length && !allPen) {
     const n = selIds().length; const B = (k, ic, t) => `<button class="tbtn" data-mal="${k}" title="${t}" aria-label="${t}">${icon(ic)}</button>`;
     fb.innerHTML = `<span class="fb-label">${n} selected</span><span class="fb-spacer"></span>${B('l', 'al', 'Align left')}${B('c', 'ac', 'Align centres')}${B('r', 'ar', 'Align right')}<span class="fb-spacer"></span>${B('t', 'at', 'Align top')}${B('m', 'am', 'Align middles')}${B('b', 'ab', 'Align bottom')}<span class="fb-spacer"></span>${B('rotl', 'rotl', 'Rotate 90° left')}${B('rotr', 'rotr', 'Rotate 90° right')}<span class="fb-spacer"></span>${B('dup', 'dup', 'Duplicate')}${B('del', 'trash', 'Delete')}`;
     fb.hidden = false;
@@ -3223,6 +3395,7 @@ function refreshFormatBar() {
     refreshFmtPanel(); return;
   }
   if (S.tool === 'objedit' && S.pages.length) { fb.innerHTML = objBarHtml(); fb.hidden = false; refreshFmtPanel(); return; }
+  { const s0 = selectedAnn(); if (S.pages.length && ((INK_TOOLS.has(S.tool) && !s0) || (s0 && s0.a.t === 'pen'))) { fb.innerHTML = inkBarHtml(s0) + (s0 ? `<span class="fb-spacer"></span><button class="tbtn" data-act="rotl" aria-label="Rotate left">${icon('rotl')}</button><button class="tbtn" data-act="rotr" aria-label="Rotate right">${icon('rotr')}</button><button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}</button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}</button>` : ''); fb.hidden = false; fb.classList.add('inkbar'); refreshFmtPanel(); return; } fb.classList.remove('inkbar'); }
   const s = selectedAnn();
   let kind = s ? s.a.t : S.tool;
   if (s && s.a.t === 'text') kind = s.a.box ? 'tbox' : s.a.bg ? 'note' : s.a.border ? 'stampa' : 'text';
@@ -3260,13 +3433,18 @@ function refreshFormatBar() {
   refreshFmtPanel();
 }
 $('#formatBar').addEventListener('pointerdown', (e) => { if (S.editing && e.target.closest('button')) e.preventDefault(); });
+$('#formatBar').addEventListener('contextmenu', inkContext);
+$('#formatBar').addEventListener('input', (e) => { const t = e.target; if (t.matches('[data-inkw]')) { const v = +t.value; t.nextElementSibling.textContent = Math.round(v * 10) / 10 + ' pt'; inkApplyQuiet({ width: v }); } else if (t.matches('[data-inkop]')) { const v = +t.value; t.nextElementSibling.textContent = Math.round(v * 100) + '%'; inkApplyQuiet({ op: v }); } });
 $('#formatBar').addEventListener('change', (e) => {
+  if (e.target.matches('[data-inkw],[data-inkop]')) { refreshFormatBar(); return; }
+  if (e.target.matches('[data-inkpick]')) { inkApply({ color: e.target.value }); return; }
   if (e.target.id === 'fbFont') { fmtSet({ font: e.target.value }); return; }
   if (e.target.matches('[data-imgop]')) { const v = +e.target.value; applyStyleToSel((a) => { if (a.t !== 'image') return; if (v < 1) a.op = v; else delete a.op; }); return; }
   if (e.target.matches('[data-msr],[data-msu]')) { const fb = $('#formatBar'); const r = parseFloat(String(fb.querySelector('[data-msr]').value).replace(',', '.')); const u = fb.querySelector('[data-msu]').value; if (!(r > 0)) return; S.style.msc = { r, u }; saveStyle(); const s = selectedAnn(); if (s && (s.a.t === 'measure' || s.a.t === 'area')) { s.a.sc = { r, u }; drawOverlay(s.p); commit(); } refreshFormatBar(); }
 });
 $('#formatBar').addEventListener('click', (e) => {
   if (objBarClick(e)) return;
+  if (inkClick(e)) return;
   const ft = e.target.closest('[data-ftg]'); if (ft) { fmtToggle(ft.dataset.ftg); return; }
   if (e.target.closest('[data-fp]')) { openFmtPanel(); return; }
   if (e.target.closest('[data-fa]')) { const o = ['left', 'center', 'right', 'justify']; const c = fmtCur().align || 'left'; fmtSet({ align: o[(o.indexOf(c) + 1) % 4] }); return; }
@@ -3730,7 +3908,7 @@ async function drawAnn(page, a, font, embedImg) {
     else for (const [s0, s1] of a.segs || []) page.drawLine({ start: { x: s0[0], y: s0[1] }, end: { x: s1[0], y: s1[1] }, thickness: a.width || 1, color: col });
   }
   else if (a.t === 'line' || a.t === 'arrow') { seg(a.pts[0], a.pts[1]); if (a.t === 'arrow') for (const [s, e] of arrowHead(a)) seg(s, e); }
-  else if (a.t === 'pen') { if (a.pts.length === 1) seg(a.pts[0], a.pts[0]); for (let i = 1; i < a.pts.length; i++) seg(a.pts[i - 1], a.pts[i]); }
+  else if (a.t === 'pen') await inkPdf(page, a, col);
   else if (a.t === 'tick' || a.t === 'cross') { for (const [s, e] of markSegments(a)) seg(s, e); }
   else if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (!im) return; page.drawImage(await embedImg(a.imgId), { x: a.ax, y: a.ay, width: a.w, height: a.h, rotate: PL.degrees(a.r), opacity: a.op == null ? 1 : a.op }); }
   else if (a.t === 'text') {
@@ -5002,5 +5180,6 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
+viewer.classList.toggle('stylus-only', INK.stylus); eraserCursor();
 applyNight(); initSplit(); initNav(); initRuler(); initScrollbars();
 window.__pdfmate = { WS, SPL, openSplitView, NAV, RUL, recogniseStroke, openReading, openOrganiser, S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };
