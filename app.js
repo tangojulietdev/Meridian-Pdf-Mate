@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.8.2';
+const VERSION = '3.9.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -66,6 +66,7 @@ const IC = {
   offline: '<path d="M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5M5 12.6a10 10 0 0 1 5.2-2.6M19 12.6a10 10 0 0 0-1.9-1.4M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>',
   dup: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   fit: '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/>',
+  eyedrop: '<path d="m14 7 3 3"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4z"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
   theme: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/>',
@@ -691,6 +692,216 @@ function newBlank(at = S.pages.length, like) {
   if (S.pages.length === 1) { $('#docName').value = 'Untitled'; if (innerWidth > 760) setSidebar(true); }
   renderAll(); commit(); scrollToPage(at);
 }
+
+/* ---------- 3.9: new blank PDF ---------- */
+const NEW_SIZES = { a4: ['A4', 210, 297], a3: ['A3', 297, 420], a5: ['A5', 148, 210], letter: ['Letter', 215.9, 279.4], legal: ['Legal', 215.9, 355.6], custom: ['Custom'] };
+function openNewPdf() {
+  const st = Object.assign({ size: 'a4', land: false, n: 1, paper: 'plain', cw: 210, ch: 297 }, lsGet('pdfmate.newpdf', {}));
+  const sh = sheet(`<h2>New blank PDF</h2><p class="sub">Opens in a new tab, ready to fill, sign or draw on.</p>
+    <div class="field"><span class="flabel">Name</span><input id="npName" class="inp" value="Untitled" autocomplete="off"></div>
+    <div class="field"><span class="flabel">Page size</span><select id="npSize" class="inp">${Object.entries(NEW_SIZES).map(([k, v]) => `<option value="${k}" ${k === st.size ? 'selected' : ''}>${v[0]}${v[1] ? ` (${v[1]} × ${v[2]} mm)` : ''}</option>`).join('')}</select>
+      <div class="pr-row" id="npCustom"><input id="npW" class="inp" inputmode="decimal" value="${st.cw}" aria-label="Width in mm" style="width:90px"> × <input id="npH" class="inp" inputmode="decimal" value="${st.ch}" aria-label="Height in mm" style="width:90px"> mm</div></div>
+    <div class="field"><span class="flabel">Orientation</span><div class="seg" role="group"><button data-or="p">Portrait</button><button data-or="l">Landscape</button></div></div>
+    <div class="field"><span class="flabel">Paper</span><div class="seg" role="group"><button data-pp="plain">Plain</button><button data-pp="lined">Lined</button><button data-pp="grid">Grid</button><button data-pp="dots">Dots</button></div></div>
+    <div class="field"><span class="flabel">Pages</span><div class="stepper pr-step"><button type="button" data-np="-1">−</button><input id="npN" class="inp" value="${st.n}" inputmode="numeric" aria-label="Number of pages"><button type="button" data-np="1">+</button></div></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-go>${icon('blank')} Create</button></div>`);
+  const $s = (q) => sh.querySelector(q);
+  const paint = () => { $s('#npCustom').hidden = $s('#npSize').value !== 'custom'; sh.querySelectorAll('[data-or]').forEach((b) => b.setAttribute('aria-pressed', (b.dataset.or === 'l') === st.land)); sh.querySelectorAll('[data-pp]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.pp === st.paper)); };
+  sh.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.or) { st.land = b.dataset.or === 'l'; paint(); return; }
+    if (b.dataset.pp) { st.paper = b.dataset.pp; paint(); return; }
+    if (b.dataset.np) { $s('#npN').value = clamp((parseInt($s('#npN').value, 10) || 1) + +b.dataset.np, 1, 500); return; }
+    if (b.hasAttribute('data-x')) { closeSheet(); return; }
+    if (b.hasAttribute('data-go')) {
+      st.size = $s('#npSize').value; st.n = clamp(parseInt($s('#npN').value, 10) || 1, 1, 500); st.cw = parseFloat(String($s('#npW').value).replace(',', '.')) || 210; st.ch = parseFloat(String($s('#npH').value).replace(',', '.')) || 297; lsSet('pdfmate.newpdf', st);
+      let [wmm, hmm] = st.size === 'custom' ? [clamp(st.cw, 20, 5000), clamp(st.ch, 20, 5000)] : NEW_SIZES[st.size].slice(1); if (st.land !== wmm > hmm) [wmm, hmm] = [hmm, wmm];
+      const name = ($s('#npName').value || 'Untitled').trim().replace(/[\\/:*?"<>|]/g, '') || 'Untitled';
+      closeSheet(); const bytes = await blankPdfBytes(wmm, hmm, st.n, st.paper);
+      await openFilesInTabs([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); toast(`Created ${name} with ${st.n} page${st.n > 1 ? 's' : ''}`);
+    }
+  });
+  $s('#npSize').addEventListener('change', paint); paint(); setTimeout(() => { const i = $s('#npName'); i.focus(); i.select(); }, 60);
+}
+async function blankPdfBytes(wmm, hmm, n, paper) {
+  const mm = 72 / 25.4; const W = wmm * mm, H = hmm * mm; const d = await PL.PDFDocument.create(); d.setProducer('Meridian PDF Mate by Tango Juliet Dev'); d.setCreator('Meridian PDF Mate');
+  const line = PL.rgb(0.78, 0.82, 0.88), dot = PL.rgb(0.62, 0.66, 0.72), red = PL.rgb(0.93, 0.6, 0.6);
+  for (let k = 0; k < n; k++) {
+    const p = d.addPage([W, H]);
+    if (paper === 'lined') { const top = H - 25 * mm; for (let y = top; y > 15 * mm; y -= 8 * mm) p.drawLine({ start: { x: 12 * mm, y }, end: { x: W - 12 * mm, y }, thickness: 0.5, color: line }); p.drawLine({ start: { x: 28 * mm, y: 10 * mm }, end: { x: 28 * mm, y: H - 10 * mm }, thickness: 0.6, color: red }); }
+    else if (paper === 'grid') { const s = 5 * mm; for (let x = 0; x <= W + 0.1; x += s) p.drawLine({ start: { x, y: 0 }, end: { x, y: H }, thickness: Math.round(x / s) % 5 === 0 ? 0.6 : 0.3, color: line }); for (let y = 0; y <= H + 0.1; y += s) p.drawLine({ start: { x: 0, y }, end: { x: W, y }, thickness: Math.round(y / s) % 5 === 0 ? 0.6 : 0.3, color: line }); }
+    else if (paper === 'dots') { const s = 5 * mm; for (let x = s; x < W; x += s) for (let y = s; y < H; y += s) p.drawCircle({ x, y, size: 0.45, color: dot }); }
+  }
+  return d.save();
+}
+
+/* ---------- 3.9: image editor ---------- */
+const IE_DEF = { rot: 0, flipH: false, flipV: false, straight: 0, crop: null, ratio: 'free', bright: 0, contrast: 0, sat: 0, warm: 0, tint: 0, expo: 0, hi: 0, shad: 0, sharp: 0, blur: 0, vign: 0, filter: 'none', fstr: 100, bg: false, bgCol: '#ffffff', bgTol: 22, bgFeather: 10, radius: 0, border: 0, borderCol: '#000000', op: 1 };
+const IE_FILTERS = [['none', 'Original'], ['scan', 'Clean scan'], ['bw', 'Black and white'], ['gray', 'Greyscale'], ['vivid', 'Vivid'], ['warmf', 'Warm'], ['coolf', 'Cool'], ['sepia', 'Sepia'], ['fade', 'Faded'], ['dramatic', 'Dramatic'], ['invert', 'Negative']];
+const hex2 = (h) => { const n = parseInt(String(h).slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+// Geometry: quarter turns, flips and straightening (zoomed so no empty corners).
+function ieGeom(el, P, maxSide) {
+  const nw = el.naturalWidth || el.width, nh = el.naturalHeight || el.height; const k0 = Math.min(1, maxSide / Math.max(nw, nh)); const w0 = Math.max(1, Math.round(nw * k0)), h0 = Math.max(1, Math.round(nh * k0));
+  const q = ((P.rot % 360) + 360) % 360; const W = q % 180 ? h0 : w0, H = q % 180 ? w0 : h0;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
+  const th = P.straight * Math.PI / 180; const cs = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th)); const k = P.straight ? Math.max((W * cs + H * sn) / W, (W * sn + H * cs) / H) : 1;
+  x.translate(W / 2, H / 2); x.rotate(q * Math.PI / 180 + th); x.scale((P.flipH ? -1 : 1) * k, (P.flipV ? -1 : 1) * k); x.drawImage(el, -w0 / 2, -h0 / 2, w0, h0);
+  return c;
+}
+function ieCrop(c, cr) { if (!cr) return c; const x0 = Math.round(cr.x * c.width), y0 = Math.round(cr.y * c.height), w = Math.max(1, Math.round(cr.w * c.width)), h = Math.max(1, Math.round(cr.h * c.height)); const o = document.createElement('canvas'); o.width = w; o.height = h; o.getContext('2d').drawImage(c, x0, y0, w, h, 0, 0, w, h); return o; }
+function ieConvolve(d, w, h, kern, mix) {
+  const src = new Uint8ClampedArray(d); const k = kern; const n = Math.sqrt(k.length) | 0, r = n >> 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let R = 0, G = 0, B = 0; for (let j = -r; j <= r; j++) { const yy = Math.min(h - 1, Math.max(0, y + j)); for (let i = -r; i <= r; i++) { const xx = Math.min(w - 1, Math.max(0, x + i)); const o = (yy * w + xx) * 4, kv = k[(j + r) * n + i + r]; R += src[o] * kv; G += src[o + 1] * kv; B += src[o + 2] * kv; } } const o = (y * w + x) * 4; d[o] = src[o] + (R - src[o]) * mix; d[o + 1] = src[o + 1] + (G - src[o + 1]) * mix; d[o + 2] = src[o + 2] + (B - src[o + 2]) * mix; }
+}
+function ieBoxBlur(c, rad) { if (rad <= 0) return c; const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d'); if ('filter' in x) { x.filter = `blur(${rad}px)`; x.drawImage(c, 0, 0); x.filter = 'none'; return o; } return c; }
+// Colour, tone, filter, sharpening, vignette and background removal on the pixels.
+function iePixels(c, P, scale, pickOnly) {
+  const x = c.getContext('2d', { willReadFrequently: true }); const w = c.width, h = c.height; const id = x.getImageData(0, 0, w, h); const d = id.data;
+  const br = P.bright * 1.28, ct = (P.contrast + 100) / 100, cf = ct * ct, sat = (P.sat + 100) / 100, warm = P.warm * 0.6, tint = P.tint * 0.5, gam = Math.pow(2, -P.expo / 50), hi = P.hi / 100, sh = P.shad / 100;
+  const f = P.filter, fs = P.fstr / 100;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    if (P.expo) { r = 255 * Math.pow(r / 255, gam); g = 255 * Math.pow(g / 255, gam); b = 255 * Math.pow(b / 255, gam); }
+    if (hi || sh) { const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255; const adj = (L > 0.5 ? hi * (L - 0.5) * 2 : -sh * (0.5 - L) * 2) * -60; r += adj; g += adj; b += adj; }
+    r += br; g += br; b += br;
+    if (P.contrast) { r = (r - 128) * cf + 128; g = (g - 128) * cf + 128; b = (b - 128) * cf + 128; }
+    if (warm) { r += warm; b -= warm; } if (tint) { g -= tint; r += tint * 0.5; b += tint * 0.5; }
+    if (P.sat) { const L = 0.299 * r + 0.587 * g + 0.114 * b; r = L + (r - L) * sat; g = L + (g - L) * sat; b = L + (b - L) * sat; }
+    if (f !== 'none') {
+      let R = r, G = g, B = b; const L = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (f === 'gray') { R = G = B = L; }
+      else if (f === 'bw') { R = G = B = L > 140 ? 255 : L < 100 ? 0 : (L - 100) / 40 * 255; }
+      else if (f === 'scan') { const t = (v) => Math.max(0, Math.min(255, (v - 40) * 255 / 165)); R = t(r); G = t(g); B = t(b); const L2 = 0.299 * R + 0.587 * G + 0.114 * B; if (L2 > 205) { R = G = B = 255; } }
+      else if (f === 'sepia') { R = L * 1.07 + 30; G = L * 0.95 + 12; B = L * 0.75; }
+      else if (f === 'vivid') { R = L + (r - L) * 1.5; G = L + (g - L) * 1.5; B = L + (b - L) * 1.5; R = (R - 128) * 1.12 + 128; G = (G - 128) * 1.12 + 128; B = (B - 128) * 1.12 + 128; }
+      else if (f === 'warmf') { R = r + 22; G = g + 6; B = b - 22; }
+      else if (f === 'coolf') { R = r - 18; G = g + 2; B = b + 24; }
+      else if (f === 'fade') { R = r * 0.82 + 40; G = g * 0.82 + 38; B = b * 0.82 + 44; }
+      else if (f === 'dramatic') { const s2 = 0.7; R = L + (r - L) * s2; G = L + (g - L) * s2; B = L + (b - L) * s2; R = (R - 128) * 1.45 + 120; G = (G - 128) * 1.45 + 120; B = (B - 128) * 1.45 + 124; }
+      else if (f === 'invert') { R = 255 - r; G = 255 - g; B = 255 - b; }
+      r += (R - r) * fs; g += (G - g) * fs; b += (B - b) * fs;
+    }
+    d[i] = r; d[i + 1] = g; d[i + 2] = b;
+  }
+  if (P.sharp && !pickOnly) { const s = P.sharp / 100 * 1.6; ieConvolve(d, w, h, [0, -1, 0, -1, 5, -1, 0, -1, 0], s); }
+  if (P.vign && !pickOnly) { const cx = w / 2, cy = h / 2, R0 = Math.hypot(cx, cy), v = P.vign / 100; for (let y = 0; y < h; y++) for (let xx = 0; xx < w; xx++) { const t = Math.hypot(xx - cx, y - cy) / R0; const m = 1 - v * Math.max(0, t - 0.35) * 1.4; const o = (y * w + xx) * 4; d[o] *= m; d[o + 1] *= m; d[o + 2] *= m; } }
+  if (P.bg && !pickOnly) { const [kr, kg, kb] = hex2(P.bgCol); const tol = P.bgTol / 100 * 441, fe = Math.max(1, P.bgFeather / 100 * 441); for (let i = 0; i < d.length; i += 4) { const dist = Math.hypot(d[i] - kr, d[i + 1] - kg, d[i + 2] - kb); if (dist < tol) d[i + 3] = 0; else if (dist < tol + fe) d[i + 3] = Math.min(d[i + 3], 255 * (dist - tol) / fe); } }
+  x.putImageData(id, 0, 0);
+  let out = c; if (P.blur && !pickOnly) out = ieBoxBlur(c, P.blur * scale);
+  return out;
+}
+function ieFrame(c, P, scale) {
+  if (!P.radius && !P.border) return c; const w = c.width, h = c.height; const o = document.createElement('canvas'); o.width = w; o.height = h; const x = o.getContext('2d');
+  const r = Math.min(w, h) / 2 * P.radius / 100; const bw = P.border * scale * 2;
+  const path = () => { x.beginPath(); if (x.roundRect) x.roundRect(bw / 2, bw / 2, w - bw, h - bw, Math.max(0, r - bw / 2)); else x.rect(bw / 2, bw / 2, w - bw, h - bw); };
+  x.save(); if (r) { x.beginPath(); if (x.roundRect) x.roundRect(0, 0, w, h, r); else x.rect(0, 0, w, h); x.clip(); } x.drawImage(c, 0, 0); x.restore();
+  if (bw) { x.lineWidth = bw; x.strokeStyle = P.borderCol; path(); x.stroke(); }
+  return o;
+}
+function ieRender(el, P, maxSide, noCrop) { const g = ieGeom(el, P, maxSide); const sc = g.width / Math.max(1, el.naturalWidth || el.width); const c = noCrop ? g : ieCrop(g, P.crop); const px = iePixels(c, P, Math.max(0.25, Math.max(c.width, c.height) / 1000)); return ieFrame(px, P, Math.max(0.25, Math.max(c.width, c.height) / 1000)); }
+const ieNeedsAlpha = (P, el) => P.bg || P.radius > 0 || /^data:image\/(png|gif|webp)/.test(el.src || '');
+
+async function openImageEditor(p, a) {
+  if (!a || !a.imgId) return; const origId = (a.edit && a.edit.orig) || a.imgId; let orig = S.imgs.get(origId); if (!orig) { toast('Image not found', { err: true }); return; }
+  if (!orig.el) orig.el = await loadImageEl(orig.src);
+  const P = Object.assign({}, IE_DEF, (a.edit && a.edit.P) || {}, { op: a.op == null ? 1 : a.op }); const P0 = JSON.stringify(P);
+  let tab = 'adjust', cropMode = false, pick = false, raf = 0;
+  const SL = (k, l, min, max, step = 1, unit = '') => `<label class="ie-sl"><span>${l}<output data-o="${k}"></output></span><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}"${unit ? ` data-u="${unit}"` : ''}></label>`;
+  const fv = fullView('imgedit', `<b class="fv-title">${icon('photo')} Edit image</b><span class="fv-sp"></span>
+    <button class="tbtn" data-a="reset" title="Undo every change">${icon('undo')}<span>Reset</span></button><button class="tbtn" data-a="replace" title="Choose another picture, keep size and place">${icon('photo')}<span>Replace</span></button><button class="tbtn" data-a="download" title="Save the edited image as a PNG file">${icon('download')}<span>Save image</span></button>
+    <button class="tbtn" data-a="cancel">Cancel</button><button class="tbtn primary" data-a="apply">Apply</button>`);
+  const body = fv.querySelector('.fv-body'); body.classList.add('ie-body');
+  body.innerHTML = `<div class="ie-stage"><div class="ie-canwrap"><canvas class="ie-cv"></canvas><div class="ie-crop" hidden><div class="ie-cr"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><i data-h="n"></i><i data-h="s"></i><i data-h="w"></i><i data-h="e"></i></div></div></div><div class="ie-hint" hidden></div></div>
+    <aside class="ie-panel"><div class="seg ie-tabs" role="tablist"><button data-t="adjust">Adjust</button><button data-t="filters">Filters</button><button data-t="crop">Crop</button><button data-t="bg">Background</button><button data-t="frame">Frame</button></div>
+    <div class="ie-pane" data-p="adjust">${SL('bright', 'Brightness', -100, 100)}${SL('contrast', 'Contrast', -100, 100)}${SL('expo', 'Exposure', -100, 100)}${SL('hi', 'Highlights', -100, 100)}${SL('shad', 'Shadows', -100, 100)}${SL('sat', 'Saturation', -100, 100)}${SL('warm', 'Warmth', -100, 100)}${SL('tint', 'Tint', -100, 100)}${SL('sharp', 'Sharpen', 0, 100)}${SL('blur', 'Blur', 0, 20, 0.5)}${SL('vign', 'Vignette', 0, 100)}${SL('op', 'Opacity on the page', 0.05, 1, 0.05, '%')}<button class="btn ie-auto" data-a="auto">${icon('fit')} Auto fix</button></div>
+    <div class="ie-pane" data-p="filters"><div class="ie-fgrid">${IE_FILTERS.map(([k, l]) => `<button class="ie-f" data-f="${k}"><canvas></canvas><span>${l}</span></button>`).join('')}</div>${SL('fstr', 'Filter strength', 0, 100)}</div>
+    <div class="ie-pane" data-p="crop"><div class="ie-row">${['free', '1:1', '4:3', '3:4', '3:2', '16:9', 'orig'].map((r) => `<button class="ie-chip" data-r="${r}">${r === 'free' ? 'Free' : r === 'orig' ? 'Original' : r}</button>`).join('')}</div>
+      <div class="ie-row"><button class="btn" data-a="rotl">${icon('rotl')} Left</button><button class="btn" data-a="rotr">${icon('rotr')} Right</button><button class="btn" data-a="fliph">${icon('fliph')} Flip</button><button class="btn" data-a="flipv">${icon('flipv')} Flip</button></div>
+      ${SL('straight', 'Straighten', -45, 45, 0.5, '°')}<div class="ie-row"><button class="btn" data-a="cropreset">Remove crop</button></div><p class="ie-note">Drag the corners or edges on the picture. Drag inside to move the crop.</p></div>
+    <div class="ie-pane" data-p="bg"><label class="chkrow"><input type="checkbox" data-c="bg"> Remove background colour</label><div class="ie-row"><span class="ie-lbl">Colour</span><input type="color" data-col="bgCol" class="ie-color"><button class="btn" data-a="pick">${icon('eyedrop')} Pick from picture</button><button class="btn" data-a="white">White</button></div>${SL('bgTol', 'Tolerance', 0, 100)}${SL('bgFeather', 'Soft edge', 0, 60)}<p class="ie-note">Good for signatures and stamps photographed on white paper. The removed area becomes see-through.</p></div>
+    <div class="ie-pane" data-p="frame">${SL('radius', 'Rounded corners', 0, 100)}${SL('border', 'Border', 0, 20, 0.5)}<div class="ie-row"><span class="ie-lbl">Border colour</span><input type="color" data-col="borderCol" class="ie-color">${['#000000', '#ffffff', '#0040dd', '#d70015', '#1a7f37', '#8e8e93'].map((c) => `<button class="sw" data-bc="${c}" style="background:${c}"></button>`).join('')}</div></div>
+    </aside><input type="file" accept="image/*" hidden class="ie-file">`;
+  const cv = body.querySelector('.ie-cv'), wrap = body.querySelector('.ie-canwrap'), cropEl = body.querySelector('.ie-crop'), crR = body.querySelector('.ie-cr'), hint = body.querySelector('.ie-hint');
+  const fit = () => { const st = body.querySelector('.ie-stage'); const mw = st.clientWidth - 48, mh = st.clientHeight - 48; const k = Math.min(mw / cv.width, mh / cv.height, 2); cv.style.width = cv.width * k + 'px'; cv.style.height = cv.height * k + 'px'; };
+  let geomCache = null, geomKey = '';
+  const draw = () => {
+    raf = 0; let c;
+    if (cropMode) { const k = JSON.stringify([P.rot, P.flipH, P.flipV, P.straight]); if (k !== geomKey) { geomCache = ieGeom(orig.el, P, 1100); geomKey = k; } const t = document.createElement('canvas'); t.width = geomCache.width; t.height = geomCache.height; t.getContext('2d').drawImage(geomCache, 0, 0); c = iePixels(t, Object.assign({}, P, { bg: false }), 1.1); }
+    else c = ieRender(orig.el, P, 1100);
+    cv.width = c.width; cv.height = c.height; const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(c, 0, 0); cv.style.opacity = P.op; fit(); placeCrop();
+  };
+  const redraw = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  const sync = () => {
+    body.querySelectorAll('input[type=range]').forEach((i) => { i.value = P[i.dataset.k]; const o = body.querySelector(`output[data-o="${i.dataset.k}"]`); if (o) o.textContent = i.dataset.u === '%' ? Math.round(P[i.dataset.k] * 100) + '%' : (P[i.dataset.k] > 0 && i.min < 0 ? '+' : '') + P[i.dataset.k] + (i.dataset.u || ''); });
+    body.querySelectorAll('[data-c]').forEach((i) => { i.checked = !!P[i.dataset.c]; }); body.querySelectorAll('[data-col]').forEach((i) => { i.value = P[i.dataset.col]; });
+    body.querySelectorAll('[data-t]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.t === tab)); body.querySelectorAll('.ie-pane').forEach((p2) => { p2.hidden = p2.dataset.p !== tab; });
+    body.querySelectorAll('[data-f]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.f === P.filter)); body.querySelectorAll('[data-r]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.r === P.ratio));
+  };
+  // Filter thumbnails
+  const thumbs = () => { const base = ieGeom(orig.el, Object.assign({}, IE_DEF, { rot: P.rot, flipH: P.flipH, flipV: P.flipV }), 160); body.querySelectorAll('.ie-f').forEach((b) => { const t = document.createElement('canvas'); t.width = base.width; t.height = base.height; t.getContext('2d').drawImage(base, 0, 0); const r = iePixels(t, Object.assign({}, IE_DEF, { filter: b.dataset.f }), 0.2); const c2 = b.querySelector('canvas'); c2.width = r.width; c2.height = r.height; c2.getContext('2d').drawImage(r, 0, 0); }); };
+  // Crop overlay
+  const ratioVal = () => { if (P.ratio === 'free') return 0; if (P.ratio === 'orig') { const g = geomCache || ieGeom(orig.el, P, 300); return g.width / g.height; } const [x, y] = P.ratio.split(':').map(Number); return x / y; };
+  const curCrop = () => P.crop || { x: 0, y: 0, w: 1, h: 1 };
+  function placeCrop() { cropEl.hidden = !cropMode; if (!cropMode) return; const r = cv.getBoundingClientRect(), wr = wrap.getBoundingClientRect(); const c = curCrop(); Object.assign(cropEl.style, { left: r.left - wr.left + 'px', top: r.top - wr.top + 'px', width: r.width + 'px', height: r.height + 'px' }); Object.assign(crR.style, { left: c.x * 100 + '%', top: c.y * 100 + '%', width: c.w * 100 + '%', height: c.h * 100 + '%' }); }
+  const applyRatio = () => { const k = ratioVal(); if (!k) return; const g = geomCache || ieGeom(orig.el, P, 300); const ar = g.width / g.height; let c = curCrop(); let w = c.w, h = c.w * ar / k; if (h > 1) { h = 1; w = k / ar; } if (w > 1) { w = 1; h = ar / k; } P.crop = { x: clamp(c.x + (c.w - w) / 2, 0, 1 - w), y: clamp(c.y + (c.h - h) / 2, 0, 1 - h), w, h }; };
+  let cd = null;
+  cropEl.addEventListener('pointerdown', (e) => { const r = cropEl.getBoundingClientRect(); const hnd = e.target.dataset.h || (e.target === crR ? 'move' : null); if (!hnd) return; e.preventDefault(); cropEl.setPointerCapture(e.pointerId); cd = { h: hnd, x: e.clientX, y: e.clientY, c: Object.assign({}, curCrop()), W: r.width, H: r.height }; });
+  cropEl.addEventListener('pointermove', (e) => {
+    if (!cd) return; const dx = (e.clientX - cd.x) / cd.W, dy = (e.clientY - cd.y) / cd.H; let { x, y, w, h } = cd.c; const m = 0.04;
+    if (cd.h === 'move') { x = clamp(x + dx, 0, 1 - w); y = clamp(y + dy, 0, 1 - h); }
+    else { if (cd.h.includes('w')) { const nx = clamp(x + dx, 0, x + w - m); w += x - nx; x = nx; } if (cd.h.includes('e')) w = clamp(w + dx, m, 1 - x); if (cd.h.includes('n')) { const ny = clamp(y + dy, 0, y + h - m); h += y - ny; y = ny; } if (cd.h.includes('s')) h = clamp(h + dy, m, 1 - y);
+      const k = ratioVal(); if (k) { const ar = cd.W / cd.H; const want = w * ar / k; if (cd.h === 'n' || cd.h === 's') { const nw = h * k / ar; w = Math.min(nw, 1 - x); } else { h = Math.min(want, 1 - y); if (cd.h.includes('n')) y = cd.c.y + cd.c.h - h; } } }
+    P.crop = { x, y, w, h }; placeCrop();
+  });
+  cropEl.addEventListener('pointerup', () => { cd = null; }); cropEl.addEventListener('pointercancel', () => { cd = null; });
+  // Pick colour from the picture
+  cv.addEventListener('click', (e) => { if (!pick) return; const r = cv.getBoundingClientRect(); const px = Math.floor((e.clientX - r.left) / r.width * cv.width), py = Math.floor((e.clientY - r.top) / r.height * cv.height); const t = ieRender(orig.el, Object.assign({}, P, { bg: false }), 1100); const dd = t.getContext('2d').getImageData(clamp(px, 0, t.width - 1), clamp(py, 0, t.height - 1), 1, 1).data; P.bgCol = '#' + [dd[0], dd[1], dd[2]].map((v) => v.toString(16).padStart(2, '0')).join(''); P.bg = true; pick = false; hint.hidden = true; cv.style.cursor = ''; sync(); redraw(); });
+  body.addEventListener('input', (e) => { const i = e.target; if (i.dataset.k) { P[i.dataset.k] = +i.value; sync(); redraw(); } else if (i.dataset.col) { P[i.dataset.col] = i.value; if (i.dataset.col === 'bgCol') P.bg = true; sync(); redraw(); } });
+  body.addEventListener('change', (e) => { const i = e.target; if (i.dataset.c) { P[i.dataset.c] = i.checked; sync(); redraw(); } });
+  const setTab = (t) => { tab = t; cropMode = t === 'crop'; if (cropMode) geomKey = ''; sync(); redraw(); };
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.t) { setTab(b.dataset.t); return; }
+    if (b.dataset.f) { P.filter = b.dataset.f; sync(); redraw(); return; }
+    if (b.dataset.r) { P.ratio = b.dataset.r; applyRatio(); sync(); redraw(); return; }
+    if (b.dataset.bc) { P.borderCol = b.dataset.bc; if (!P.border) P.border = 2; sync(); redraw(); return; }
+    const k = b.dataset.a; if (!k) return;
+    if (k === 'rotl' || k === 'rotr') { P.rot = (P.rot + (k === 'rotl' ? -90 : 90) + 360) % 360; if (P.crop) { const c = P.crop; P.crop = k === 'rotr' ? { x: 1 - c.y - c.h, y: c.x, w: c.h, h: c.w } : { x: c.y, y: 1 - c.x - c.w, w: c.h, h: c.w }; } thumbs(); }
+    else if (k === 'fliph') { P.flipH = !P.flipH; if (P.crop) P.crop.x = 1 - P.crop.x - P.crop.w; thumbs(); }
+    else if (k === 'flipv') { P.flipV = !P.flipV; if (P.crop) P.crop.y = 1 - P.crop.y - P.crop.h; thumbs(); }
+    else if (k === 'cropreset') { P.crop = null; P.ratio = 'free'; }
+    else if (k === 'pick') { pick = true; hint.textContent = 'Click the colour to remove on the picture'; hint.hidden = false; cv.style.cursor = 'crosshair'; if (cropMode) setTab('bg'); return; }
+    else if (k === 'white') { P.bgCol = '#ffffff'; P.bg = true; }
+    else if (k === 'auto') { const t = ieGeom(orig.el, Object.assign({}, IE_DEF), 300); const dd = t.getContext('2d').getImageData(0, 0, t.width, t.height).data; let lo = 255, hi2 = 0, sum = 0, n = 0; const hist = new Array(256).fill(0); for (let i = 0; i < dd.length; i += 16) { const L = Math.round(0.299 * dd[i] + 0.587 * dd[i + 1] + 0.114 * dd[i + 2]); hist[L]++; n++; sum += L; } let acc = 0; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.02) { lo = v; break; } } acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.02) { hi2 = v; break; } } const mean = sum / n; P.contrast = clamp(Math.round((255 / Math.max(40, hi2 - lo) - 1) * 40), 0, 45); P.bright = clamp(Math.round((128 - mean) / 3), -30, 30); P.sat = 10; P.sharp = 20; }
+    else if (k === 'reset') { Object.assign(P, IE_DEF); }
+    else if (k === 'replace') { body.querySelector('.ie-file').click(); return; }
+    else if (k === 'download') { const c = ieRender(orig.el, P, 4000); c.toBlob((bl) => downloadBlob(bl, (($('#docName').value || 'image') + ' image.png').replace(/[\\/:*?"<>|]/g, '')), 'image/png'); return; }
+    sync(); redraw();
+  });
+  body.querySelector('.ie-file').addEventListener('change', async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { const im = await normImage(await readAsDataURL(f), 2400, true); const id = uid('i'); S.imgs.set(id, im); orig = S.imgs.get(id); if (!orig.el) orig.el = await loadImageEl(orig.src); fv._origId = id; Object.assign(P, IE_DEF, { op: P.op }); thumbs(); sync(); redraw(); } catch (err) { toast('Could not read that image', { err: true }); } });
+  fv.querySelector('.fv-head').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return; const k = b.dataset.a;
+    if (k === 'cancel') { fv._close(); return; }
+    if (k === 'apply') {
+      const oid = fv._origId || origId; const isDef = JSON.stringify(Object.assign({}, P, { op: 1 })) === JSON.stringify(Object.assign({}, IE_DEF, { op: 1 }));
+      let newId = oid, nw = orig.el.naturalWidth, nh = orig.el.naturalHeight;
+      if (!isDef) { const c = ieRender(orig.el, P, 2400); const src = ieNeedsAlpha(P, orig.el) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.92); newId = uid('i'); const el = await loadImageEl(src); S.imgs.set(newId, { src, w: c.width, h: c.height, el }); nw = c.width; nh = c.height; }
+      const ctr = orientPt(a, 0.5, 0.5); const { U, V } = UV(a.r); const w = a.w, h = w * nh / nw;
+      a.imgId = newId; a.w = w; a.h = h; a.ax = ctr[0] - w / 2 * U[0] - h / 2 * V[0]; a.ay = ctr[1] - w / 2 * U[1] - h / 2 * V[1];
+      if (isDef) delete a.edit; else a.edit = { orig: oid, P: Object.assign({}, P, { op: undefined }) };
+      if (P.op < 1) a.op = P.op; else delete a.op;
+      drawOverlay(p); commit(); refreshFormatBar(); fv._close(); toast('Image updated. Undo is available'); return;
+    }
+  });
+  fv._key = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') fv.querySelector('[data-a="apply"]').click(); };
+  addEventListener('resize', () => { if (fv.isConnected) { fit(); placeCrop(); } });
+  if (P.crop || P.ratio !== 'free') tab = 'adjust';
+  sync(); thumbs(); draw(); requestAnimationFrame(draw);
+}
+function imgZ(dir) { const s = selectedAnn(); if (!s) return; const arr = s.p.annots; const i = arr.indexOf(s.a); arr.splice(i, 1); if (dir === 'front') arr.push(s.a); else if (dir === 'back') arr.unshift(s.a); else if (dir === 'fwd') arr.splice(Math.min(arr.length, i + 1), 0, s.a); else arr.splice(Math.max(0, i - 1), 0, s.a); drawOverlay(s.p); commit(); toast({ front: 'Brought to front', back: 'Sent to back', fwd: 'Brought forward', bwd: 'Sent backward' }[dir]); }
+function imgNatural() { const s = selectedAnn(); if (!s || !s.a.imgId) return; const im = S.imgs.get(s.a.imgId); if (!im) return; const a = s.a; const ctr = orientPt(a, 0.5, 0.5); const { U, V } = UV(a.r); const h = a.w * im.h / im.w; a.h = h; a.ax = ctr[0] - a.w / 2 * U[0] - h / 2 * V[0]; a.ay = ctr[1] - a.w / 2 * U[1] - h / 2 * V[1]; drawOverlay(s.p); commit(); toast('Original proportions restored'); }
+function imgFitPage(mode) { const s = selectedAnn(); if (!s || !s.a.imgId) return; const a = s.a, p = s.p; const g = geo(p); const im = S.imgs.get(a.imgId); const ar = a.h / a.w; const m = mode === 'full' ? 0 : 36; let w = g.w - 2 * m, h = w * ar; if (h > g.h - 2 * m) { h = g.h - 2 * m; w = h / ar; } a.r = tr(p); const { U, V } = UV(a.r); const cx = (p.view[0] + p.view[2]) / 2, cy = (p.view[1] + p.view[3]) / 2; a.w = w; a.h = h; a.ax = cx - w / 2 * U[0] - h / 2 * V[0]; a.ay = cy - w / 2 * U[1] - h / 2 * V[1]; void im; drawOverlay(p); commit(); toast(mode === 'full' ? 'Fills the page' : 'Fitted to the page'); }
+
 /* ---------- 3.8: navigator, shape snapping, reading ruler, reading mode, page organiser ---------- */
 // Full screen views (reading mode, page organiser) live in #layer so the main shortcuts stand aside while they are open.
 function fullView(cls, head) {
@@ -715,7 +926,7 @@ async function navPaint() {
   const el = NAV.on && S.pages.length ? navPage() : null; if (!el) { box.hidden = true; return; }
   const vr = viewer.getBoundingClientRect(); const top = vr.top + chromeH(); const r = el.getBoundingClientRect();
   const fx0 = clamp((vr.left - r.left) / r.width, 0, 1), fx1 = clamp((vr.right - r.left) / r.width, 0, 1), fy0 = clamp((top - r.top) / r.height, 0, 1), fy1 = clamp((vr.bottom - r.top) / r.height, 0, 1);
-  if (fx0 <= 0.001 && fx1 >= 0.999 && fy0 <= 0.001 && fy1 >= 0.999 || (r.width <= vr.width * 1.02 && r.height < (vr.height - chromeH()) * 1.7)) { box.hidden = true; return; }
+  if (fx0 <= 0.001 && fx1 >= 0.999 && fy0 <= 0.001 && fy1 >= 0.999 || (r.width <= vr.width * 1.02 && S.zoom <= fitZoom() * 1.25)) { box.hidden = true; return; }
   box.hidden = false; const p = pageById(el.dataset.id); if (!p) return; const g = geo(p);
   const W = 168, H = Math.min(220, W * g.h / g.w), w = H < 220 ? W : 220 * g.w / g.h; const cv = box.querySelector('canvas');
   cv.style.width = w + 'px'; cv.style.height = H + 'px'; box.style.width = w + 'px';
@@ -990,7 +1201,7 @@ function openSplitView() {
   renderSplit(); refitMain(); markSplitBtn();
   if (!splitTab()) toast('Choose a document for the right side, or open one from a file');
 }
-function closeSplitView() { SPL.open = false; splitEl().hidden = true; $('#splitter').hidden = true; document.body.classList.remove('has-split'); if (SPL.io) SPL.io.disconnect(); $('#spPages').innerHTML = ''; refitMain(); markSplitBtn(); }
+function closeSplitView() { document.body.classList.remove('split-swap'); SPL.open = false; splitEl().hidden = true; $('#splitter').hidden = true; document.body.classList.remove('has-split'); if (SPL.io) SPL.io.disconnect(); $('#spPages').innerHTML = ''; refitMain(); markSplitBtn(); }
 function markSplitBtn() { $$('#tools [data-act="sview"]').forEach((x) => x.setAttribute('aria-pressed', SPL.open)); }
 function refitMain() { setTimeout(() => { if (S.fit && S.pages.length) setZoom(0, true); if (SPL.open && !SPL.zoom) renderSplit(); }, 60); }
 function splitOptions() {
@@ -1031,10 +1242,17 @@ function updateSplitInd() {
   const mid = v.getBoundingClientRect().top + v.clientHeight / 3; let n = 1; for (const el of $$('.sp-page', v)) { if (el.getBoundingClientRect().top <= mid) n = +el.dataset.i + 1; }
   $('#spInd').textContent = `${n} / ${t.pages.length}`;
 }
+// Where a scroller is: which page is at the top and how far into it.
+function scrollPos(box, sel, off) { const top = box.getBoundingClientRect().top + off; const els = $$(sel, box); for (let i = 0; i < els.length; i++) { const r = els[i].getBoundingClientRect(); if (r.bottom > top) return { i, f: clamp((top - r.top) / r.height, 0, 1) }; } return { i: Math.max(0, els.length - 1), f: 0 }; }
+function scrollToPos(box, sel, pos, off) { const el = $$(sel, box)[pos.i]; if (!el) return; const r = el.getBoundingClientRect(); box.scrollTop += r.top + pos.f * r.height - (box.getBoundingClientRect().top + off); }
+// Make the other side the one being edited. The two documents stay where they are on screen.
 function splitSwap() {
   const t = splitTab(); if (!t) return; const cur = activeTab(); const i = WS.list.indexOf(t);
-  switchTab(i); SPL.tabId = cur.id; renderSplit(); toast(`Now editing ${t.name}`);
+  const v = $('#spView'); const pPos = scrollPos(v, '.sp-page', 0), mPos = scrollPos(viewer, '.page', chromeH()); const mZoom = S.zoom;
+  switchTab(i); SPL.tabId = cur.id; SPL.zoom = mZoom; document.body.classList.toggle('split-swap'); renderSplit(); refitMain(); markSplitSides();
+  setTimeout(() => { scrollToPos(viewer, '.page', pPos, chromeH()); scrollToPos(v, '.sp-page', mPos, 0); }, 140);
 }
+function markSplitSides() { const t = splitTab(); const b = $('#spBadge'); if (b) b.hidden = !t; }
 function splitAfterTabChange() { if (!SPL.open) return; if (splitTab() === activeTab() || !splitTab()) { SPL.tabId = null; } renderSplit(); }
 function snapOf(pages) { return JSON.stringify({ pages, vals: [...S.docs.values()].map((d) => [d.id, d.values]) }); }
 // Copy pages into another (not active) tab, with an undo step in that tab.
@@ -1068,7 +1286,7 @@ function initSplit() {
   const ratio = (el) => el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
   v.addEventListener('scroll', () => { updateSplitInd(); if (SPL.link && SPL.lock !== 1) { SPL.lock = 2; viewer.scrollTop = ratio(v) * (viewer.scrollHeight - viewer.clientHeight); requestAnimationFrame(() => { SPL.lock = 0; }); } }, { passive: true });
   viewer.addEventListener('scroll', () => { if (SPL.open && SPL.link && SPL.lock !== 2) { SPL.lock = 1; v.scrollTop = ratio(viewer) * (v.scrollHeight - v.clientHeight); requestAnimationFrame(() => { SPL.lock = 0; }); } }, { passive: true });
-  v.addEventListener('dblclick', () => { if (splitTab()) splitSwap(); });
+  v.addEventListener('click', (e) => { if (e.target.closest('.sp-empty,button,select,input')) return; if (splitTab()) splitSwap(); });
   // Drag pages out of the split pane.
   v.addEventListener('dragstart', (e) => { const el = e.target.closest('.sp-page'); if (!el) return; const t = splitTab(); DRAGX = { tabId: t.id, ids: [el.dataset.id] }; e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', 'page'); el.classList.add('dragging'); });
   v.addEventListener('dragend', (e) => { DRAGX = null; clearDropMarks(); $$('.sp-page.dragging').forEach((x) => x.classList.remove('dragging')); $('#pages').classList.remove('drop-on'); });
@@ -1096,7 +1314,7 @@ function initSplit() {
   // Resize the split.
   const sp = $('#splitter'); let drag = null;
   sp.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, w: splitEl().offsetWidth }; sp.setPointerCapture(e.pointerId); document.body.classList.add('split-resizing'); });
-  sp.addEventListener('pointermove', (e) => { if (!drag) return; const w = clamp(drag.w - (e.clientX - drag.x), 280, innerWidth * 0.72); document.documentElement.style.setProperty('--split-w', w + 'px'); });
+  sp.addEventListener('pointermove', (e) => { if (!drag) return; const dx = e.clientX - drag.x; const w = clamp(drag.w + (document.body.classList.contains('split-swap') ? dx : -dx), 280, innerWidth * 0.72); document.documentElement.style.setProperty('--split-w', w + 'px'); });
   const end = () => { if (!drag) return; drag = null; document.body.classList.remove('split-resizing'); lsSet('pdfmate.splitW', splitEl().offsetWidth); refitMain(); if (!SPL.zoom) renderSplit(); };
   sp.addEventListener('pointerup', end); sp.addEventListener('pointercancel', end);
   sp.addEventListener('dblclick', () => { document.documentElement.style.removeProperty('--split-w'); lsSet('pdfmate.splitW', 0); refitMain(); });
@@ -1125,7 +1343,7 @@ function switchTab(i) { if (i === WS.active || !WS.list[i]) return; saveTab(); l
 function newTab() { saveTab(); WS.list.push(blankTab()); loadTab(WS.list.length - 1); }
 function releaseUnused() {
   const used = new Set(); const imgsUsed = new Set();
-  const scan = (pages) => { for (const p of pages) { if (p.docId) used.add(p.docId); if (p.imgId) imgsUsed.add(p.imgId); for (const a of p.annots) if (a.imgId) imgsUsed.add(a.imgId); } };
+  const scan = (pages) => { for (const p of pages) { if (p.docId) used.add(p.docId); if (p.imgId) imgsUsed.add(p.imgId); for (const a of p.annots) { if (a.imgId) imgsUsed.add(a.imgId); if (a.edit && a.edit.orig) imgsUsed.add(a.edit.orig); } } };
   WS.list.forEach((t, k) => { scan(k === WS.active ? S.pages : t.pages); for (const h of [...t.hist, ...t.fut, t.last]) { try { scan(JSON.parse(h).pages); } catch (e) {} } });
   for (const [id, d] of S.docs) if (!used.has(id)) { try { d.pdf.loadingTask.destroy(); } catch (e) {} S.docs.delete(id); }
   for (const id of [...S.imgs.keys()]) if (!imgsUsed.has(id) && !libItems().some((x) => x.id === id)) S.imgs.delete(id);
@@ -1166,7 +1384,7 @@ const blobKeys = () => tx('blobs', 'readonly', (st) => st.getAllKeys()).catch(()
 const stored = new Set();
 let saveT = null, saving = false, restoring = false;
 function scheduleSave() { if (restoring) return; clearTimeout(saveT); saveT = setTimeout(saveSession, 900); }
-function refsOf(pages, docs, imgs) { for (const p of pages) { if (p.docId) docs.add(p.docId); if (p.imgId) imgs.add(p.imgId); for (const a of p.annots) if (a.imgId) imgs.add(a.imgId); } }
+function refsOf(pages, docs, imgs) { for (const p of pages) { if (p.docId) docs.add(p.docId); if (p.imgId) imgs.add(p.imgId); for (const a of p.annots) { if (a.imgId) imgs.add(a.imgId); if (a.edit && a.edit.orig) imgs.add(a.edit.orig); } } }
 async function tabThumb(t) {
   const p = t.pages[0]; if (!p) return null; const c = thumbCache.get(p.id + '|' + tr(p)); if (!c) return null;
   try { const k = Math.min(1, 160 / c.width); const o = document.createElement('canvas'); o.width = Math.round(c.width * k); o.height = Math.round(c.height * k); o.getContext('2d').drawImage(c, 0, 0, o.width, o.height); return o.toDataURL('image/jpeg', 0.7); } catch (e) { return null; }
@@ -1460,7 +1678,7 @@ function annNode(a) {
   else if (ORIENTED.has(a.t)) {
     const { U, V } = UV(a.r);
     const fr = sv('g', { transform: `matrix(${U[0]} ${U[1]} ${-V[0]} ${-V[1]} ${a.ax + a.h * V[0]} ${a.ay + a.h * V[1]})` });
-    if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (im) fr.appendChild(sv('image', { href: im.src, x: 0, y: 0, width: a.w, height: a.h, preserveAspectRatio: 'none' })); }
+    if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (im) { const n = sv('image', { href: im.src, x: 0, y: 0, width: a.w, height: a.h, preserveAspectRatio: 'none' }); if (a.op != null && a.op < 1) n.setAttribute('opacity', a.op); fr.appendChild(n); } }
     else if (a.t === 'text') textSvg(fr, a);
     else {
       const segs = a.t === 'tick' ? [TICK] : CROSS;
@@ -1860,7 +2078,7 @@ pagesEl.addEventListener('pointercancel', endDrag);
 pagesEl.addEventListener('dblclick', (e) => {
   if (S.poly) { e.preventDefault(); finishPoly(); return; }
   const hit = e.target.closest('.ann'); const el = e.target.closest('.page'); if (!hit || !el) return;
-  const p = pageById(el.dataset.id); const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') openEditor(p, a);
+  const p = pageById(el.dataset.id); const a = p.annots.find((z) => z.id === hit.dataset.id); if (a && a.t === 'text') openEditor(p, a); else if (a && a.t === 'image') openImageEditor(p, a);
 });
 
 pagesEl.addEventListener('contextmenu', (e) => {
@@ -1877,6 +2095,7 @@ pagesEl.addEventListener('contextmenu', (e) => {
     const n = selIds().length; const a = p.annots.find((z) => z.id === id);
     items = [{ h: n > 1 ? `${n} items selected` : annLabel(a) }];
     if (n === 1 && a.t === 'text') items.push({ label: 'Edit text', icon: 'edit', run: () => openEditor(p, a) });
+    if (n === 1 && a.t === 'image') items.push({ label: 'Edit image…', icon: 'photo', run: () => openImageEditor(p, a) }, { label: 'Bring to front', icon: 'up', run: () => imgZ('front') }, { label: 'Send to back', icon: 'down', run: () => imgZ('back') });
     items.push(
       { label: 'Copy', icon: 'copy', kbd: 'Ctrl C', run: () => copySelected(false) },
       { label: 'Cut', icon: 'cut', kbd: 'Ctrl X', run: () => copySelected(true) },
@@ -2823,7 +3042,7 @@ const CATS = [
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:organise', '|', 'a:blank', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
 const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
@@ -2852,6 +3071,7 @@ const RIB_ACT = {
   reading: ['Reading', 'reading', 'Reading mode: the text as one clean column with adjustable size', () => openReading()],
   ruler: ['Ruler', 'ruler', 'Reading ruler: highlights the line you are reading. Click a line or use the arrow keys', () => toggleRuler()],
   nav: ['Navigator', 'navmap', 'Navigator: a small map of the page when zoomed in', () => toggleNav(), true],
+  newpdf: ['New PDF', 'blank', 'Create a new blank PDF: size, orientation, pages, lined or grid paper', () => openNewPdf()],
   organise: ['Organise', 'grid', 'Organise pages in a large grid: sort, rotate, copy, extract, delete', () => openOrganiser()],
   sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
   night: ['Night', 'moon', 'Bridge night mode: red light that keeps your night vision', () => toggleNight($('#tools [data-act="night"]')), true]
@@ -2911,7 +3131,7 @@ $('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat')
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
   if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
-  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
+  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview', 'newpdf'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
   if (!S.pages.length) { toast('Open a PDF first'); return; }
   closeEditor(false);
   if (b.dataset.group === 'sign') { signMenu(b); return; }
@@ -2966,6 +3186,7 @@ function refreshFormatBar() {
   parts.push('<span class="fb-spacer"></span>');
   if (s && !S.editing) {
     if (s.a.t === 'text') parts.push(`<button class="tbtn" data-act="edit">${icon('edit')}<span class="tb-hide-m">Edit</span></button>`);
+    if (s.a.t === 'image') parts.push(`<button class="tbtn" data-act="imgedit" title="Crop, rotate, colours, filters, background removal, border (double-click the image)">${icon('photo')}<span class="tb-hide-m">Edit image</span></button><select class="fb-font" data-imgop aria-label="Opacity" title="Opacity">${[...new Set([1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, s.a.op == null ? 1 : Math.round(s.a.op * 100) / 100])].sort((x, y) => y - x).map((v) => `<option value="${v}" ${Math.abs((s.a.op == null ? 1 : s.a.op) - v) < 0.01 ? 'selected' : ''}>${Math.round(v * 100)}%</option>`).join('')}</select><button class="tbtn" data-act="imgmore" title="Arrange, fit to page, original proportions">${icon('more')}<span class="tb-hide-m">Arrange</span></button>`);
     if (FILLABLE.has(s.a.t)) parts.push(`<button class="tbtn" data-act="chshape" title="Change to another shape, keeping size and colours">${icon('shapes')}<span class="tb-hide-m">Change shape</span></button>`);
     if (ROTATABLE(s.a)) parts.push(`<button class="tbtn" data-act="rotl" title="Rotate 90° left" aria-label="Rotate left">${icon('rotl')}</button><button class="tbtn" data-act="rotr" title="Rotate 90° right" aria-label="Rotate right">${icon('rotr')}</button>`);
     parts.push(`<button class="tbtn" data-act="allpages" aria-label="Copy to other pages" title="Copy to other pages">${icon('dup')}<span class="tb-hide-m">All pages</span></button>`);
@@ -2980,6 +3201,7 @@ function refreshFormatBar() {
 $('#formatBar').addEventListener('pointerdown', (e) => { if (S.editing && e.target.closest('button')) e.preventDefault(); });
 $('#formatBar').addEventListener('change', (e) => {
   if (e.target.id === 'fbFont') { fmtSet({ font: e.target.value }); return; }
+  if (e.target.matches('[data-imgop]')) { const v = +e.target.value; applyStyleToSel((a) => { if (a.t !== 'image') return; if (v < 1) a.op = v; else delete a.op; }); return; }
   if (e.target.matches('[data-msr],[data-msu]')) { const fb = $('#formatBar'); const r = parseFloat(String(fb.querySelector('[data-msr]').value).replace(',', '.')); const u = fb.querySelector('[data-msu]').value; if (!(r > 0)) return; S.style.msc = { r, u }; saveStyle(); const s = selectedAnn(); if (s && (s.a.t === 'measure' || s.a.t === 'area')) { s.a.sc = { r, u }; drawOverlay(s.p); commit(); } refreshFormatBar(); }
 });
 $('#formatBar').addEventListener('click', (e) => {
@@ -3009,6 +3231,8 @@ $('#formatBar').addEventListener('click', (e) => {
     else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90);
     else if (k === 'calib' && s) openCalibrate(s);
     else if (k === 'chshape' && s) changeShape(act);
+    else if (k === 'imgedit' && s) openImageEditor(s.p, s.a);
+    else if (k === 'imgmore' && s) openMenu(act, [{ label: 'Bring to front', icon: 'up', run: () => imgZ('front') }, { label: 'Bring forward', icon: 'up', run: () => imgZ('fwd') }, { label: 'Send backward', icon: 'down', run: () => imgZ('bwd') }, { label: 'Send to back', icon: 'down', run: () => imgZ('back') }, '-', { label: 'Fit to page with margins', icon: 'fitpage', run: () => imgFitPage('fit') }, { label: 'Fill the whole page', icon: 'fitpage', run: () => imgFitPage('full') }, { label: 'Original proportions', icon: 'fit', run: () => imgNatural() }]);
     else if (k === 'pickshape') openShapes(act, pickShape);
     else if (k === 'cropall') { const src = S.pages.find((p) => p.crop && p === S.pages[S.current]) || S.pages.find((p) => p.crop); if (!src) return; const g1 = geo(src); const c = src.crop; const d1 = ap(g1.t, c[0], c[1]), d2 = ap(g1.t, c[2], c[3]); const f = [Math.min(d1[0], d2[0]) / g1.w, Math.min(d1[1], d2[1]) / g1.h, Math.max(d1[0], d2[0]) / g1.w, Math.max(d1[1], d2[1]) / g1.h];
       for (const p2 of S.pages) { const g2 = geo(p2); const a1 = ap(g2.i, f[0] * g2.w, f[1] * g2.h), a2 = ap(g2.i, f[2] * g2.w, f[3] * g2.h); p2.crop = [Math.min(a1[0], a2[0]), Math.min(a1[1], a2[1]), Math.max(a1[0], a2[0]), Math.max(a1[1], a2[1])]; drawOverlay(p2); } commit(); toast(`Cropped ${S.pages.length} pages`); }
@@ -3446,7 +3670,7 @@ async function drawAnn(page, a, font, embedImg) {
   else if (a.t === 'line' || a.t === 'arrow') { seg(a.pts[0], a.pts[1]); if (a.t === 'arrow') for (const [s, e] of arrowHead(a)) seg(s, e); }
   else if (a.t === 'pen') { if (a.pts.length === 1) seg(a.pts[0], a.pts[0]); for (let i = 1; i < a.pts.length; i++) seg(a.pts[i - 1], a.pts[i]); }
   else if (a.t === 'tick' || a.t === 'cross') { for (const [s, e] of markSegments(a)) seg(s, e); }
-  else if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (!im) return; page.drawImage(await embedImg(a.imgId), { x: a.ax, y: a.ay, width: a.w, height: a.h, rotate: PL.degrees(a.r) }); }
+  else if (a.t === 'image') { const im = S.imgs.get(a.imgId); if (!im) return; page.drawImage(await embedImg(a.imgId), { x: a.ax, y: a.ay, width: a.w, height: a.h, rotate: PL.degrees(a.r), opacity: a.op == null ? 1 : a.op }); }
   else if (a.t === 'text') {
     const { U, V } = UV(a.r); const L = layoutText(a); const op = a.opacity == null ? 1 : a.opacity; const rot = PL.degrees(a.r); const rad = a.rad || 0;
     const at = (u, v) => [a.ax + u * U[0] + v * V[0], a.ay + u * U[1] + v * V[1]];
@@ -4478,7 +4702,7 @@ $('#btnSave').addEventListener('click', openSave);
 $('#btnPrint').addEventListener('click', openPrint);
 $('#eOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#ePhotos').addEventListener('click', () => $('#fileImg').click());
-$('#eBlank').addEventListener('click', () => newBlank());
+$('#eBlank').addEventListener('click', () => openNewPdf());
 $('#eScan').addEventListener('click', startScan);
 $('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; openFilesInTabs(f); });
 $('#fileImg').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });

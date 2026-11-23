@@ -686,6 +686,48 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 
 
 
+
+/* ===== 3.9: image editor, split screen sides ===== */
+.has-split.split-swap .stage{order:3}.has-split.split-swap .splitter{order:2}.has-split.split-swap .split{order:1}
+.stage{flex:1;min-width:0}
+.sp-badge{font-size:11px;font-weight:600;color:var(--label-3);background:var(--fill-2);padding:3px 8px;border-radius:20px;white-space:nowrap}
+.sp-view{cursor:pointer}
+.sp-view:hover .sp-page{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 55%,transparent),0 8px 24px -10px rgba(0,0,0,.35)}
+.ie-body{display:flex;min-height:0;overflow:hidden!important}
+.ie-stage{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(rgba(127,127,127,.12) 0 25%,transparent 0 50%) 0 0/20px 20px}
+.ie-canwrap{position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.ie-cv{box-shadow:0 10px 40px -12px rgba(0,0,0,.45);max-width:none}
+.ie-crop{position:absolute;touch-action:none}
+.ie-cr{position:absolute;box-shadow:0 0 0 9999px rgba(0,0,0,.5);outline:1.5px solid #fff;cursor:move;background-image:linear-gradient(rgba(255,255,255,.35),rgba(255,255,255,.35)),linear-gradient(rgba(255,255,255,.35),rgba(255,255,255,.35)),linear-gradient(90deg,rgba(255,255,255,.35),rgba(255,255,255,.35)),linear-gradient(90deg,rgba(255,255,255,.35),rgba(255,255,255,.35));background-size:100% 1px,100% 1px,1px 100%,1px 100%;background-position:0 33.3%,0 66.6%,33.3% 0,66.6% 0;background-repeat:no-repeat}
+.ie-cr i{position:absolute;width:18px;height:18px;border:3px solid #fff;margin:-3px}
+.ie-cr i[data-h="nw"]{left:0;top:0;border-right:0;border-bottom:0;cursor:nwse-resize}.ie-cr i[data-h="ne"]{right:0;top:0;border-left:0;border-bottom:0;cursor:nesw-resize}
+.ie-cr i[data-h="sw"]{left:0;bottom:0;border-right:0;border-top:0;cursor:nesw-resize}.ie-cr i[data-h="se"]{right:0;bottom:0;border-left:0;border-top:0;cursor:nwse-resize}
+.ie-cr i[data-h="n"],.ie-cr i[data-h="s"]{left:50%;width:26px;height:6px;margin-left:-13px;border:0;background:#fff;border-radius:3px;cursor:ns-resize}.ie-cr i[data-h="n"]{top:-3px}.ie-cr i[data-h="s"]{bottom:-3px}
+.ie-cr i[data-h="w"],.ie-cr i[data-h="e"]{top:50%;height:26px;width:6px;margin-top:-13px;border:0;background:#fff;border-radius:3px;cursor:ew-resize}.ie-cr i[data-h="w"]{left:-3px}.ie-cr i[data-h="e"]{right:-3px}
+.ie-hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-ink);padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600}
+.ie-hint[hidden]{display:none}
+.ie-panel{width:330px;flex:none;border-left:.5px solid var(--sep-strong);background:var(--mat-strong,var(--bar));overflow:auto;padding:14px 16px 40px}
+.ie-tabs{margin-bottom:14px}.ie-tabs button{font-size:12px;padding:0 4px}
+.ie-pane[hidden]{display:none}
+.ie-sl{display:block;margin:0 0 12px}
+.ie-sl span{display:flex;justify-content:space-between;font-size:12.5px;font-weight:500;color:var(--label-2);margin-bottom:3px}
+.ie-sl output{font-variant-numeric:tabular-nums;color:var(--label-3)}
+.ie-sl input{width:100%;accent-color:var(--accent)}
+.ie-auto{width:100%;margin-top:4px}
+.ie-fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.ie-f{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px;border:0;border-radius:10px;background:transparent;color:var(--label-2);font-size:11px}
+.ie-f canvas{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:var(--fill-2)}
+.ie-f:hover{background:var(--fill-2)}
+.ie-f[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--label)}
+.ie-f[aria-pressed="true"] canvas{box-shadow:0 0 0 2px var(--accent)}
+.ie-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px}
+.ie-row .btn{height:32px;padding:0 10px;gap:6px}
+.ie-chip{border:0;border-radius:20px;padding:6px 11px;background:var(--fill-2);color:var(--label-2);font-size:12px;font-weight:600}
+.ie-chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ie-lbl{font-size:12.5px;color:var(--label-2);margin-right:4px}
+.ie-color{width:38px;height:30px;padding:0;border:0;background:none;cursor:pointer}
+.ie-note{font-size:12px;color:var(--label-3);margin:4px 0 0}
+@media (max-width:760px){.ie-body{flex-direction:column}.ie-stage{min-height:42vh}.ie-panel{width:auto;border-left:0;border-top:.5px solid var(--sep-strong);max-height:50vh}}
 /* ===== 3.8.2: Select and Hand in the zoom dock ===== */
 .viewdock .vd-tool[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .viewdock .vd-tool[aria-pressed="true"]:hover{background:var(--accent)}
@@ -984,7 +1026,7 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
             <button class="btn primary" id="eOpen">Choose PDF</button>
             <button class="btn" id="ePhotos">Photos to PDF</button>
             <button class="btn" id="eScan">Scan</button>
-            <button class="btn" id="eBlank">Blank page</button>
+            <button class="btn" id="eBlank">New blank PDF</button>
           </div>
           <div class="feat" id="feat"></div>
           <button class="btn" id="eInstall" style="margin-top:18px" hidden>Install app</button>
@@ -1002,6 +1044,8 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
       <span class="psep" aria-hidden="true"></span>
       <button class="pageind" id="pageInd" title="Go to page (Ctrl+G)" hidden>1 / 1</button>
     </div>
+
+    </div>
     <div class="splitter" id="splitter" hidden role="separator" aria-orientation="vertical" aria-label="Resize split screen" title="Drag to resize, double-click to reset"></div>
     <aside class="split" id="split" hidden aria-label="Second document">
       <div class="sp-head">
@@ -1011,6 +1055,7 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
           <button class="tbtn sp-zoom" id="spZoom" title="Fit width">100%</button>
           <button class="tbtn" id="spZin" aria-label="Zoom in" title="Zoom in"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.5-4.5M8 11h6M11 8v6"/></svg></button>
           <span class="sp-ind" id="spInd"></span>
+          <span class="sp-badge" id="spBadge" title="Click anywhere on this side to edit it">Click to edit</span>
           <button class="tbtn" id="spLink" aria-pressed="false" aria-label="Scroll together" title="Scroll both documents together"><svg class="i" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></button>
           <button class="tbtn" id="spSwap" aria-label="Edit this document" title="Edit this document (swap sides). Or double-click it"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg><span>Edit this</span></button>
           <button class="tbtn" id="spClose" aria-label="Close split screen" title="Close split screen"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
@@ -1021,7 +1066,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
         <div class="sp-empty" id="spEmpty"><b>Second document</b><p>Pick an open document above, or open one from a file. Drag pages across to copy them, either way.</p><button class="btn primary" id="spOpen">Open a file</button></div>
       </div>
     </aside>
-    </div>
   </div>
 </div>
 <input type="file" id="fileOpen" accept="application/pdf,.pdf,image/*" multiple hidden>
