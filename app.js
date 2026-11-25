@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.14.0';
+const VERSION = '3.15.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -914,7 +914,7 @@ async function openDesign(o = {}) {
   if (o instanceof Event) o = {};
   closeMenu(); closeSheet();
   try {
-    const m = await import('./design.js?v=2');
+    const m = await import('./design.js?v=3');
     await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } }, o);
   } catch (e) { console.error(e); toast('The design studio could not open. Reload the app and try again', { err: true }); }
 }
@@ -3281,7 +3281,7 @@ const CATS = [
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
   ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
-  ['design', 'Design', 'design', ['a:design', 'a:dsnew', '|', 'a:dsphotos', 'a:dslayouts', 'a:dsstyles', 'a:dstext', 'a:dsgfx', 'a:dsbg', '|', 'a:dsexport', 'a:dswin']],
+  ['design', 'Design', 'design', ['a:design', 'a:dslib', 'a:dsnew', '|', 'a:dstpl', 'a:dscal', 'a:dsphotos', 'a:dslayouts', 'a:dsstyles', 'a:dstext', 'a:dsgfx', 'a:dsbg', '|', 'a:dspreview', 'a:dscheck', 'a:dsexport', 'a:dswin']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
 const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', eraser: 'Eraser', lasso: 'Lasso', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
@@ -3312,7 +3312,12 @@ const RIB_ACT = {
   nav: ['Navigator', 'navmap', 'Navigator: a small map of the page when zoomed in', () => toggleNav(), true],
   paper: ['Paper', 'grid', 'Lined, grid, dots and other paper for blank pages, and the default for new ones', () => paperMenu($('#tools [data-act="paper"]'))],
   undo: ['Undo', 'undo', 'Undo (Ctrl+Z)', () => undo()], redo: ['Redo', 'redo', 'Redo (Ctrl+Shift+Z)', () => redo()],
-  dsnew: ['New album', 'blank', 'Start a new photo album or collage', () => openDesign({ action: 'new' })],
+  dslib: ['Designs', 'grid', 'All your albums, calendars, posters and slides', () => openDesign({ action: 'library' })],
+  dstpl: ['Templates', 'form', 'Ready-made pages: crew boards, certificates, drill posters, cards, slides', () => openDesign({ tab: 'templates' })],
+  dscal: ['Calendar', 'goto', 'Make a 12 month calendar with your photos, birthdays and port calls', () => openDesign({ action: 'calendar' })],
+  dspreview: ['Preview', 'reading', 'Flip through the design as a book or play it as a slideshow', () => openDesign({ action: 'preview' })],
+  dscheck: ['Check', 'check', 'Check before printing: empty frames, blurry photos, unfilled text', () => openDesign({ action: 'check' }), true],
+  dsnew: ['New design', 'blank', 'Start a new photo album or collage', () => openDesign({ action: 'new' })],
   dsphotos: ['Add photos', 'photo', 'Add photos to the design studio', () => openDesign({ tab: 'photos', action: 'photos' })],
   dslayouts: ['Layouts', 'grid', '36 page layouts: grids, collages and story pages', () => openDesign({ tab: 'layouts' })],
   dsstyles: ['Styles', 'theme', 'Style presets: backgrounds, frames, fonts and photo looks', () => openDesign({ tab: 'styles' })],
