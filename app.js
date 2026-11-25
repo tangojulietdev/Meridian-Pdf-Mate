@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.19.2';
+const VERSION = '3.20.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -946,7 +946,7 @@ async function openDesign(o = {}) {
   if (o instanceof Event) o = {};
   closeMenu(); closeSheet();
   try {
-    const m = await import('./design.js?v=4');
+    const m = await import('./design.js?v=5');
     await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } }, o);
   } catch (e) { console.error(e); toast('The design studio could not open. Reload the app and try again', { err: true }); }
 }
@@ -5989,6 +5989,9 @@ function boot() {
   placeTools(); mq.addEventListener('change', placeTools);
   const placeHist = () => { const u = $('#btnUndo'), r = $('#btnRedo'), ts = $('#tsearch'); if (mq.matches) { const p = $('.tb-right .pill'); if (u.parentElement !== p) { p.prepend(r); p.prepend(u); } if (ts.parentElement !== $('.tb-right')) $('.tb-right').prepend(ts); } else { const hp = $('.tb-hist'); if (u.parentElement !== hp) hp.append(u, r); if (ts.nextElementSibling !== hp) hp.before(ts); } };
   placeHist(); mq.addEventListener('change', placeHist);
+  // Left group is made exactly as wide as the right group, so the gaps either side of the centred tabs match.
+  const balance = () => { const r = $('.tb-right'); document.documentElement.style.setProperty('--rw', mq.matches ? '100%' : Math.ceil(r.getBoundingClientRect().width) + 'px'); };
+  new ResizeObserver(balance).observe($('.tb-right')); addEventListener('resize', balance); balance();
   setTimeout(() => fsInit(), 1500);
   return restoreSession().catch((e) => console.warn(e));
 }

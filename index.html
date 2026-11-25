@@ -1048,6 +1048,8 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
   .tb-left .docname{flex:0 1 auto;min-width:48px}
   .tb-left .tb-hist{flex:none}
   .tb-left .tsearch:not(.open){margin-left:auto}
+  .toolbar .tb-left{justify-self:start;width:min(var(--rw,100%),100%)}
+  .tb-left .docname{flex:0 1 auto;max-width:260px}
   .ps-hist{display:none}
   .tb-left .tsearch{flex:none}
   .tb-left .tsearch:not(.open){width:34px;padding:0;background:var(--pill);box-shadow:var(--pill-shadow);justify-content:center;border-radius:999px}
@@ -1192,6 +1194,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=24"></script>
+<script type="module" src="app.js?v=25"></script>
 </body>
 </html>
