@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.13.0';
+const VERSION = '3.14.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -910,11 +910,12 @@ function createBlankDoc(name, W, H, n, paper) {
 }
 
 /* ---------- 3.12: Design studio (loaded on demand) ---------- */
-async function openDesign() {
+async function openDesign(o = {}) {
+  if (o instanceof Event) o = {};
   closeMenu(); closeSheet();
   try {
-    const m = await import('./design.js?v=1');
-    await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } });
+    const m = await import('./design.js?v=2');
+    await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } }, o);
   } catch (e) { console.error(e); toast('The design studio could not open. Reload the app and try again', { err: true }); }
 }
 
@@ -3277,9 +3278,10 @@ const CATS = [
   ['view', 'View', 'fitpage', ['t:select', 't:hand', '|', 'a:find', 'a:goto', '|', 'a:zout', 'a:zin', 'a:fitw', 'a:fitp', 'a:actual', '|', 'a:sview', 'a:reading', 'a:ruler', 'a:nav', '|', 'a:sidebar']],
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['draw', 'Draw', 'pen', ['t:select', 't:hand', '|', 'p:ballpoint', 'p:fountain', 'p:gel', 'p:pencil', 'p:marker', 'p:brush', 'p:calligraphy', 'p:highlighter', '|', 't:eraser', 't:lasso', '|', 'a:undo', 'a:redo']],
-  ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop', '|', 'a:design']],
+  ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
   ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:design', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['design', 'Design', 'design', ['a:design', 'a:dsnew', '|', 'a:dsphotos', 'a:dslayouts', 'a:dsstyles', 'a:dstext', 'a:dsgfx', 'a:dsbg', '|', 'a:dsexport', 'a:dswin']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
 const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', eraser: 'Eraser', lasso: 'Lasso', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
@@ -3310,7 +3312,16 @@ const RIB_ACT = {
   nav: ['Navigator', 'navmap', 'Navigator: a small map of the page when zoomed in', () => toggleNav(), true],
   paper: ['Paper', 'grid', 'Lined, grid, dots and other paper for blank pages, and the default for new ones', () => paperMenu($('#tools [data-act="paper"]'))],
   undo: ['Undo', 'undo', 'Undo (Ctrl+Z)', () => undo()], redo: ['Redo', 'redo', 'Redo (Ctrl+Shift+Z)', () => redo()],
-  design: ['Design', 'design', 'Design studio: photo albums, collages and presentation pages with layouts, styles and print-ready export', () => openDesign()],
+  dsnew: ['New album', 'blank', 'Start a new photo album or collage', () => openDesign({ action: 'new' })],
+  dsphotos: ['Add photos', 'photo', 'Add photos to the design studio', () => openDesign({ tab: 'photos', action: 'photos' })],
+  dslayouts: ['Layouts', 'grid', '36 page layouts: grids, collages and story pages', () => openDesign({ tab: 'layouts' })],
+  dsstyles: ['Styles', 'theme', 'Style presets: backgrounds, frames, fonts and photo looks', () => openDesign({ tab: 'styles' })],
+  dstext: ['Text', 'text', 'Headings, captions, quotes and labels', () => openDesign({ tab: 'text' })],
+  dsgfx: ['Graphics', 'shapes', 'Lines, ribbons, tape, travel icons and stickers', () => openDesign({ tab: 'gfx' })],
+  dsbg: ['Background', 'fitpage', 'Colours, gradients, patterns and photo backgrounds', () => openDesign({ tab: 'bg' })],
+  dsexport: ['Export', 'download', 'Print-ready PDF with bleed and crop marks, or a JPG', () => openDesign({ action: 'export' })],
+  dswin: ['New window', 'split2', 'Open the design studio in its own browser window', () => { const u = new URL(location.href); u.search = '?design=1'; u.hash = ''; if (!window.open(u.toString(), '_blank')) toast('Your browser blocked the new window. Allow pop-ups for this site', { err: true }); }, true],
+  design: ['Open studio', 'design', 'Design studio: photo albums, collages and presentation pages with layouts, styles and print-ready export', () => openDesign()],
   newpdf: ['New PDF', 'blank', 'Create a new blank PDF: size, orientation, pages, lined or grid paper', () => openNewPdf()],
   organise: ['Organise', 'grid', 'Organise pages in a large grid: sort, rotate, copy, extract, delete', () => openOrganiser()],
   sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
@@ -3335,7 +3346,7 @@ function buildTools() {
   }
   $('#tools').innerHTML = html;
   $$('#cats .cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
-  $('#tools').dataset.cat = S.cat;
+  $('#tools').dataset.cat = S.cat; $('#tools').hidden = !S.pages.length && S.cat !== 'design';
   try { markSplitBtn(); markViewBtns(); $$('#tools [data-act="night"]').forEach((x) => x.setAttribute('aria-pressed', lsGet('pdfmate.night', 'off') !== 'off')); } catch (e) {}
 }
 function selMark(kind) { const s0 = selectionInPages(); if (!s0 || !String(s0.sel).trim()) { toast('Select some text on the page first (Select tool, drag over words), then tap this again'); return; } markSelection(kind); }
@@ -3374,7 +3385,7 @@ $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
   if (b.dataset.pen) { if (!S.pages.length) { toast('Open a PDF first'); return; } closeEditor(false); INK.pen = b.dataset.pen; saveInk(); setTool('pen', true); buildToolsPressed(); return; }
   if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
-  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview', 'newpdf'].includes(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
+  if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview', 'newpdf'].includes(b.dataset.act) || /^ds|^design$/.test(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
   if (!S.pages.length) { toast('Open a PDF first'); return; }
   closeEditor(false);
   if (b.dataset.group === 'sign') { signMenu(b); return; }
@@ -4930,7 +4941,7 @@ let tourQueued = false;
 function updateChrome() {
   if (S.pages.length && !tourQueued && !tourSeen()) { tourQueued = true; setTimeout(() => startTour(false), 900); }
   const has = S.pages.length > 0;
-  $('#btnSave').disabled = !has; $('#btnPrint').disabled = !has; $('#tools').hidden = !has; $('#btnUndo').disabled = !S.hist.length; $('#btnRedo').disabled = !S.fut.length;
+  $('#btnSave').disabled = !has; $('#btnPrint').disabled = !has; $('#tools').hidden = !has && S.cat !== 'design'; $('#btnUndo').disabled = !S.hist.length; $('#btnRedo').disabled = !S.fut.length;
   $('#zoomIn').disabled = $('#zoomOut').disabled = $('#zoomLbl').disabled = !has;
   { const fi = $('#findInput'); if (fi) fi.disabled = !has; const vd = $('#viewDock'); if (vd) vd.classList.toggle('nodoc', !has); if (!has) { const ts = $('#tsearch'); if (ts) ts.classList.remove('open'); } }
   $$('#sbFoot .tbtn').forEach((b) => b.disabled = !has);
@@ -5226,6 +5237,7 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
+if (/[?&]design=1/.test(location.search)) { history.replaceState(null, '', location.pathname); ready.then(() => setTimeout(() => openDesign(), 300)); }
 if (/[?&]updated=/.test(location.search)) { history.replaceState(null, '', location.pathname); setTimeout(() => toast(`Updated. You are on version ${VERSION}`, { ms: 3500 }), 900); }
 viewer.classList.toggle('stylus-only', INK.stylus); eraserCursor();
 applyNight(); initSplit(); initNav(); initRuler(); initScrollbars();

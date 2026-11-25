@@ -523,13 +523,13 @@ const CSS = `
 const TABS = [['layouts', 'Layouts', 'layouts'], ['photos', 'Photos', 'photo'], ['styles', 'Styles', 'styles'], ['text', 'Text', 'text'], ['gfx', 'Graphics', 'gfx'], ['bg', 'Background', 'bgi']];
 const isNarrow = () => innerWidth <= 900;
 
-export async function openDesign(ctx) {
+export async function openDesign(ctx, o = {}) {
   C = ctx;
-  if (UI) return;
+  if (UI) { applyOpen(o); return; }
   if (!document.getElementById('dsCss')) { const s = document.createElement('style'); s.id = 'dsCss'; s.textContent = CSS; document.head.appendChild(s); }
   if (!D) { const ok = await restore(); if (!ok) newDoc(); }
   ST.last = snap(); ST.hist = []; ST.fut = []; if (!D.photos.length) ST.tab = 'photos';
-  build();
+  build(); applyOpen(o);
 }
 function build() {
   const root = document.createElement('div'); root.className = 'ds'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Design studio');
@@ -564,6 +564,13 @@ function build() {
   if (isNarrow()) { ST.sheet = false; UI.panel.hidden = true; }
   wire(); refreshAll(); markHist();
   requestAnimationFrame(() => { fitZoom(); paint(); });
+}
+function applyOpen(o) {
+  if (!o || !UI) return;
+  if (o.tab) { ST.tab = o.tab; if (isNarrow()) { ST.sheet = true; UI.panel.hidden = false; UI.insp.hidden = true; } renderPanel(); }
+  if (o.action === 'photos') setTimeout(() => $('[data-file="photos"]').click(), 60);
+  else if (o.action === 'export') setTimeout(openExport, 60);
+  else if (o.action === 'new') setTimeout(() => moreMenuNew(), 60);
 }
 function close() {
   endEdit(); exitAdjust(false); commit();
@@ -1123,11 +1130,12 @@ function customSize() {
 }
 function moreMenu(anchor) {
   menu(anchor, [
-    { label: 'New design', run: () => confirmM('Start a new design?', 'The current design and its photos will be cleared from this device. Save a project file first if you want to keep it.', 'Start new', () => { for (const id of D.photos) { const p = PH.get(id); if (p) URL.revokeObjectURL(p.url); idbDel('ph:' + id); } PH.clear(); newDoc(); ST.sel = null; ST.hist = []; ST.fut = []; ST.last = snap(); ST.fit = true; scheduleSave(); refreshAll(); markHist(); }) },
+    { label: 'New design', run: () => moreMenuNew() },
     { label: 'Save project file…', run: saveProject }, { label: 'Open project file…', run: () => $('[data-file="project"]').click() }, '-',
     { label: 'Fit page to screen', run: () => { ST.fit = true; paint(); } }, { label: 'Actual size', run: () => setZoom(96 / 72) }
   ]);
 }
+function moreMenuNew() { if (D.photos.length === 0 && D.pages.length === 1 && !D.pages[0].items.some((i) => i.ph)) { C.toast('This design is already empty'); return; } confirmM('Start a new design?', 'The current design and its photos will be cleared from this device. Save a project file first if you want to keep it.', 'Start new', () => { for (const id of D.photos) { const p = PH.get(id); if (p) URL.revokeObjectURL(p.url); idbDel('ph:' + id); } PH.clear(); newDoc(); ST.sel = null; ST.hist = []; ST.fut = []; ST.last = snap(); ST.fit = true; scheduleSave(); refreshAll(); markHist(); }); }
 function modal(html) { closeModal(); const m = document.createElement('div'); m.className = 'ds-modal'; m.innerHTML = `<div class="ds-mbox" role="dialog" aria-modal="true">${html}</div>`; m.addEventListener('pointerdown', (e) => { if (e.target === m && !m.dataset.busy) closeModal(); }); document.body.appendChild(m); return m.firstElementChild; }
 function closeModal() { const m = document.querySelector('.ds-modal'); if (m && !m.dataset.busy) m.remove(); }
 function confirmM(t, s, ok, run) { const m = modal(`<h2>${esc(t)}</h2><p class="sub">${esc(s)}</p><div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>${esc(ok)}</button></div>`); m.querySelector('[data-x]').onclick = closeModal; m.querySelector('[data-ok]').onclick = () => { closeModal(); run(); }; }
