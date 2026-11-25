@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.18.0';
+const VERSION = '3.19.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -19,6 +19,21 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 /* ---------- Icons (SF-style strokes) ---------- */
 const IC = {
+  fi_ship: '<path d="M3 15l2 5h14l2-5z"/><path d="M6 15V9h12v6M12 9V4M9 6h6"/>',
+  fi_anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M5 13a7 7 0 0 0 14 0M8 11h8"/>',
+  fi_compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+  fi_cargo: '<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  fi_work: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>',
+  fi_book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7"/>',
+  fi_school: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>',
+  fi_cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  fi_money: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v.01M18 15v.01"/>',
+  fi_med: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
+  fi_home: '<path d="M4 11l8-7 8 7v9H4z"/><path d="M10 20v-5h4v5"/>',
+  fi_heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
+  fi_camera: '<rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8 7l2-3h4l2 3"/>',
+  fi_tool: '<path d="M14.5 5.5a4 4 0 0 0 4.5 5l-8.5 8.5a2.1 2.1 0 0 1-3-3L16 7.5a4 4 0 0 0-1.5-2z"/>',
+  fi_flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   chevr: '<path d="M9 6l6 6-6 6"/>',
   history: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   nb: '<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z"/><path d="M6 3v18M4 7h4M4 12h4M4 17h4M11 8h5"/>',
@@ -4036,11 +4051,11 @@ async function tryForm() {
 const NB = { db: null, folder: 'all', q: '', sort: lsGet('pdfmate.nbSort', 'mod'), auto: lsGet('pdfmate.nbAuto', true), open: new Set(lsGet('pdfmate.nbOpen', [])), fv: null, timer: 0 };
 const NB_SRC = new Map();
 function nbDb() {
-  return NB.db || (NB.db = new Promise((res, rej) => { const r = indexedDB.open('pdfmate-library', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('folders', { keyPath: 'id' }); d.createObjectStore('items', { keyPath: 'id' }); d.createObjectStore('packs'); }; r.onsuccess = () => res(r.result); r.onerror = () => { NB.db = null; rej(r.error); }; }));
+  return NB.db || (NB.db = new Promise((res, rej) => { const r = indexedDB.open('pdfmate-library', 2); r.onupgradeneeded = () => { const d = r.result; const has = (n) => d.objectStoreNames.contains(n); if (!has('folders')) d.createObjectStore('folders', { keyPath: 'id' }); if (!has('items')) d.createObjectStore('items', { keyPath: 'id' }); if (!has('packs')) d.createObjectStore('packs'); if (!has('meta')) d.createObjectStore('meta'); }; r.onsuccess = () => res(r.result); r.onerror = () => { NB.db = null; rej(r.error); }; }));
 }
 async function nbTx(stores, mode, fn) {
   const d = await nbDb();
-  return new Promise((res, rej) => { const t = d.transaction(stores, mode); const st = [].concat(stores).map((s) => t.objectStore(s)); const r = fn(...st); t.oncomplete = () => res(r && r instanceof IDBRequest ? r.result : r); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Storage is full')); });
+  return new Promise((res, rej) => { const t = d.transaction(stores, mode); const st = [].concat(stores).map((s) => t.objectStore(s)); const r = fn(...st); t.oncomplete = () => { if (mode === 'readwrite' && ![].concat(stores).includes('meta')) fsSchedule(); res(r && r instanceof IDBRequest ? r.result : r); }; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Storage is full')); });
 }
 async function nbAll() { const [folders, items] = await Promise.all([nbTx('folders', 'readonly', (s) => s.getAll()), nbTx('items', 'readonly', (s) => s.getAll())]); return { folders: folders || [], items: items || [] }; }
 const nbPack = (id) => nbTx('packs', 'readonly', (s) => s.get(id));
@@ -4056,7 +4071,7 @@ async function nbSaveCurrent(o = {}) {
   let it = t.libId ? (await nbTx('items', 'readonly', (s) => s.get(t.libId))) : null;
   const { pack, size } = nbPackCurrent(); const now = Date.now();
   if (!it) it = { id: uid('nb'), created: now, folder: o.folder || (NB.folder !== 'all' && NB.folder !== 'fav' && NB.folder !== 'recent' ? NB.folder : 'root'), fav: false };
-  Object.assign(it, { name: (o.name || $('#docName').value || 'Untitled').trim(), modified: now, opened: now, pages: S.pages.length, size, thumb: (await tabThumb(S)) || it.thumb || null });
+  Object.assign(it, { name: (o.name || $('#docName').value || 'Untitled').trim(), modified: now, rev: now, opened: now, pages: S.pages.length, size, thumb: (await tabThumb(S)) || it.thumb || null });
   try { await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(it); p.put(pack, it.id); }); }
   catch (e) { console.warn(e); toast('Could not save to Notebooks. The device storage may be full.', { err: true, ms: 4500 }); return null; }
   t.libId = it.id; setDirty(false); renderTabs(); scheduleSave();
@@ -4070,8 +4085,7 @@ async function nbOpenItem(id) {
   const ti = WS.list.findIndex((t) => t.libId === id); if (ti >= 0) { if (NB.fv) NB.fv._close(); switchTab(ti); return; }
   const it = await nbTx('items', 'readonly', (s) => s.get(id)); const pk = await nbPack(id); if (!it || !pk) return toast('This notebook could not be read', { err: true });
   const t0 = toast(`Opening ${it.name}`, { spin: true, sticky: true });
-  for (const [k, v] of Object.entries(pk.res || {})) NB_SRC.set(k, v);
-  let pages; try { pages = await hydrate(JSON.parse(JSON.stringify(pk.pages)), pk.vals); } finally { NB_SRC.clear(); t0.remove(); }
+  let pages; try { pages = await nbHydrate(pk); } finally { t0.remove(); }
   if (!pages.length) return toast('This notebook has no readable pages', { err: true });
   if (NB.fv) NB.fv._close();
   if (S.pages.length) newTab();
@@ -4079,6 +4093,17 @@ async function nbOpenItem(id) {
   S.pages = pages; S.meta = pk.meta || null; $('#docName').value = it.name; resetHistory(); setDirty(false);
   renderAll(); if (innerWidth > 760) setSidebar(true); renderTabs(); updateChrome(); scheduleSave();
   it.opened = Date.now(); nbTx('items', 'readwrite', (s) => s.put(it));
+}
+async function nbImportOne(f, folder) {
+  try {
+    const bytes = new Uint8Array(await f.arrayBuffer()); const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() }).promise;
+    const docId = uid('d'); const pages = []; let thumb = null;
+    for (let i = 0; i < pdf.numPages; i++) { const pg = await pdf.getPage(i + 1); pages.push({ id: uid('p'), kind: 'pdf', docId, index: i, view: pg.view.slice(), baseRot: pg.rotate || 0, rot: 0, annots: [] }); if (!i) thumb = await nbRenderThumb(pg); }
+    try { pdf.loadingTask.destroy(); } catch (e) {}
+    const now = Date.now(); const it = { id: uid('nb'), name: f.name.replace(/\.pdf$/i, ''), folder, created: now, modified: f.lastModified || now, rev: now, opened: 0, pages: pages.length, size: bytes.length, thumb, fav: false };
+    await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(it); p.put({ pages, meta: null, vals: [], res: { [docId]: { kind: 'pdf', name: f.name, bytes, password: null } } }, it.id); });
+    return it;
+  } catch (e) { console.warn('import', f.name, e); return null; }
 }
 async function nbImportFiles(files, folder) {
   let n = 0;
@@ -4101,9 +4126,9 @@ async function nbRenderThumb(pg) {
 async function nbExportPdf(id) {
   const it = await nbTx('items', 'readonly', (s) => s.get(id)); const pk = await nbPack(id); if (!pk) return;
   const t0 = toast('Preparing PDF', { spin: true, sticky: true });
-  try { for (const [k, v] of Object.entries(pk.res || {})) NB_SRC.set(k, v); const pages = await hydrate(JSON.parse(JSON.stringify(pk.pages)), pk.vals); NB_SRC.clear(); const bytes = await buildPdf(pages, null, { keepForms: true }); downloadBlob(new Blob([bytes], { type: 'application/pdf' }), it.name.replace(/[\\/:*?"<>|]+/g, '-') + '.pdf'); }
+  try { const pages = await nbHydrate(pk); const bytes = await buildPdf(pages, null, { keepForms: true }); downloadBlob(new Blob([bytes], { type: 'application/pdf' }), it.name.replace(/[\\/:*?"<>|]+/g, '-') + '.pdf'); }
   catch (e) { console.error(e); toast('Could not export this notebook', { err: true }); }
-  NB_SRC.clear(); t0.remove();
+  t0.remove();
 }
 async function nbBackup() {
   const { folders, items } = await nbAll(); if (!items.length && !folders.length) return toast('Nothing to back up yet');
@@ -4137,9 +4162,9 @@ function nbAsk(title, label, value, ok, okLabel = 'Save') {
   const go = () => { const v = inp.value.trim(); if (!v) return inp.focus(); closeSheet(); ok(v); };
   sh.querySelector('[data-x]').onclick = closeSheet; sh.querySelector('[data-ok]').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
 }
-async function nbNewFolder(parent) { nbAsk('New folder', 'Folder name', 'New folder', async (name) => { const f = { id: uid('nf'), name, parent: parent || 'root', created: Date.now() }; await nbTx('folders', 'readwrite', (s) => s.put(f)); NB.open.add(f.parent); NB.folder = f.id; nbRender(); }, 'Create'); }
+async function nbNewFolder(parent) { nbAsk('New folder', 'Folder name', 'New folder', async (name) => { const f = { id: uid('nf'), name, parent: parent || 'root', created: Date.now(), rev: Date.now() }; await nbTx('folders', 'readwrite', (s) => s.put(f)); NB.open.add(f.parent); NB.folder = f.id; nbRender(); }, 'Create'); }
 function nbDescendants(id, folders) { const out = new Set([id]); let grew = true; while (grew) { grew = false; for (const f of folders) if (out.has(f.parent) && !out.has(f.id)) { out.add(f.id); grew = true; } } return out; }
-async function nbMove(itemIds, folder) { await nbTx('items', 'readwrite', (s) => { for (const id of itemIds) { const r = s.get(id); r.onsuccess = () => { if (r.result) { r.result.folder = folder; s.put(r.result); } }; } }); nbRender(); }
+async function nbMove(itemIds, folder) { await nbTx('items', 'readwrite', (s) => { for (const id of itemIds) { const r = s.get(id); r.onsuccess = () => { if (r.result) { r.result.folder = folder; r.result.rev = Date.now(); s.put(r.result); } }; } }); nbRender(); }
 async function nbMovePicker(anchor, it) {
   const { folders } = await nbAll(); const rows = [];
   const walk = (p, d) => folders.filter((f) => f.parent === p).sort((a, b) => a.name.localeCompare(b.name)).forEach((f) => { rows.push({ label: ' '.repeat(d) + f.name, icon: 'folder', run: () => nbMove([it.id], f.id) }); walk(f.id, d + 1); });
@@ -4154,9 +4179,9 @@ async function openNotebooks() {
     <input class="inp nb-q" type="search" placeholder="Search" aria-label="Search notebooks" value="${esc(NB.q)}">
     <select class="inp nb-sort" aria-label="Sort"><option value="mod">Last edited</option><option value="opened">Last opened</option><option value="name">Name</option><option value="created">Date created</option><option value="size">Size</option></select>
     <button class="tbtn primary" data-nb="new" title="New notebook">${icon('blank')}<span>New</span></button><button class="tbtn" data-nb="import" title="Import PDF files">${icon('open')}<span>Import</span></button>${S.pages.length && !(WS.list[WS.active] || {}).libId ? `<button class="tbtn" data-nb="savecur" title="Save the open document as a notebook">${icon('download')}<span>Save open document</span></button>` : ''}<button class="tbtn" data-nb="more" aria-label="More" title="Backup, restore and settings">${icon('more')}</button><button class="tbtn" data-nb="close" title="Close (Esc)">Done</button>`);
-  NB.fv = fv; fv._onclose = () => { NB.fv = null; };
+  NB.fv = fv; fv._onclose = () => { NB.fv = null; }; if (FSY.h && FSY.perm === 'granted' && Date.now() - FSY.last > 20000) fsSync();
   fv.querySelector('.nb-sort').value = NB.sort;
-  fv.querySelector('.fv-body').innerHTML = '<div class="nb-wrap"><nav class="nb-tree" aria-label="Folders"></nav><section class="nb-main"><div class="nb-crumb"></div><div class="nb-grid"></div><div class="nb-foot"></div></section></div>';
+  fv.querySelector('.fv-body').innerHTML = '<div class="nb-wrap"><nav class="nb-tree" aria-label="Folders"></nav><section class="nb-main"><div class="nb-diskw"></div><div class="nb-crumb"></div><div class="nb-grid"></div><div class="nb-foot"></div></section></div>';
   fv.querySelector('.nb-q').oninput = (e) => { NB.q = e.target.value; nbRender(); };
   fv.querySelector('.nb-sort').onchange = (e) => { NB.sort = e.target.value; lsSet('pdfmate.nbSort', NB.sort); nbRender(); };
   const fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.multiple = true; fileIn.accept = 'application/pdf,.pdf';
@@ -4186,13 +4211,18 @@ async function openNotebooks() {
   body.addEventListener('dragstart', (e) => { const c = e.target.closest('[data-it]'); if (c) { e.dataTransfer.setData('text/nb', c.dataset.it); e.dataTransfer.effectAllowed = 'move'; } });
   body.addEventListener('click', async (e) => {
     const { folders, items } = await nbAll();
+    const fsb = e.target.closest('[data-fs]'); if (fsb) { const k = fsb.dataset.fs;
+      if (k === 'connect') fsConnect(); else if (k === 'reconnect') fsReconnect(); else if (k === 'sync') { FSY.last = 0; fsSync(true); nbRender(); }
+      else if (k === 'menu') openMenu(fsb, [{ label: 'Sync now', icon: 'check', run: () => fsSync(true) }, { label: 'Choose another folder', icon: 'folder', run: fsConnect }, '-', { label: 'Disconnect folder', icon: 'close', run: fsDisconnect }]);
+      return; }
     const tw = e.target.closest('[data-tw]'); if (tw) { const id = tw.dataset.tw; NB.open.has(id) ? NB.open.delete(id) : NB.open.add(id); lsSet('pdfmate.nbOpen', [...NB.open]); nbRender(); return; }
     const fm = e.target.closest('[data-fm]'); if (fm) {
       const f = folders.find((x) => x.id === fm.dataset.fm); if (!f) return;
       openMenu(fm, [
         { label: 'New subfolder', icon: 'folder', run: () => nbNewFolder(f.id) },
-        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename folder', 'Folder name', f.name, async (v) => { f.name = v; await nbTx('folders', 'readwrite', (s) => s.put(f)); nbRender(); }) },
-        '-', { label: 'Delete folder', icon: 'trash', run: () => { const ds = nbDescendants(f.id, folders); const n = items.filter((i) => ds.has(i.folder)).length; confirmSheet(`Delete ${f.name}?`, n ? `The folder${ds.size > 1 ? ', its subfolders' : ''} and ${n} notebook${n > 1 ? 's' : ''} inside will be deleted from this device.` : 'The folder is empty.', 'Delete', async () => { await nbTx(['folders', 'items', 'packs'], 'readwrite', (fs, is, ps) => { for (const id of ds) fs.delete(id); for (const i of items) if (ds.has(i.folder)) { is.delete(i.id); ps.delete(i.id); } }); WS.list.forEach((t) => { if (t.libId && items.some((i) => i.id === t.libId && ds.has(i.folder))) t.libId = null; }); if (ds.has(NB.folder)) NB.folder = f.parent === 'root' ? 'all' : f.parent; nbRender(); }); } }
+        { label: 'Colour and icon', icon: 'star', run: () => nbFolderStyle(f) },
+        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename folder', 'Folder name', f.name, async (v) => { f.name = v; f.rev = Date.now(); await nbTx('folders', 'readwrite', (s) => s.put(f)); nbRender(); }) },
+        '-', { label: 'Delete folder', icon: 'trash', run: () => { const ds = nbDescendants(f.id, folders); const n = items.filter((i) => ds.has(i.folder)).length; confirmSheet(`Delete ${f.name}?`, n ? `The folder${ds.size > 1 ? ', its subfolders' : ''} and ${n} notebook${n > 1 ? 's' : ''} inside will be deleted from this device.` : 'The folder is empty.', 'Delete', async () => { await nbTx(['folders', 'items', 'packs'], 'readwrite', (fs, is, ps) => { for (const id of ds) fs.delete(id); for (const i of items) if (ds.has(i.folder)) { is.delete(i.id); ps.delete(i.id); } }); nbTomb([...ds, ...items.filter((i) => ds.has(i.folder)).map((i) => i.id)]); WS.list.forEach((t) => { if (t.libId && items.some((i) => i.id === t.libId && ds.has(i.folder))) t.libId = null; }); if (ds.has(NB.folder)) NB.folder = f.parent === 'root' ? 'all' : f.parent; nbRender(); }); } }
       ]); return;
     }
     const fo = e.target.closest('[data-fo]'); if (fo && !e.target.closest('[data-it]')) { NB.folder = fo.dataset.fo; if (fo.dataset.fo !== 'all' && fo.dataset.fo !== 'fav' && fo.dataset.fo !== 'recent') NB.open.add(fo.dataset.fo); nbRender(); return; }
@@ -4200,15 +4230,15 @@ async function openNotebooks() {
       const it = items.find((x) => x.id === im.dataset.im); if (!it) return;
       openMenu(im, [
         { label: 'Open', icon: 'open', run: () => nbOpenItem(it.id) },
-        { label: it.fav ? 'Remove from favourites' : 'Add to favourites', icon: 'star', run: async () => { it.fav = !it.fav; await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); } },
-        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename notebook', 'Name', it.name, async (v) => { it.name = v; await nbTx('items', 'readwrite', (s) => s.put(it)); const ti = WS.list.findIndex((t) => t.libId === it.id); if (ti === WS.active) $('#docName').value = v; else if (ti >= 0) WS.list[ti].name = v; renderTabs(); nbRender(); }) },
+        { label: it.fav ? 'Remove from favourites' : 'Add to favourites', icon: 'star', run: async () => { it.fav = !it.fav; it.rev = Date.now(); await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); } },
+        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename notebook', 'Name', it.name, async (v) => { it.name = v; it.rev = Date.now(); await nbTx('items', 'readwrite', (s) => s.put(it)); const ti = WS.list.findIndex((t) => t.libId === it.id); if (ti === WS.active) $('#docName').value = v; else if (ti >= 0) WS.list[ti].name = v; renderTabs(); nbRender(); }) },
         { label: 'Move to', icon: 'folder', run: () => nbMovePicker(im, it) },
-        { label: 'Duplicate', icon: 'dup', run: async () => { const pk = await nbPack(it.id); const c = { ...it, id: uid('nb'), name: it.name + ' copy', created: Date.now(), modified: Date.now(), fav: false }; await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(c); p.put(pk, c.id); }); nbRender(); } },
+        { label: 'Duplicate', icon: 'dup', run: async () => { const pk = await nbPack(it.id); const c = { ...it, id: uid('nb'), name: it.name + ' copy', created: Date.now(), modified: Date.now(), rev: Date.now(), fav: false }; await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(c); p.put(pk, c.id); }); nbRender(); } },
         { label: 'Export as PDF', icon: 'download', run: () => nbExportPdf(it.id) },
-        '-', { label: 'Delete', icon: 'trash', run: () => confirmSheet(`Delete ${it.name}?`, 'It will be removed from this device. Export it first if you may need it.', 'Delete', async () => { await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.delete(it.id); p.delete(it.id); }); WS.list.forEach((t) => { if (t.libId === it.id) t.libId = null; }); nbRender(); }) }
+        '-', { label: 'Delete', icon: 'trash', run: () => confirmSheet(`Delete ${it.name}?`, 'It will be removed from this device. Export it first if you may need it.', 'Delete', async () => { await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.delete(it.id); p.delete(it.id); }); nbTomb([it.id]); WS.list.forEach((t) => { if (t.libId === it.id) t.libId = null; }); nbRender(); }) }
       ]); return;
     }
-    const fav = e.target.closest('[data-fav]'); if (fav) { const it = items.find((x) => x.id === fav.dataset.fav); it.fav = !it.fav; await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); return; }
+    const fav = e.target.closest('[data-fav]'); if (fav) { const it = items.find((x) => x.id === fav.dataset.fav); it.fav = !it.fav; it.rev = Date.now(); await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); return; }
     const card = e.target.closest('[data-it]'); if (card) nbOpenItem(card.dataset.it);
   });
   fv._key = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); fv.querySelector('.nb-q').focus(); } };
@@ -4220,7 +4250,7 @@ async function nbRender() {
   if (!['all', 'fav', 'recent', 'root'].includes(NB.folder) && !folders.some((f) => f.id === NB.folder)) NB.folder = 'all';
   const count = (id) => { const ds = nbDescendants(id, folders); return items.filter((i) => ds.has(i.folder)).length; };
   const node = (f, d) => { const kids = folders.filter((x) => x.parent === f.id).sort((a, b) => a.name.localeCompare(b.name)); const op = NB.open.has(f.id);
-    return `<div class="nb-row ${NB.folder === f.id ? 'on' : ''}" data-fo="${f.id}" style="--d:${d}">${kids.length ? `<button class="nb-tw ${op ? 'op' : ''}" data-tw="${f.id}" aria-label="${op ? 'Collapse' : 'Expand'}">${icon('chevr')}</button>` : '<span class="nb-tw"></span>'}${icon('folder')}<span class="nb-fn">${esc(f.name)}</span><small>${count(f.id) || ''}</small><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>${op ? kids.map((k) => node(k, d + 1)).join('') : ''}`; };
+    return `<div class="nb-row ${NB.folder === f.id ? 'on' : ''}" data-fo="${f.id}" style="--d:${d}">${kids.length ? `<button class="nb-tw ${op ? 'op' : ''}" data-tw="${f.id}" aria-label="${op ? 'Collapse' : 'Expand'}">${icon('chevr')}</button>` : '<span class="nb-tw"></span>'}${fIcon(f)}<span class="nb-fn">${esc(f.name)}</span><small>${count(f.id) || ''}</small><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>${op ? kids.map((k) => node(k, d + 1)).join('') : ''}`; };
   const top = folders.filter((f) => f.parent === 'root').sort((a, b) => a.name.localeCompare(b.name));
   fv.querySelector('.nb-tree').innerHTML = `<div class="nb-row ${NB.folder === 'all' ? 'on' : ''}" data-fo="all">${icon('nb')}<span class="nb-fn">All notebooks</span><small>${items.length || ''}</small></div><div class="nb-row ${NB.folder === 'recent' ? 'on' : ''}" data-fo="recent">${icon('history')}<span class="nb-fn">Recent</span></div><div class="nb-row ${NB.folder === 'fav' ? 'on' : ''}" data-fo="fav">${icon('star')}<span class="nb-fn">Favourites</span><small>${items.filter((i) => i.fav).length || ''}</small></div><div class="nb-h"><span>Folders</span><button class="nb-fm" data-nbnf aria-label="New folder" title="New folder">+</button></div>${top.map((f) => node(f, 0)).join('') || '<p class="nb-empty-t">No folders yet</p>'}`;
   const nf = fv.querySelector('[data-nbnf]'); if (nf) nf.onclick = (e) => { e.stopPropagation(); nbNewFolder('root'); };
@@ -4239,12 +4269,169 @@ async function nbRender() {
   fv.querySelector('.nb-crumb').innerHTML = chips + (q ? `<b>Results for "${esc(NB.q.trim())}"</b><small>${list.length}</small>` : path.length ? `<button data-fo="all">Notebooks</button>${path.map((f, i) => `<span>/</span>${i === path.length - 1 ? `<b>${esc(f.name)}</b>` : `<button data-fo="${f.id}">${esc(f.name)}</button>`}`).join('')}<span class="fv-sp"></span><button class="tbtn nb-nbtn" data-nbsub>${icon('folder')}<span>New subfolder</span></button>` : `<b>${{ all: 'All notebooks', fav: 'Favourites', recent: 'Recent', root: 'Folders' }[NB.folder]}</b><small>${list.length + subs.length}</small>${NB.folder === 'root' ? `<span class="fv-sp"></span><button class="tbtn nb-nbtn" data-nbsub>${icon('folder')}<span>New folder</span></button>` : ''}`);
   const ns = fv.querySelector('[data-nbsub]'); if (ns) ns.onclick = (e) => { e.stopPropagation(); nbNewFolder(nbCurFolder()); };
   const openIds = new Set(WS.list.map((t) => t.libId).filter(Boolean));
-  const fcard = (f) => `<div class="nb-card nb-fold" data-fo="${f.id}"><div class="nb-fic">${icon('folder')}</div><div class="nb-meta"><b>${esc(f.name)}</b><small>${count(f.id)} notebook${count(f.id) !== 1 ? 's' : ''}</small></div><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>`;
+  const fcard = (f) => `<div class="nb-card nb-fold" data-fo="${f.id}"><div class="nb-fic">${fIcon(f)}</div><div class="nb-meta"><b>${esc(f.name)}</b><small>${count(f.id)} notebook${count(f.id) !== 1 ? 's' : ''}</small></div><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>`;
   const icard = (it) => `<div class="nb-card" data-it="${it.id}" draggable="true" title="${esc(it.name)}"><div class="nb-th">${it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : icon('blank')}${openIds.has(it.id) ? '<span class="nb-open">Open</span>' : ''}<button class="nb-star ${it.fav ? 'on' : ''}" data-fav="${it.id}" aria-label="${it.fav ? 'Remove from favourites' : 'Add to favourites'}">${icon('star')}</button></div><div class="nb-meta"><b>${esc(it.name)}</b><small>${nbAgo(it.modified)} · ${it.pages} page${it.pages !== 1 ? 's' : ''}${NB.folder === 'all' || NB.folder === 'fav' || NB.folder === 'recent' || q ? ` · ${esc(nbFolderName(it.folder, folders))}` : ''}</small></div><button class="nb-fm" data-im="${it.id}" aria-label="Notebook options">${icon('more')}</button></div>`;
+  fv.querySelector('.nb-diskw').innerHTML = fsBar();
   const grid = fv.querySelector('.nb-grid');
   grid.innerHTML = subs.map(fcard).join('') + list.map(icard).join('') || `<div class="nb-empty">${icon('nb')}<b>${q ? 'No notebooks match' : NB.folder === 'fav' ? 'No favourites yet' : 'Nothing here yet'}</b><p>${q ? 'Try another word.' : 'Create a notebook, import PDFs, or drag PDF files here. Everything stays on this device.'}</p></div>`;
   let est = ''; try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); est = ` · ${nbSize(e.usage || 0)} used of ${nbSize(e.quota || 0)} available to this app`; } } catch (e) {}
-  fv.querySelector('.nb-foot').textContent = `${items.length} notebook${items.length !== 1 ? 's' : ''}, ${nbSize(items.reduce((s, i) => s + (i.size || 0), 0))} · auto-save ${NB.auto ? 'on' : 'off'}${est}. Stored only on this device. Back up from the menu.`;
+  fv.querySelector('.nb-foot').textContent = `${items.length} notebook${items.length !== 1 ? 's' : ''}, ${nbSize(items.reduce((s, i) => s + (i.size || 0), 0))} · auto-save ${NB.auto ? 'on' : 'off'}${est}. ${FSY.h && FSY.perm === 'granted' ? 'Also kept as PDFs in the folder ' + FSY.h.name + '.' : 'Stored only on this device. Back up from the menu.'}`;
+}
+
+/* ---------- Notebooks: mirror to a folder on this computer ---------- */
+const FSY = { h: null, perm: '', busy: false, again: false, t: 0, inSync: false, last: 0, err: '' };
+const fsOk = () => typeof window.showDirectoryPicker === 'function';
+const nbMeta = (k) => nbTx('meta', 'readonly', (s) => s.get(k));
+const nbMetaSet = (k, v) => nbTx('meta', 'readwrite', (s) => s.put(v, k));
+const nbRev = (x) => (x && (x.rev || x.modified || x.created)) || 0;
+async function nbTomb(ids) { const t = (await nbMeta('tomb')) || {}; const now = Date.now(); ids.forEach((id) => { t[id] = now; }); await nbMetaSet('tomb', t); fsSchedule(); }
+async function fsInit() {
+  if (!fsOk()) return;
+  try { FSY.h = (await nbMeta('dir')) || null; if (!FSY.h) return; FSY.perm = await FSY.h.queryPermission({ mode: 'readwrite' }); if (FSY.perm === 'granted') fsSync(); } catch (e) { console.warn('folder', e); }
+}
+async function fsConnect() {
+  if (!fsOk()) return toast('Folder sync needs Chrome or Edge on a computer', { err: true, ms: 4000 });
+  let h; try { h = await window.showDirectoryPicker({ id: 'pdfmate-notebooks', mode: 'readwrite', startIn: 'documents' }); } catch (e) { return; }
+  const had = !!(await fsRead(h, '.pdfmate/library.json'));
+  FSY.h = h; FSY.perm = 'granted'; await nbMetaSet('dir', h);
+  toast(had ? `Found notebooks in ${h.name}. Bringing them in` : `Connected to ${h.name}. Writing your notebooks`, { spin: true, sticky: true });
+  await fsSync(true);
+}
+async function fsReconnect() {
+  if (!FSY.h) return fsConnect();
+  try { FSY.perm = await FSY.h.requestPermission({ mode: 'readwrite' }); } catch (e) { FSY.perm = 'denied'; }
+  if (FSY.perm === 'granted') fsSync(true); else { toast('No permission. Choose the folder again', { err: true }); if (NB.fv) nbRender(); }
+}
+async function fsDisconnect() { FSY.h = null; FSY.perm = ''; await nbTx('meta', 'readwrite', (s) => s.delete('dir')); if (NB.fv) nbRender(); toast('Folder disconnected. Your notebooks stay in the app and in the folder'); }
+function fsSchedule() { if (!FSY.h || FSY.perm !== 'granted' || FSY.inSync) return; clearTimeout(FSY.t); FSY.t = setTimeout(() => fsSync(), 1500); }
+const fsName = (n) => String(n || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/[. ]+$/, '').trim().slice(0, 100) || 'Untitled';
+async function fsDir(root, parts, create) { let d = root; for (const p of parts) if (p) d = await d.getDirectoryHandle(p, { create }); return d; }
+async function fsWrite(root, path, data) { const parts = path.split('/'); const name = parts.pop(); const d = await fsDir(root, parts, true); const w = await (await d.getFileHandle(name, { create: true })).createWritable(); await w.write(data); await w.close(); }
+async function fsRead(root, path) { try { const parts = path.split('/'); const name = parts.pop(); const d = await fsDir(root, parts, false); return await (await d.getFileHandle(name)).getFile(); } catch (e) { return null; } }
+async function fsRemove(root, path) { try { const parts = path.split('/'); const name = parts.pop(); const d = await fsDir(root, parts, false); await d.removeEntry(name); return true; } catch (e) { return false; } }
+function nbEncode(meta, pack) {
+  const parts = []; let off = 0; const res = {};
+  for (const [k, v] of Object.entries(pack.res || {})) { if (v.kind === 'pdf') { res[k] = { ...v, bytes: undefined, off, len: v.bytes.length }; parts.push(v.bytes); off += v.bytes.length; } else res[k] = v; }
+  const hj = new TextEncoder().encode(JSON.stringify({ meta, pack: { ...pack, res } })); const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, hj.length);
+  return new Blob([new TextEncoder().encode('PDFMATEIT1'), len, hj, ...parts]);
+}
+function nbDecode(b) {
+  if (new TextDecoder().decode(b.subarray(0, 10)) !== 'PDFMATEIT1') throw new Error('Not a notebook file');
+  const hl = new DataView(b.buffer, b.byteOffset + 10, 4).getUint32(0); const o = JSON.parse(new TextDecoder().decode(b.subarray(14, 14 + hl))); const base = 14 + hl;
+  for (const v of Object.values(o.pack.res || {})) if (v.kind === 'pdf') { v.bytes = b.slice(base + v.off, base + v.off + v.len); delete v.off; delete v.len; }
+  return o;
+}
+async function nbHydrate(pk) { const keys = Object.keys(pk.res || {}); for (const k of keys) NB_SRC.set(k, pk.res[k]); try { return await hydrate(JSON.parse(JSON.stringify(pk.pages)), pk.vals); } finally { keys.forEach((k) => NB_SRC.delete(k)); } }
+function fsPaths(folders, items) {
+  const fp = {}, used = new Map();
+  const uniq = (dir, nm) => { let s = used.get(dir); if (!s) used.set(dir, (s = new Set())); const m = nm.match(/^(.*?)(\.pdf)$/i); const base = m ? m[1] : nm, ext = m ? m[2] : ''; let out = nm, i = 2; while (s.has(out.toLowerCase())) out = `${base} (${i++})${ext}`; s.add(out.toLowerCase()); return out; };
+  const ids = new Set(folders.map((f) => f.id));
+  const kids = (p) => folders.filter((f) => (ids.has(f.parent) ? f.parent : 'root') === p && f.id !== p).sort((a, b) => (a.created || 0) - (b.created || 0) || a.id.localeCompare(b.id));
+  const walk = (p, path, d) => { if (d > 12) return; for (const f of kids(p)) { if (f.id in fp) continue; const n = uniq(path, fsName(f.name)); fp[f.id] = path ? path + '/' + n : n; walk(f.id, fp[f.id], d + 1); } };
+  walk('root', '', 0);
+  const ip = {};
+  for (const it of items.slice().sort((a, b) => (a.created || 0) - (b.created || 0) || a.id.localeCompare(b.id))) { const d = fp[it.folder] || ''; ip[it.id] = (d ? d + '/' : '') + uniq(d, fsName(it.name) + '.pdf'); }
+  return { fp, ip };
+}
+async function fsSync(loud) {
+  if (!FSY.h || FSY.perm !== 'granted') return;
+  if (FSY.busy) { FSY.again = true; return; }
+  FSY.busy = true; FSY.inSync = true; FSY.err = ''; let pulled = 0, pushed = 0, imported = 0, removed = 0;
+  try {
+    const R = FSY.h;
+    let man = null; const mf = await fsRead(R, '.pdfmate/library.json'); if (mf) { try { man = JSON.parse(await mf.text()); } catch (e) { /* rebuilt below */ } }
+    if (!man || man.app !== 'pdfmate-notebooks') man = { app: 'pdfmate-notebooks', v: 1 };
+    man.items = man.items || {}; man.folders = man.folders || []; man.dirs = man.dirs || {};
+    const tomb = { ...(man.tomb || {}) }; for (const [k, v] of Object.entries((await nbMeta('tomb')) || {})) tomb[k] = Math.max(tomb[k] || 0, v);
+    const cut = Date.now() - 180 * 864e5; for (const k in tomb) if (tomb[k] < cut) delete tomb[k];
+    let { folders, items } = await nbAll();
+    const delF = new Set(folders.filter((f) => tomb[f.id] && nbRev(f) <= tomb[f.id]).map((f) => f.id));
+    const delI = new Set(items.filter((i) => tomb[i.id] && nbRev(i) <= tomb[i.id]).map((i) => i.id));
+    if (delF.size || delI.size) { await nbTx(['folders', 'items', 'packs'], 'readwrite', (fs, is, ps) => { delF.forEach((id) => fs.delete(id)); delI.forEach((id) => { is.delete(id); ps.delete(id); }); }); removed += delF.size + delI.size; WS.list.forEach((t) => { if (delI.has(t.libId)) t.libId = null; }); }
+    const lf = new Map(folders.filter((f) => !delF.has(f.id)).map((f) => [f.id, f]));
+    const putF = []; for (const f of man.folders) { if (tomb[f.id] && nbRev(f) <= tomb[f.id]) continue; const l = lf.get(f.id); if (!l || nbRev(f) > nbRev(l)) { putF.push(f); lf.set(f.id, f); } }
+    if (putF.length) { await nbTx('folders', 'readwrite', (s) => putF.forEach((f) => s.put(f))); pulled += putF.length; }
+    const li = new Map(items.filter((i) => !delI.has(i.id)).map((i) => [i.id, i]));
+    for (const [id, m] of Object.entries(man.items)) {
+      if (tomb[id] && nbRev(m) <= tomb[id]) continue; const l = li.get(id); if (l && nbRev(l) >= nbRev(m)) continue;
+      const tab = WS.list.find((t) => t.libId === id); if (tab && (tab === WS.list[WS.active] ? S.dirty : tab.dirty)) continue;
+      const f = await fsRead(R, `.pdfmate/items/${id}.pmnb`); if (!f) continue;
+      try { const { meta, pack } = nbDecode(new Uint8Array(await f.arrayBuffer())); await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(meta); p.put(pack, id); }); li.set(id, meta); pulled++; } catch (e) { console.warn('pull', id, e); }
+    }
+    folders = [...lf.values()]; items = [...li.values()];
+    let paths = fsPaths(folders, items);
+    const known = new Set([...Object.values(man.items).map((m) => (m.path || '').toLowerCase()), ...Object.values(paths.ip).map((p) => p.toLowerCase())]);
+    const dirTo = new Map(Object.entries(paths.fp).map(([id, p]) => [p.toLowerCase(), id]));
+    for (const [id, p] of Object.entries(man.dirs)) if (!dirTo.has(p.toLowerCase()) && lf.has(id)) dirTo.set(p.toLowerCase(), id);
+    const scan = async (dir, path, depth, parent) => {
+      for await (const [name, h] of dir.entries()) {
+        if (name.startsWith('.') || name.startsWith('~$')) continue; const p = path ? path + '/' + name : name;
+        if (h.kind === 'directory') {
+          if (depth > 8) continue; let id = dirTo.get(p.toLowerCase());
+          if (!id) { const now = Date.now(); const f = { id: uid('nf'), name, parent, created: now, rev: now }; await nbTx('folders', 'readwrite', (s) => s.put(f)); folders.push(f); lf.set(f.id, f); id = f.id; dirTo.set(p.toLowerCase(), id); man.dirs[id] = p; imported++; }
+          await scan(h, p, depth + 1, id);
+        } else if (/\.pdf$/i.test(name) && !known.has(p.toLowerCase())) {
+          const it = await nbImportOne(await h.getFile(), parent); known.add(p.toLowerCase());
+          if (it) { items.push(it); li.set(it.id, it); man.items[it.id] = { name: it.name, folder: it.folder, path: p, rev: nbRev(it), created: it.created, pk: false }; imported++; }
+        }
+      }
+    };
+    await scan(R, '', 0, 'root');
+    paths = fsPaths(folders, items);
+    for (const p of Object.values(paths.fp)) await fsDir(R, p.split('/'), true);
+    for (const it of items) {
+      const m = man.items[it.id]; const path = paths.ip[it.id];
+      const needPdf = !m || nbRev(m) < nbRev(it) || m.path !== path, needPk = !m || !m.pk || nbRev(m) < nbRev(it);
+      if (!needPdf && !needPk) continue;
+      const pk = await nbPack(it.id); if (!pk) continue;
+      if (needPk) await fsWrite(R, `.pdfmate/items/${it.id}.pmnb`, nbEncode(it, pk));
+      if (needPdf) {
+        if (m && m.path && m.path !== path && !m.pk && nbRev(m) >= nbRev(it)) { const src = await fsRead(R, m.path); if (src) await fsWrite(R, path, src); }
+        else { const pages = await nbHydrate(pk); await fsWrite(R, path, await buildPdf(pages, null, { keepForms: true })); }
+        if (m && m.path && m.path.toLowerCase() !== path.toLowerCase()) await fsRemove(R, m.path);
+      }
+      man.items[it.id] = { name: it.name, folder: it.folder, path, rev: nbRev(it), created: it.created, pk: true }; pushed++;
+    }
+    for (const [id, m] of Object.entries(man.items)) if (!li.has(id) && tomb[id]) { await fsRemove(R, m.path); await fsRemove(R, `.pdfmate/items/${id}.pmnb`); delete man.items[id]; removed++; }
+    const nd = new Set(Object.values(paths.fp).map((p) => p.toLowerCase()));
+    for (const p of Object.values(man.dirs).filter((p) => !nd.has(p.toLowerCase())).sort((a, b) => b.split('/').length - a.split('/').length)) await fsRemove(R, p);
+    man.folders = folders.map((f) => ({ id: f.id, name: f.name, parent: f.parent, color: f.color || '', icon: f.icon || '', created: f.created, rev: nbRev(f) }));
+    man.dirs = paths.fp; man.tomb = tomb; man.updated = Date.now();
+    await fsWrite(R, '.pdfmate/library.json', JSON.stringify(man, null, 1));
+    await fsWrite(R, '.pdfmate/README.txt', 'This folder is kept in step with PDF Mate Notebooks.\r\nEach notebook is a normal PDF you can open anywhere.\r\nThe .pdfmate folder holds the editable copies, folder colours and icons. Keep it with the PDFs when you copy or sync this folder.\r\nOn another computer, open PDF Mate, Notebooks, Folder on this computer, and choose this folder.\r\n');
+    await nbMetaSet('tomb', tomb);
+    FSY.last = Date.now();
+    if (loud || pulled || imported || removed) toast(`Folder ${R.name} in sync${pulled + imported ? `: ${pulled + imported} brought in` : ''}${pushed && loud ? `, ${pushed} written` : ''}${removed ? `, ${removed} removed` : ''}`);
+  } catch (e) {
+    console.warn('folder sync', e); FSY.err = e.message || String(e);
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') FSY.perm = 'prompt';
+    if (loud || e.name === 'NotFoundError') toast(e.name === 'NotFoundError' ? 'The notebooks folder was moved or deleted. Choose it again' : 'Could not sync with the folder: ' + FSY.err, { err: true, ms: 4500 });
+  }
+  FSY.busy = false; FSY.inSync = false; if (NB.fv) nbRender(); if (FSY.again) { FSY.again = false; fsSchedule(); }
+}
+function fsBar() {
+  if (!fsOk()) return `<div class="nb-disk off">${icon('folder')}<span>Keeping notebooks in a folder on your computer works in Chrome or Edge on a computer.</span></div>`;
+  if (!FSY.h) return `<div class="nb-disk">${icon('folder')}<span><b>Folder on this computer</b> Keep every notebook as a PDF in a folder you choose, for example in OneDrive, Google Drive or on a USB stick, and open the same folder on another computer.</span><button class="btn primary" data-fs="connect">Choose folder</button></div>`;
+  if (FSY.perm !== 'granted') return `<div class="nb-disk warn">${icon('folder')}<span><b>${esc(FSY.h.name)}</b> The browser needs your OK again to use this folder.</span><button class="btn primary" data-fs="reconnect">Allow</button><button class="nb-fm" data-fs="menu" aria-label="Folder options">${icon('more')}</button></div>`;
+  return `<div class="nb-disk ok">${icon('folder')}<span><b>${esc(FSY.h.name)}</b> ${FSY.busy ? 'Syncing...' : FSY.err ? 'Last sync failed: ' + esc(FSY.err) : FSY.last ? 'In sync, ' + nbAgo(FSY.last) : 'Connected'}</span><button class="btn" data-fs="sync" ${FSY.busy ? 'disabled' : ''}>Sync now</button><button class="nb-fm" data-fs="menu" aria-label="Folder options">${icon('more')}</button></div>`;
+}
+const FOLDER_COLORS = ['', '#0a84ff', '#30b0c7', '#34c759', '#8fb000', '#ffb800', '#ff9500', '#ff3b30', '#ff2d55', '#af52de', '#8e8e93', '#a2845e'];
+const FOLDER_ICONS = ['folder', 'fi_ship', 'fi_anchor', 'fi_compass', 'fi_cargo', 'fi_work', 'fi_book', 'fi_school', 'fi_cal', 'fi_money', 'fi_med', 'fi_home', 'fi_heart', 'star', 'fi_camera', 'fi_tool', 'fi_flag', 'lock'];
+const fIcon = (f) => `<span class="nb-fi" style="${f.color ? `color:${f.color}` : ''}">${icon(FOLDER_ICONS.includes(f.icon) ? f.icon : 'folder')}</span>`;
+function nbFolderStyle(f) {
+  let col = f.color || '', ic = f.icon || 'folder';
+  const sh = sheet(`<h2>Colour and icon</h2><p class="sub">${esc(f.name)}</p><div class="nb-sty-prev"></div>
+    <div class="field"><span class="flabel">Colour</span><div class="nb-sw">${FOLDER_COLORS.map((c) => `<button data-c="${c}" aria-label="${c || 'Default'}" style="${c ? `background:${c}` : ''}" class="${c ? '' : 'def'}"></button>`).join('')}</div></div>
+    <div class="field"><span class="flabel">Icon</span><div class="nb-ic">${FOLDER_ICONS.map((n) => `<button data-i="${n}">${icon(n)}</button>`).join('')}</div></div>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>Save</button></div>`);
+  const paint = () => { sh.querySelector('.nb-sty-prev').innerHTML = `${fIcon({ color: col, icon: ic })}<b>${esc(f.name)}</b>`; sh.querySelectorAll('[data-c]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.c === col)); sh.querySelectorAll('[data-i]').forEach((b) => { b.setAttribute('aria-pressed', b.dataset.i === ic); b.style.color = col || ''; }); };
+  sh.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.c != null) { col = b.dataset.c; paint(); } else if (b.dataset.i) { ic = b.dataset.i; paint(); }
+    else if (b.hasAttribute('data-x')) closeSheet();
+    else if (b.hasAttribute('data-ok')) { f.color = col; f.icon = ic === 'folder' ? '' : ic; f.rev = Date.now(); await nbTx('folders', 'readwrite', (s) => s.put(f)); closeSheet(); nbRender(); }
+  });
+  paint();
 }
 
 /* ---------- Digital signatures (certificate based) ---------- */
@@ -5608,7 +5795,7 @@ function appGuide() {
     ${sec('sign', 'Why there is no sign-in', `<p>Accounts exist to store your data on someone else's computer. This app stores nothing anywhere except your own device, so there is nothing to log in to, no password to leak and no account to be hacked or closed.</p><p>It also means no subscription, no trial that runs out and no watermark on your documents.</p>`)}
     ${sec('install', 'Install it as an app', `<p>Installing adds an app icon and its own window. It needs no administrator rights on most computers, takes a few seconds and can be removed like any app.</p><ul><li><b>Windows or Mac, Chrome or Edge:</b> click the install icon at the right of the address bar, or open the browser menu and choose Install Meridian PDF Mate.</li><li><b>Android, Chrome:</b> open the menu and tap Install app or Add to Home screen.</li><li><b>iPhone or iPad, Safari:</b> tap Share, then Add to Home Screen.</li></ul><p>On Windows you can then set it as the default app for PDF files from Settings, Apps, Default apps.</p>`)}
     ${sec('check', 'What makes it different', `<ul><li>Free, with every feature included.</li><li>No installation file and no admin rights needed, so it runs on ship and office computers.</li><li>Works offline, made for life at sea.</li><li>Fill forms, sign, stamp, scan, OCR, compare, redact, protect with a password and export to Word.</li><li>A full Design studio with 90 templates, calendars and print-ready export.</li><li>Light, dark and red bridge night mode.</li></ul>`)}
-    ${sec('form', 'Forms, digital signatures and notebooks', `<ul><li><b>Make fillable forms.</b> Forms tab: add text, paragraph, check box, option, dropdown, date and signature fields, or let Detect fields turn blank lines and boxes into fields. Save with Keep fillable and the form works in Adobe Acrobat, Chrome and phone readers.</li><li><b>Digital signatures.</b> Fill &amp; Sign, Digital sign. A digital ID (certificate and key, kept on this device behind your password) signs the PDF so any later change is detectable. Opening a signed PDF checks it automatically. Self-issued IDs prove the file is unchanged; for legally recognised signatures import an ID from a certificate authority (.p12 or .pfx).</li><li><b>Notebooks.</b> A library on this device with folders and subfolders, search, favourites and lined, grid or dotted notebooks. Notebooks stay editable and save themselves as you write. Back up everything to one file from the Notebooks menu.</li></ul>`)}
+    ${sec('form', 'Forms, digital signatures and notebooks', `<ul><li><b>Make fillable forms.</b> Forms tab: add text, paragraph, check box, option, dropdown, date and signature fields, or let Detect fields turn blank lines and boxes into fields. Save with Keep fillable and the form works in Adobe Acrobat, Chrome and phone readers.</li><li><b>Digital signatures.</b> Fill &amp; Sign, Digital sign. A digital ID (certificate and key, kept on this device behind your password) signs the PDF so any later change is detectable. Opening a signed PDF checks it automatically. Self-issued IDs prove the file is unchanged; for legally recognised signatures import an ID from a certificate authority (.p12 or .pfx).</li><li><b>Notebooks.</b> A library with folders and subfolders, colours and icons, search, favourites and lined, grid or dotted notebooks. Notebooks stay editable and save themselves as you write. In Chrome or Edge on a computer, choose a folder (for example in OneDrive or on a USB stick) and every notebook is also kept there as a normal PDF; choose the same folder on another computer to bring everything in. PDFs you drop into that folder are added too.</li></ul>`)}
     ${sec('download', 'Your data and backups', `<p>Work is saved in this browser on this device. Clearing the browser's site data, or using a private window, removes it, including Notebooks and digital IDs. To keep a copy, save your PDF, or in the Design studio choose Save project file.</p><p>Each device keeps its own work; nothing syncs between devices.</p>`)}
     ${sec('tour', 'Updates', `<p>When a new version is published the app downloads it quietly in the background. To switch to it straight away, open i, then Update. Your open documents are kept.</p>`)}
     ${sec('mail', 'Help and feedback', `<p>Suggestions, problems or requests: <b>tangojulietdev@gmail.com</b>. Every message is read.</p>`)}
@@ -5767,6 +5954,7 @@ function boot() {
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('#ribbon')) $('#ribbon').appendChild(t); };
   placeTools(); mq.addEventListener('change', placeTools);
+  setTimeout(() => fsInit(), 1500);
   return restoreSession().catch((e) => console.warn(e));
 }
 let readyRes; const ready = new Promise((r) => { readyRes = r; });

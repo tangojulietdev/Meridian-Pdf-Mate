@@ -1023,6 +1023,12 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 .nb-nbtn{height:32px;gap:6px;padding:0 10px;font-size:13px}.nb-nbtn svg{width:16px;height:16px}
 .nb-foot{color:var(--label-3);font-size:12px;margin-top:18px}
 @media (max-width:760px){.nb-tree{display:none}.nbv .fv-head .nb-sort{max-width:120px}.nbv .fv-head .nb-q{width:auto;flex:1;order:5;min-width:100%}.nbv .fv-head .tbtn span{display:none}.nb-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.nb-main{padding:10px}}
+.nb-disk{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--fill);margin-bottom:12px;font-size:13px;color:var(--label-2)}.nb-disk>svg{width:22px;height:22px;flex:none;color:var(--accent)}.nb-disk span{flex:1;min-width:0}.nb-disk b{color:var(--label);margin-right:4px}.nb-disk .btn{height:32px;padding:0 14px;font-size:13px;flex:none}.nb-disk.ok>svg{color:var(--ok)}.nb-disk.warn{background:color-mix(in srgb,#ffb800 18%,var(--fill))}.nb-disk.off{opacity:.8}
+.nb-fi{display:inline-grid;color:var(--accent)}.nb-row .nb-fi svg{width:18px;height:18px}.nb-fic .nb-fi svg{width:34px;height:34px}
+.nb-sty-prev{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;background:var(--fill);margin:4px 0 12px;font-size:15px}.nb-sty-prev svg{width:36px;height:36px}
+.nb-sw{display:flex;flex-wrap:wrap;gap:8px}.nb-sw button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}.nb-sw button.def{background:linear-gradient(135deg,var(--accent) 50%,var(--fill-2) 50%)}.nb-sw button[aria-pressed="true"]{outline:2px solid var(--label);outline-offset:2px}
+.nb-ic{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}.nb-ic button{height:42px;border-radius:10px;border:0;background:var(--fill);color:var(--accent);display:grid;place-items:center;cursor:pointer}.nb-ic button svg{width:22px;height:22px}.nb-ic button[aria-pressed="true"]{background:var(--fill-2);box-shadow:inset 0 0 0 2px currentColor}
+@media (max-width:760px){.nb-disk{flex-wrap:wrap}.nb-disk span{flex-basis:calc(100% - 40px)}}
 </style>
 </head>
 <body>
@@ -1154,6 +1160,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=21"></script>
+<script type="module" src="app.js?v=22"></script>
 </body>
 </html>
