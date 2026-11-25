@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.19.0';
+const VERSION = '3.19.1';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -3378,8 +3378,25 @@ const RIB_ACT = {
 S.cat = lsGet('pdfmate.cat', 'comment'); if (!CATS.some((c) => c[0] === S.cat)) S.cat = 'comment';
 const catOf = (k) => CATS.find((c) => c[0] === k) || CATS[1];
 function buildCats() {
-  $('#cats').innerHTML = CATS.map(([k, label, ic]) => `<button class="cat" role="tab" data-cat="${k}" aria-selected="${k === S.cat}" data-tip="${label}">${icon(ic)}<span>${label}</span></button>`).join('');
+  $('#cats').innerHTML = '<span class="cat-ind" aria-hidden="true"></span><span class="cat cat-probe" aria-selected="true" aria-hidden="true"></span>' + CATS.map(([k, label, ic]) => `<button class="cat" role="tab" data-cat="${k}" aria-selected="${k === S.cat}" data-tip="${label}">${icon(ic)}<span>${label}</span></button>`).join('');
+  $('#cats').classList.add('ind'); requestAnimationFrame(() => catInd(false));
 }
+const RMOT = matchMedia('(prefers-reduced-motion: reduce)');
+// The selected tab's look comes from a hidden probe, so the sliding pill matches every theme.
+function catInd(anim = true) {
+  const box = $('#cats'); if (!box) return; const ind = box.querySelector('.cat-ind'), pr = box.querySelector('.cat-probe'); if (!ind || !pr) return;
+  const b = box.querySelector(`button.cat[data-cat="${S.cat}"]`);
+  if (!b || !b.offsetWidth) { ind.style.opacity = 0; return; }
+  const cs = getComputedStyle(pr); ind.style.background = cs.backgroundColor; ind.style.backgroundImage = cs.backgroundImage; ind.style.boxShadow = cs.boxShadow; ind.style.borderRadius = cs.borderRadius;
+  const first = !ind.dataset.on; const still = !anim || first || RMOT.matches;
+  if (still) ind.style.transition = 'none';
+  ind.style.opacity = 1; ind.style.width = b.offsetWidth + 'px'; ind.style.height = b.offsetHeight + 'px'; ind.style.transform = `translate(${b.offsetLeft}px, ${b.offsetTop}px)`; ind.dataset.on = 1;
+  if (still) { void ind.offsetWidth; ind.style.transition = ''; }
+}
+addEventListener('resize', () => catInd(false));
+new MutationObserver(() => setTimeout(() => catInd(false), 30)).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-night', 'style'] });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => setTimeout(() => catInd(false), 30));
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => catInd(false));
 function buildTools() {
   const [ck, clabel, cic, items] = catOf(S.cat);
   let html = `<button class="tool catsw" data-catsw="1" aria-label="Change tool category" data-tip="Tool category">${icon(cic)}<span class="tl">${clabel}</span>${CHEV}</button><span class="rsep catsep"></span>`;
@@ -3394,12 +3411,28 @@ function buildTools() {
     else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
   }
   $('#tools').innerHTML = html;
-  $$('#cats .cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
+  $$('#cats button.cat').forEach((b) => b.setAttribute('aria-selected', b.dataset.cat === S.cat));
   $('#tools').dataset.cat = S.cat; $('#tools').hidden = !S.pages.length && S.cat !== 'design';
   try { markSplitBtn(); markViewBtns(); $$('#tools [data-act="night"]').forEach((x) => x.setAttribute('aria-pressed', lsGet('pdfmate.night', 'off') !== 'off')); } catch (e) {}
 }
 function selMark(kind) { const s0 = selectionInPages(); if (!s0 || !String(s0.sel).trim()) { toast('Select some text on the page first (Select tool, drag over words), then tap this again'); return; } markSelection(kind); }
-function setCat(k) { if (!CATS.some((c) => c[0] === k)) return; S.cat = k; lsSet('pdfmate.cat', k); buildTools(); const here = $(`#tools [data-tool="${S.tool}"]`); setTool(!here && $('#tools [data-tool="select"]') ? 'select' : S.tool, true); }
+function setCat(k) {
+  if (!CATS.some((c) => c[0] === k)) return;
+  const prev = S.cat, t = $('#tools'); const anim = prev !== k && !RMOT.matches && !t.hidden && t.offsetWidth > 0;
+  let ghost = null, w0 = 0;
+  if (anim) {
+    t.getAnimations({ subtree: true }).forEach((a) => a.finish()); $$('.tools-ghost').forEach((g) => g.remove());
+    w0 = t.offsetWidth; ghost = t.cloneNode(true); ghost.removeAttribute('id'); ghost.classList.add('tools-ghost'); ghost.setAttribute('aria-hidden', 'true'); ghost.inert = true; ghost.scrollLeft = t.scrollLeft;
+    Object.assign(ghost.style, { position: 'absolute', left: t.offsetLeft + 'px', top: t.offsetTop + 'px', width: w0 + 'px', height: t.offsetHeight + 'px', margin: 0 });
+  }
+  S.cat = k; lsSet('pdfmate.cat', k); buildTools(); catInd(true);
+  if (anim) {
+    const ix = (c) => CATS.findIndex((x) => x[0] === c); const dir = ix(k) > ix(prev) ? 1 : -1;
+    t.after(ghost); const sl = ghost.scrollLeft; ghost.scrollLeft = sl;
+    ghost.animate([{ opacity: 1, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: `translateX(${-dir * 22}px)`, filter: 'blur(2px)' }], { duration: 180, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).onfinish = () => ghost.remove();
+    [...t.children].forEach((el, i) => el.animate([{ opacity: 0, transform: `translateX(${dir * 18}px) scale(.92)` }, { opacity: 1, transform: 'none' }], { duration: 340, delay: 50 + Math.min(i, 16) * 17, easing: 'cubic-bezier(.22,1.2,.36,1)', fill: 'backwards' }));
+    const w1 = t.offsetWidth; if (Math.abs(w1 - w0) > 2 && getComputedStyle(t).position !== 'fixed') t.animate([{ width: w0 + 'px' }, { width: w1 + 'px' }], { duration: 360, easing: 'cubic-bezier(.25,1,.35,1)' });
+  } const here = $(`#tools [data-tool="${S.tool}"]`); setTool(!here && $('#tools [data-tool="select"]') ? 'select' : S.tool, true); }
 function setTool(t, keepCat) {
   if (S.poly && t !== 'area') finishPoly();
   if (t !== 'image') S.pendingImg = null;

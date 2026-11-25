@@ -1029,6 +1029,17 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 .nb-sw{display:flex;flex-wrap:wrap;gap:8px}.nb-sw button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}.nb-sw button.def{background:linear-gradient(135deg,var(--accent) 50%,var(--fill-2) 50%)}.nb-sw button[aria-pressed="true"]{outline:2px solid var(--label);outline-offset:2px}
 .nb-ic{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}.nb-ic button{height:42px;border-radius:10px;border:0;background:var(--fill);color:var(--accent);display:grid;place-items:center;cursor:pointer}.nb-ic button svg{width:22px;height:22px}.nb-ic button[aria-pressed="true"]{background:var(--fill-2);box-shadow:inset 0 0 0 2px currentColor}
 @media (max-width:760px){.nb-disk{flex-wrap:wrap}.nb-disk span{flex-basis:calc(100% - 40px)}}
+.cats{position:relative}.cats.ind .cat[aria-selected="true"]:not(.cat-probe){background:transparent!important;box-shadow:none!important}
+.cat-ind{position:absolute;left:0;top:0;z-index:0;pointer-events:none;opacity:0;will-change:transform,width;transition:transform .42s cubic-bezier(.3,1.35,.45,1),width .42s cubic-bezier(.3,1.35,.45,1),height .3s,opacity .2s}
+.cat-probe{transition:none!important;position:absolute!important;visibility:hidden;pointer-events:none;left:0;top:0;width:10px}
+.cats .cat{z-index:1;transition:background-color .15s var(--ease),color .25s var(--ease),transform .18s var(--ease)}
+.cats .cat svg.i{transition:transform .35s cubic-bezier(.3,1.5,.5,1),color .25s,opacity .25s}
+.cats .cat[aria-selected="true"] svg.i{transform:scale(1.12)}
+.cats .cat:active{transform:scale(.95)}
+.tools-ghost{pointer-events:none!important;background:none!important;box-shadow:none!important;z-index:2;overflow:hidden!important}
+.tools .tool{transition:background-color .15s var(--ease),color .15s,transform .15s var(--ease)}.tools .tool:active{transform:scale(.94)}
+@media (prefers-reduced-motion:reduce){.cat-ind{transition:none}.cats .cat svg.i{transition:none;transform:none!important}}
+@keyframes mitem{from{opacity:0;transform:translateY(4px)}}.menu>button{animation:mitem .22s cubic-bezier(.2,.9,.3,1) backwards}.menu>button:nth-of-type(2){animation-delay:18ms}.menu>button:nth-of-type(3){animation-delay:36ms}.menu>button:nth-of-type(4){animation-delay:54ms}.menu>button:nth-of-type(5){animation-delay:72ms}.menu>button:nth-of-type(6){animation-delay:90ms}.menu>button:nth-of-type(7){animation-delay:108ms}.menu>button:nth-of-type(8){animation-delay:126ms}.menu>button:nth-of-type(9){animation-delay:144ms}.menu>button:nth-of-type(10){animation-delay:162ms}.menu>button:nth-of-type(11){animation-delay:180ms}.menu>button:nth-of-type(12){animation-delay:198ms}@media (prefers-reduced-motion:reduce){.menu>button{animation:none}}
 </style>
 </head>
 <body>
@@ -1160,6 +1171,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=22"></script>
+<script type="module" src="app.js?v=23"></script>
 </body>
 </html>
