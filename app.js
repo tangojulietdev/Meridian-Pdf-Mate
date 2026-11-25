@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.16.0';
+const VERSION = '3.17.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -4992,8 +4992,8 @@ function infoMenu(anchor) {
   if (menuEl && menuEl.classList.contains('infopop')) { closeMenu(); return; }
   closeMenu(); const m = document.createElement('div'); m.className = 'menu infopop'; m.setAttribute('role', 'menu');
   const T = (k, ic, t, d) => `<button class="ip-tile" role="menuitem" data-k="${k}"><span class="ip-ic">${icon(ic)}</span><span class="ip-tx"><b>${t}</b><small>${d}</small></span></button>`;
-  m.innerHTML = T('keys', 'kbd', 'Keyboard shortcuts', 'Every tool has a key') + T('tour', 'tour', 'Quick tour', 'A one minute walk through') + T('about', 'info', 'About', `Version ${VERSION}, contact`) + T('update', 'download', 'Update', 'Check for a new version and refresh');
-  m.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeMenu(); const k = b.dataset.k; if (k === 'keys') openShortcuts(); else if (k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else if (k === 'update') checkUpdate(); else about(); });
+  m.innerHTML = T('keys', 'kbd', 'Keyboard shortcuts', 'Every tool has a key') + T('tour', 'tour', 'Quick tour', 'A one minute walk through') + T('about', 'info', 'About', `Version ${VERSION}, contact`) + T('guide', 'reading', 'App guide', 'How it works, safety, installing') + T('update', 'download', 'Update', 'Check for a new version and refresh');
+  m.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeMenu(); const k = b.dataset.k; if (k === 'keys') openShortcuts(); else if (k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else if (k === 'update') checkUpdate(); else if (k === 'guide') appGuide(); else about(); });
   document.body.appendChild(m); menuEl = m; const r = anchor.getBoundingClientRect();
   m.style.left = clamp(r.right - m.offsetWidth, 8, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = (r.bottom + 8) + 'px';
   setTimeout(() => { document.addEventListener('pointerdown', menuOutside, true); document.addEventListener('keydown', menuKey); const f = m.querySelector('button'); if (f) f.focus(); }, 0);
@@ -5031,6 +5031,24 @@ async function applyUpdate() {
   } catch (e) { console.warn('update', e); }
   t.remove(); skipUnloadPrompt = true;
   const u = new URL(location.href); u.searchParams.delete('share'); u.searchParams.set('updated', Date.now()); location.replace(u.toString());
+}
+function appGuide() {
+  const sec = (ic, t, body, open) => `<details class="gd"${open ? ' open' : ''}><summary><span class="gd-ic">${icon(ic)}</span><b>${t}</b>${CHEV}</summary><div class="gd-b">${body}</div></details>`;
+  const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('reading')}</div><div><h2 style="margin:0">App guide</h2><p class="sub" style="margin:2px 0 0">Meridian PDF Mate · version ${VERSION}</p></div></div>
+    <div class="gd-list">
+    ${sec('info', 'What this app is', `<p>A complete PDF workspace that runs in your browser. Open, fill, sign, stamp, mark up, merge, split, print and export documents, and design photo albums, calendars, posters and presentations in the Design studio.</p><p>It was built by a serving seafarer for people who work on locked-down computers, on slow or no internet, and with confidential paperwork.</p>`, true)}
+    ${sec('open', 'How it works', `<p>The app is a set of files your browser downloads once. After that, every feature runs on your own device using the browser's engine. Documents are read, edited and saved in memory and in the browser's private storage on this device.</p><ul><li>Nothing is sent to a server for processing.</li><li>After the first visit it works fully offline, including at sea.</li><li>Your open documents and designs are kept between sessions on this device.</li></ul>`)}
+    ${sec('lock', 'Why it is safe', `<ul><li><b>Your files never leave the device.</b> There is no upload, no cloud copy and no server that could be breached.</li><li><b>No tracking.</b> No analytics, adverts or third-party scripts run inside the app.</li><li><b>Browser sandbox.</b> It runs inside the same security sandbox as any web page in Chrome or Edge, so it cannot reach your other files or programs unless you choose a file yourself.</li><li><b>Proven libraries.</b> PDF reading and writing use pdf.js by Mozilla and pdf-lib, both open source and widely audited.</li><li><b>Works without internet.</b> You can switch off Wi-Fi and it keeps working, which shows nothing depends on a connection.</li></ul>`)}
+    ${sec('sign', 'Why there is no sign-in', `<p>Accounts exist to store your data on someone else's computer. This app stores nothing anywhere except your own device, so there is nothing to log in to, no password to leak and no account to be hacked or closed.</p><p>It also means no subscription, no trial that runs out and no watermark on your documents.</p>`)}
+    ${sec('install', 'Install it as an app', `<p>Installing adds an app icon and its own window. It needs no administrator rights on most computers, takes a few seconds and can be removed like any app.</p><ul><li><b>Windows or Mac, Chrome or Edge:</b> click the install icon at the right of the address bar, or open the browser menu and choose Install Meridian PDF Mate.</li><li><b>Android, Chrome:</b> open the menu and tap Install app or Add to Home screen.</li><li><b>iPhone or iPad, Safari:</b> tap Share, then Add to Home Screen.</li></ul><p>On Windows you can then set it as the default app for PDF files from Settings, Apps, Default apps.</p>`)}
+    ${sec('check', 'What makes it different', `<ul><li>Free, with every feature included.</li><li>No installation file and no admin rights needed, so it runs on ship and office computers.</li><li>Works offline, made for life at sea.</li><li>Fill forms, sign, stamp, scan, OCR, compare, redact, protect with a password and export to Word.</li><li>A full Design studio with 90 templates, calendars and print-ready export.</li><li>Light, dark and red bridge night mode.</li></ul>`)}
+    ${sec('download', 'Your data and backups', `<p>Work is saved in this browser on this device. Clearing the browser's site data, or using a private window, removes it. To keep a copy, save your PDF, or in the Design studio choose Save project file.</p><p>Each device keeps its own work; nothing syncs between devices.</p>`)}
+    ${sec('tour', 'Updates', `<p>When a new version is published the app downloads it quietly in the background. To switch to it straight away, open i, then Update. Your open documents are kept.</p>`)}
+    ${sec('mail', 'Help and feedback', `<p>Suggestions, problems or requests: <b>tangojulietdev@gmail.com</b>. Every message is read.</p>`)}
+    </div>
+    <div class="acts">${isStandalone() ? '' : `<button class="btn" data-k="install">${icon('install')} Install</button>`}<button class="btn primary" data-x>Done</button></div>`, { wide: true });
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  const ib = sh.querySelector('[data-k="install"]'); if (ib) ib.onclick = () => { closeSheet(); doInstall(); };
 }
 function about() {
   const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · Tango Juliet Dev</p></div></div>

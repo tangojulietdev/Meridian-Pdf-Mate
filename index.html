@@ -349,6 +349,17 @@ select.ff{padding:0 2px;appearance:auto}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .sheet{width:100%;max-width:460px;max-height:calc(100% - 32px);overflow:auto;border-radius:18px;background:var(--glass-strong);-webkit-backdrop-filter:blur(40px) saturate(180%);backdrop-filter:blur(40px) saturate(180%);box-shadow:var(--pop-shadow);border:.5px solid var(--glass-edge);padding:20px;animation:sheetin .22s var(--ease)}
 .sheet.wide{max-width:640px}
+.gd-list{display:flex;flex-direction:column;gap:6px;margin:14px 0 4px}
+.gd{border-radius:12px;background:var(--fill);overflow:hidden}
+.gd summary{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;list-style:none;font-size:14px}
+.gd summary::-webkit-details-marker{display:none}
+.gd summary b{flex:1}
+.gd summary>svg:last-child{transition:transform .2s;opacity:.6}
+.gd[open] summary>svg:last-child{transform:rotate(180deg)}
+.gd-ic{width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none}
+.gd-ic .i{width:16px;height:16px}
+.gd-b{padding:0 14px 12px 50px;font-size:13px;line-height:1.55;color:var(--label-2)}
+.gd-b p{margin:0 0 8px}.gd-b ul{margin:0 0 8px;padding-left:18px}.gd-b li{margin:3px 0}.gd-b b{color:var(--label)}
 @keyframes sheetin{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 .sheet h2{font-size:17px;font-weight:700;margin:0 0 4px;letter-spacing:-.01em}
 .sheet .sub{color:var(--label-3);margin:0 0 16px;font-size:13px}
@@ -1111,6 +1122,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=19"></script>
+<script type="module" src="app.js?v=20"></script>
 </body>
 </html>
