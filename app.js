@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.15.0';
+const VERSION = '3.16.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -914,7 +914,7 @@ async function openDesign(o = {}) {
   if (o instanceof Event) o = {};
   closeMenu(); closeSheet();
   try {
-    const m = await import('./design.js?v=3');
+    const m = await import('./design.js?v=4');
     await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } }, o);
   } catch (e) { console.error(e); toast('The design studio could not open. Reload the app and try again', { err: true }); }
 }
@@ -3313,7 +3313,7 @@ const RIB_ACT = {
   paper: ['Paper', 'grid', 'Lined, grid, dots and other paper for blank pages, and the default for new ones', () => paperMenu($('#tools [data-act="paper"]'))],
   undo: ['Undo', 'undo', 'Undo (Ctrl+Z)', () => undo()], redo: ['Redo', 'redo', 'Redo (Ctrl+Shift+Z)', () => redo()],
   dslib: ['Designs', 'grid', 'All your albums, calendars, posters and slides', () => openDesign({ action: 'library' })],
-  dstpl: ['Templates', 'form', 'Ready-made pages: crew boards, certificates, drill posters, cards, slides', () => openDesign({ tab: 'templates' })],
+  dstpl: ['Templates', 'form', '90 ready-made pages: school, college, portfolio, business, invitations, cards, posters, menus, social posts, slides and ship templates', () => openDesign({ tab: 'templates' })],
   dscal: ['Calendar', 'goto', 'Make a 12 month calendar with your photos, birthdays and port calls', () => openDesign({ action: 'calendar' })],
   dspreview: ['Preview', 'reading', 'Flip through the design as a book or play it as a slideshow', () => openDesign({ action: 'preview' })],
   dscheck: ['Check', 'check', 'Check before printing: empty frames, blurry photos, unfilled text', () => openDesign({ action: 'check' }), true],
