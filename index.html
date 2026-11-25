@@ -1040,6 +1040,25 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 .tools .tool{transition:background-color .15s var(--ease),color .15s,transform .15s var(--ease)}.tools .tool:active{transform:scale(.94)}
 @media (prefers-reduced-motion:reduce){.cat-ind{transition:none}.cats .cat svg.i{transition:none;transform:none!important}}
 @keyframes mitem{from{opacity:0;transform:translateY(4px)}}.menu>button{animation:mitem .22s cubic-bezier(.2,.9,.3,1) backwards}.menu>button:nth-of-type(2){animation-delay:18ms}.menu>button:nth-of-type(3){animation-delay:36ms}.menu>button:nth-of-type(4){animation-delay:54ms}.menu>button:nth-of-type(5){animation-delay:72ms}.menu>button:nth-of-type(6){animation-delay:90ms}.menu>button:nth-of-type(7){animation-delay:108ms}.menu>button:nth-of-type(8){animation-delay:126ms}.menu>button:nth-of-type(9){animation-delay:144ms}.menu>button:nth-of-type(10){animation-delay:162ms}.menu>button:nth-of-type(11){animation-delay:180ms}.menu>button:nth-of-type(12){animation-delay:198ms}@media (prefers-reduced-motion:reduce){.menu>button{animation:none}}
+@media (min-width:761px){
+  .toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr);column-gap:14px}
+  .toolbar .tb-left{position:relative;display:flex;align-items:center;gap:10px;min-width:0;justify-self:stretch;flex:none}
+  .toolbar .tb-right{justify-self:end;min-width:max-content;flex:none}
+  .toolbar .cats{justify-self:center}
+  .tb-left .docname{flex:0 1 auto;min-width:48px}
+  .tb-left .tb-hist{flex:none}
+  .tb-left .tsearch:not(.open){margin-left:auto}
+  .ps-hist{display:none}
+  .tb-left .tsearch{flex:none}
+  .tb-left .tsearch:not(.open){width:34px;padding:0;background:var(--pill);box-shadow:var(--pill-shadow);justify-content:center;border-radius:999px}
+  .tb-left .tsearch:not(.open) > :not(.ts-ic){display:none!important}
+  .tb-left .tsearch.open{position:absolute;left:0;right:auto;top:50%;transform:translateY(-50%);width:max(100%,280px);max-width:440px;z-index:40;background:var(--control);border-radius:10px;animation:tsgrow .22s cubic-bezier(.2,.9,.3,1)}
+  .tb-left .tsearch.open .ts-kbd{display:none}
+}
+@keyframes tsgrow{from{width:34px;opacity:.6}}
+@media (max-width:1479px) and (min-width:1180px){ .cats .cat svg.i{display:none} .cats .cat{padding:0 11px} }
+@media (max-width:760px){ .tb-hist{display:contents} }
+.tsearch.open{background:var(--glass-strong)!important;-webkit-backdrop-filter:blur(28px) saturate(180%);backdrop-filter:blur(28px) saturate(180%);box-shadow:var(--pop-shadow),inset 0 0 0 .5px var(--glass-edge)}.tsearch.open:focus-within{box-shadow:var(--pop-shadow),0 0 0 3px var(--accent-soft),inset 0 0 0 1px var(--accent)}
 </style>
 </head>
 <body>
@@ -1052,9 +1071,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
         <input id="docName" value="Untitled" aria-label="File name" spellcheck="false" autocomplete="off">
         <small id="docMeta">No document</small>
       </div>
-    </div>
-    <div class="cats" id="cats" role="tablist" aria-label="Tool categories"></div>
-    <div class="tb-right">
       <div class="tsearch" id="tsearch" role="search">
         <button class="ts-ic" id="tsIc" type="button" aria-label="Search text" title="Search text (Ctrl+F)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></svg></button>
         <input id="findInput" type="search" placeholder="Search text" aria-label="Search text in document" autocomplete="off" spellcheck="false" disabled>
@@ -1066,10 +1082,15 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
         <button class="ts-b" id="findClose" type="button" aria-label="Clear search" title="Clear (Esc)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         <div class="tsres" id="tsRes" role="listbox" aria-label="Search results" hidden></div>
       </div>
-      <div class="pill" role="group" aria-label="Edit and file">
+      <div class="pill tb-hist" role="group" aria-label="Undo and redo">
         <button class="tbtn" id="btnUndo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled></button>
         <button class="tbtn tb-redo" id="btnRedo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled></button>
-        <span class="psep" aria-hidden="true"></span>
+      </div>
+    </div>
+    <div class="cats" id="cats" role="tablist" aria-label="Tool categories"></div>
+    <div class="tb-right">
+      <div class="pill" role="group" aria-label="Edit and file">
+<span class="psep ps-hist" aria-hidden="true"></span>
         <button class="tbtn" id="btnOpen" aria-label="Open or add files" title="Open or add files (Ctrl+O)"></button>
         <button class="tbtn" id="btnNotes" aria-label="Notebooks" title="Notebooks (Ctrl+Shift+L)"></button>
         <button class="tbtn tb-print" id="btnPrint" aria-label="Print" title="Print (Ctrl+P)" disabled></button>
@@ -1171,6 +1192,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=23"></script>
+<script type="module" src="app.js?v=24"></script>
 </body>
 </html>

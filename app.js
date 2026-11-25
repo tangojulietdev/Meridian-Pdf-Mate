@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.19.1';
+const VERSION = '3.19.2';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -5987,6 +5987,8 @@ function boot() {
   const mq = matchMedia('(max-width: 760px)');
   const placeTools = () => { const t = $('#tools'); if (mq.matches) { if (t.parentElement !== document.body) document.body.appendChild(t); } else if (t.parentElement !== $('#ribbon')) $('#ribbon').appendChild(t); };
   placeTools(); mq.addEventListener('change', placeTools);
+  const placeHist = () => { const u = $('#btnUndo'), r = $('#btnRedo'), ts = $('#tsearch'); if (mq.matches) { const p = $('.tb-right .pill'); if (u.parentElement !== p) { p.prepend(r); p.prepend(u); } if (ts.parentElement !== $('.tb-right')) $('.tb-right').prepend(ts); } else { const hp = $('.tb-hist'); if (u.parentElement !== hp) hp.append(u, r); if (ts.nextElementSibling !== hp) hp.before(ts); } };
+  placeHist(); mq.addEventListener('change', placeHist);
   setTimeout(() => fsInit(), 1500);
   return restoreSession().catch((e) => console.warn(e));
 }
