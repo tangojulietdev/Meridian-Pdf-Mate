@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.17.0';
+const VERSION = '3.18.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -19,6 +19,14 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 /* ---------- Icons (SF-style strokes) ---------- */
 const IC = {
+  chevr: '<path d="M9 6l6 6-6 6"/>',
+  history: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  nb: '<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z"/><path d="M6 3v18M4 7h4M4 12h4M4 17h4M11 8h5"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/>',
+  dsig: '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.5 13c1-.2 1.4-3 2.4-3s.4 3 1.4 3 1-1.5 1.6-1.5.6 1.1 1.6 1"/>',
+  idcard: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13.5h3"/>',
+  shieldok: '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
   design: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 13h8V3M11 8h10"/><circle cx="16" cy="15.5" r="2.5"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   paste: '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h4"/>',
@@ -62,6 +70,14 @@ const IC = {
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   form: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h4.5"/>',
+  fld_text: '<rect x="3" y="8" width="18" height="8" rx="1.5"/><path d="M6.5 10.5v3"/>',
+  fld_multi: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M6 9h12M6 12h12M6 15h7"/>',
+  fld_check: '<rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  fld_radio: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  fld_drop: '<rect x="3" y="8" width="18" height="8" rx="1.5"/><path d="m14.5 11 2 2 2-2"/>',
+  fld_date: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M8 14h2M12 14h2M8 17h2"/>',
+  fld_sign: '<path d="M3 17c3-1 4-6 6-6 1.5 0 0 5 2 5 1.5 0 2-3 3.5-3s1 2 2.5 2"/><path d="M3 20.5h18"/>',
+  fld_detect: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 14h8M8 10h5"/>',
   photo: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 16-5-5-8.5 8"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   offline: '<path d="M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5M5 12.6a10 10 0 0 1 5.2-2.6M19 12.6a10 10 0 0 0-1.9-1.4M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"/>',
@@ -171,7 +187,7 @@ const STAMPS = [['APPROVED', '#1a7f37'], ['RECEIVED', '#0040dd'], ['NOTED', '#00
 const SHP_FILLS = [['No fill', 'none'], ['White', '#ffffff'], ['Light yellow', '#fff3a6'], ['Light blue', '#d6ecff'], ['Light green', '#d4f5c9'], ['Light pink', '#ffd9ec'], ['Light grey', '#e5e5ea'], ['See-through, line colour', 'tint']];
 const c0eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 const NOTE_BGS = [['Yellow', '#fff3a6'], ['Green', '#d4f5c9'], ['Blue', '#d6ecff'], ['Pink', '#ffd9ec']];
-const DRAW_TOOLS = new Set(['crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'darrow', 'shape', 'pen', 'eraser', 'lasso', 'tick', 'cross', 'image', 'stamp']);
+const DRAW_TOOLS = new Set(['field', 'crop', 'text', 'tbox', 'objedit', 'measure', 'area', 'cloud', 'note', 'white', 'hl', 'redact', 'rect', 'ellipse', 'line', 'arrow', 'darrow', 'shape', 'pen', 'eraser', 'lasso', 'tick', 'cross', 'image', 'stamp']);
 const toolGroup = (t) => Object.keys(GROUPS).find((g) => GROUPS[g].some((v) => v[0] === t));
 
 /* ---------- Geometry ---------- */
@@ -292,10 +308,10 @@ function gradCanvas(a, k = 4) {
 
 /* ---------- Annotation geometry ---------- */
 const ORIENTED = new Set(['text', 'image', 'tick', 'cross']);
-const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact', 'cloud', 'shape']);
+const BOXES = new Set(['white', 'hl', 'rect', 'ellipse', 'redact', 'cloud', 'shape', 'field']);
 function rotPt(x, y, cx, cy, deg) { const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r); const dx = x - cx, dy = y - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c]; }
 const normDeg = (d) => { d = ((d % 360) + 360) % 360; d = Math.round(d * 1000) / 1000; return d >= 360 ? 0 : d; };
-const ROTATABLE = (a) => a.t !== 'mark';
+const ROTATABLE = (a) => a.t !== 'mark' && a.t !== 'field';
 function annCenter(a) { let L = Infinity, B = Infinity, R = -Infinity, T = -Infinity; for (const [x, y] of corners(a)) { L = Math.min(L, x); R = Math.max(R, x); B = Math.min(B, y); T = Math.max(T, y); } return [(L + R) / 2, (B + T) / 2]; }
 // Rotate an annotation by deg (PDF space, positive is anticlockwise) about a pivot point.
 function rotateAnn(a, deg, pivot) {
@@ -555,7 +571,7 @@ function toast(msg, opts = {}) {
   if (!opts.sticky) toastT = setTimeout(() => t.remove(), opts.ms || 2600);
   return t;
 }
-function closeSheet() { const s = $('#layer .scrim'); if (s) { s.remove(); } document.removeEventListener('keydown', sheetKey); }
+function closeSheet() { const s = $('#layer .scrim:not(.fv-scrim)'); if (s) { s.remove(); } document.removeEventListener('keydown', sheetKey); }
 function sheetKey(e) { if (e.key === 'Escape') closeSheet(); }
 function sheet(html, { wide = false, onMount } = {}) {
   closeSheet(); closeMenu();
@@ -637,6 +653,7 @@ async function readFields(doc) {
       else if (f instanceof PL.PDFDropdown) { type = 'drop'; options = f.getOptions(); value = f.getSelected()[0] || ''; }
       else if (f instanceof PL.PDFOptionList) { type = 'drop'; options = f.getOptions(); value = f.getSelected()[0] || ''; }
       else if (f instanceof PL.PDFRadioGroup) { type = 'radio'; options = f.getOptions(); value = f.getSelected() || ''; }
+      else if (f instanceof PL.PDFSignature) { if (!f.acroField.dict.get(PL.PDFName.of('V'))) doc.emptySig = (doc.emptySig || 0) + 1; continue; }
       if (!type) continue;
       const name = f.getName();
       let multiline = false; try { multiline = type === 'text' && f.isMultiline(); } catch (e) {}
@@ -668,7 +685,7 @@ async function addFiles(files, at = S.pages.length) {
         }
         if (!pdf) continue;
         const doc = { id: uid('d'), name: f.name, bytes, pdf, password: pw, fields: [], values: {}, widgets: new Map() };
-        await readFields(doc); if (pw) doc.encrypted = true;
+        await readFields(doc); if (pw) doc.encrypted = true; checkSigs(doc);
         formCount += doc.fields.length;
         S.docs.set(doc.id, doc);
         for (let i = 0; i < pdf.numPages; i++) {
@@ -848,7 +865,7 @@ function inkClick(e) {
   void fb; return false;
 }
 function inkContext(e) { const b = e.target.closest('[data-fav]'); if (!b) return; e.preventDefault(); const i = +b.dataset.fav; const c = inkCfg(); INK.favs[i] = [INK.pen, c.color, c.width]; saveInk(); refreshFormatBar(); toast('Saved this pen to the favourite slot'); }
-function buildToolsPressed() { $$('#tools [data-pen]').forEach((b) => b.setAttribute('aria-pressed', S.tool === 'pen' && b.dataset.pen === INK.pen)); }
+function buildToolsPressed() { $$('#tools [data-pen]').forEach((b) => b.setAttribute('aria-pressed', S.tool === 'pen' && b.dataset.pen === INK.pen)); $$('#tools [data-fkind]').forEach((b) => b.setAttribute('aria-pressed', S.tool === 'field' && b.dataset.fkind === S.fieldKind)); }
 
 /* ---------- 3.10: paper templates for blank pages ---------- */
 const PAPERS_T = [['plain', 'Plain'], ['narrow', 'Lined, narrow (6 mm)'], ['lined', 'Lined (8 mm)'], ['wide', 'Lined, wide (10 mm)'], ['grid5', 'Grid 5 mm'], ['grid10', 'Grid 1 cm'], ['graph', 'Graph paper (mm)'], ['dots', 'Dots 5 mm'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist'], ['log', 'Log sheet'], ['meeting', 'Meeting notes'], ['music', 'Music staves']];
@@ -921,9 +938,9 @@ async function openDesign(o = {}) {
 
 /* ---------- 3.9: new blank PDF ---------- */
 const NEW_SIZES = { a4: ['A4', 210, 297], a3: ['A3', 297, 420], a5: ['A5', 148, 210], letter: ['Letter', 215.9, 279.4], legal: ['Legal', 215.9, 355.6], custom: ['Custom'] };
-function openNewPdf() {
+function openNewPdf(o = {}) {
   const st = Object.assign({ size: 'a4', land: false, n: 1, cw: 210, ch: 297 }, lsGet('pdfmate.newpdf', {}), { paper: defPaper() }); if (!PAPERS_T.some((x) => x[0] === st.paper)) st.paper = 'plain';
-  const sh = sheet(`<h2>New blank PDF</h2><p class="sub">Opens in a new tab, ready to fill, sign or draw on.</p>
+  const sh = sheet(`<h2>${o.lib ? 'New notebook' : 'New blank PDF'}</h2><p class="sub">${o.lib ? 'Saved in Notebooks and kept up to date as you write. Pick lined, grid or dotted paper below.' : 'Opens in a new tab, ready to fill, sign or draw on.'}</p>
     <div class="field"><span class="flabel">Name</span><input id="npName" class="inp" value="Untitled" autocomplete="off"></div>
     <div class="field"><span class="flabel">Page size</span><select id="npSize" class="inp">${Object.entries(NEW_SIZES).map(([k, v]) => `<option value="${k}" ${k === st.size ? 'selected' : ''}>${v[0]}${v[1] ? ` (${v[1]} × ${v[2]} mm)` : ''}</option>`).join('')}</select>
       <div class="pr-row" id="npCustom"><input id="npW" class="inp" inputmode="decimal" value="${st.cw}" aria-label="Width in mm" style="width:90px"> × <input id="npH" class="inp" inputmode="decimal" value="${st.ch}" aria-label="Height in mm" style="width:90px"> mm</div></div>
@@ -943,7 +960,7 @@ function openNewPdf() {
       let [wmm, hmm] = st.size === 'custom' ? [clamp(st.cw, 20, 5000), clamp(st.ch, 20, 5000)] : NEW_SIZES[st.size].slice(1); if (st.land !== wmm > hmm) [wmm, hmm] = [hmm, wmm];
       const name = ($s('#npName').value || 'Untitled').trim().replace(/[\\/:*?"<>|]/g, '') || 'Untitled';
       st.paper = $s('#npPaper').value; if ($s('#npDef').checked) lsSet('pdfmate.paper', st.paper); lsSet('pdfmate.newpdf', st);
-      closeSheet(); const mm = 72 / 25.4; createBlankDoc(name, wmm * mm, hmm * mm, st.n, st.paper); toast(`Created ${name}: ${st.n} page${st.n > 1 ? 's' : ''}, ${paperName(st.paper)} paper. Change it any time under Pages, Paper`);
+      closeSheet(); const mm = 72 / 25.4; createBlankDoc(name, wmm * mm, hmm * mm, st.n, st.paper); if (o.lib) { nbSaveCurrent({ folder: o.lib, name }); return; } toast(`Created ${name}: ${st.n} page${st.n > 1 ? 's' : ''}, ${paperName(st.paper)} paper. Change it any time under Pages, Paper`);
     }
   });
   $s('#npSize').addEventListener('change', paint); paint(); setTimeout(() => { const i = $s('#npName'); i.focus(); i.select(); }, 60);
@@ -1610,7 +1627,7 @@ const blobGet = (k) => tx('blobs', 'readonly', (st) => st.get(k)).catch(() => nu
 const blobKeys = () => tx('blobs', 'readonly', (st) => st.getAllKeys()).catch(() => []);
 const stored = new Set();
 let saveT = null, saving = false, restoring = false;
-function scheduleSave() { if (restoring) return; clearTimeout(saveT); saveT = setTimeout(saveSession, 900); }
+function scheduleSave() { if (restoring) return; clearTimeout(saveT); saveT = setTimeout(saveSession, 900); nbAutoSave(); }
 function refsOf(pages, docs, imgs) { for (const p of pages) { if (p.docId) docs.add(p.docId); if (p.imgId) imgs.add(p.imgId); for (const a of p.annots) { if (a.imgId) imgs.add(a.imgId); if (a.edit && a.edit.orig) imgs.add(a.edit.orig); } } }
 async function tabThumb(t) {
   const p = t.pages[0]; if (!p) return null; const c = thumbCache.get(p.id + '|' + tr(p)); if (!c) return null;
@@ -1636,7 +1653,7 @@ async function saveSession() {
     for (const id of imgs) { if (stored.has(id)) continue; const im = S.imgs.get(id); if (im) toPut.push([id, { kind: 'img', src: im.src, w: im.w, h: im.h }]); }
     if (toPut.length) { await tx('blobs', 'readwrite', (st) => { for (const [k, v] of toPut) st.put(v, k); }); toPut.forEach(([k]) => stored.add(k)); }
     const active = open.indexOf(WS.list[WS.active]);
-    await kvSet('session', { tabs: open.map((t) => ({ id: t.id, name: t.name, pages: t.pages, meta: t.meta, dirty: t.dirty, zoom: t.zoom, fit: t.fit, current: t.current, sbView: t.sbView })), active: Math.max(0, active), vals: [...docs].map((id) => [id, (S.docs.get(id) || {}).values || {}]) });
+    await kvSet('session', { tabs: open.map((t) => ({ id: t.id, libId: t.libId || null, name: t.name, pages: t.pages, meta: t.meta, dirty: t.dirty, zoom: t.zoom, fit: t.fit, current: t.current, sbView: t.sbView })), active: Math.max(0, active), vals: [...docs].map((id) => [id, (S.docs.get(id) || {}).values || {}]) });
     await kvSet('recent', recent);
     const keep = new Set([...docs, ...imgs]); const all = await blobKeys(); const drop = all.filter((k) => !keep.has(k));
     if (drop.length) { await tx('blobs', 'readwrite', (st) => { for (const k of drop) st.delete(k); }); drop.forEach((k) => stored.delete(k)); }
@@ -1645,21 +1662,21 @@ async function saveSession() {
   saving = false;
 }
 async function ensureDoc(id, vals) {
-  if (S.docs.has(id)) return true; const b = await blobGet(id); if (!b || b.kind !== 'pdf') return false;
+  if (S.docs.has(id)) return true; const b = NB_SRC.get(id) || await blobGet(id); if (!b || b.kind !== 'pdf') return false;
   try {
     const bytes = b.bytes instanceof Uint8Array ? b.bytes : new Uint8Array(b.bytes);
     const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice(), password: b.password || undefined }).promise;
     const doc = { id, name: b.name, bytes, pdf, password: b.password || undefined, fields: [], values: {}, widgets: new Map() };
-    await readFields(doc); if (b.password) doc.encrypted = true; if (vals) doc.values = vals;
-    S.docs.set(id, doc); stored.add(id);
+    await readFields(doc); checkSigs(doc, true); if (b.password) doc.encrypted = true; if (vals) doc.values = vals;
+    S.docs.set(id, doc); if (!NB_SRC.has(id)) stored.add(id);
     if (doc.values[EDK] && Object.keys(doc.values[EDK]).length) await rebuildDoc(doc);
     return true;
   } catch (e) { console.warn('restore doc', e); return false; }
 }
 async function ensureImg(id) {
   if (S.imgs.has(id) && S.imgs.get(id).el) return true;
-  let src = null, w = 0, h = 0; const b = await blobGet(id);
-  if (b && b.kind === 'img') { src = b.src; w = b.w; h = b.h; stored.add(id); } else { const it = libItems().find((x) => x.id === id); if (it) { src = it.src; w = it.w; h = it.h; } }
+  let src = null, w = 0, h = 0; const b = NB_SRC.get(id) || await blobGet(id);
+  if (b && b.kind === 'img') { src = b.src; w = b.w; h = b.h; if (!NB_SRC.has(id)) stored.add(id); } else { const it = libItems().find((x) => x.id === id); if (it) { src = it.src; w = it.w; h = it.h; } }
   if (!src) return false; try { S.imgs.set(id, { src, w, h, el: await loadImageEl(src) }); return true; } catch (e) { return false; }
 }
 async function hydrate(pages, valsList) {
@@ -1675,7 +1692,7 @@ async function restoreSession() {
     const tabs = [];
     for (const st of ses.tabs) {
       const pages = await hydrate(st.pages, ses.vals); if (!pages.length) continue;
-      const t = blankTab(); Object.assign(t, { id: st.id, name: st.name, pages, meta: st.meta, dirty: !!st.dirty, zoom: st.zoom || 1, fit: st.fit !== false, current: st.current || 0, sbView: st.sbView || 'pages' });
+      const t = blankTab(); Object.assign(t, { id: st.id, libId: st.libId || null, name: st.name, pages, meta: st.meta, dirty: !!st.dirty, zoom: st.zoom || 1, fit: st.fit !== false, current: st.current || 0, sbView: st.sbView || 'pages' });
       tabs.push(t);
     }
     if (tabs.length) {
@@ -1893,6 +1910,7 @@ function annNode(a) {
   else if (a.t === 'ellipse') g.appendChild(sv('ellipse', { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: Math.max(0, a.w / 2 - w / 2), ry: Math.max(0, a.h / 2 - w / 2), fill: a.fill || 'none', 'fill-opacity': a.fop == null ? 1 : a.fop, stroke: a.color, 'stroke-width': w }));
   else if (a.t === 'shape') shapeSvgNodes(g, a);
   else if (a.t === 'redact') g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, fill: '#000000' }));
+  else if (a.t === 'field') fieldSvg(g, a);
   else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') measSvg(g, a);
   else if (a.t === 'mark') {
     if (a.kind === 'hl') for (const [x, y, rw, rh] of a.rects) g.appendChild(sv('rect', { x, y, width: rw, height: rh, fill: a.color, 'fill-opacity': 0.4, style: 'mix-blend-mode:multiply' }));
@@ -1953,7 +1971,7 @@ function drawOverlay(p, el = pageEl(p.id)) {
     if (S.editing && S.editing.annId === a.id) continue;
     content.appendChild(annNode(a));
     const b = dispBox(a, g), pad = 6 / S.zoom;
-    ui.appendChild(sv('rect', { class: 'ann hit', 'data-id': a.id, x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad, fill: 'transparent' }));
+    ui.appendChild(sv('rect', { class: a.t === 'field' ? 'ann hit fld' : 'ann hit', 'data-id': a.id, x: b.L - pad, y: b.T - pad, width: b.R - b.L + 2 * pad, height: b.B - b.T + 2 * pad, fill: 'transparent' }));
   }
   if (p.crop) {
     const c = p.crop; const d1 = ap(g.t, c[0], c[1]), d2 = ap(g.t, c[2], c[3]); const L = Math.min(d1[0], d2[0]), T = Math.min(d1[1], d2[1]), Rr = Math.max(d1[0], d2[0]), B = Math.max(d1[1], d2[1]);
@@ -2155,7 +2173,8 @@ pagesEl.addEventListener('pointerdown', (e) => {
   const pdfPt = ap(g.i, pt[0], pt[1]);
   closeMenu();
   if (S.editing) { closeEditor(false); if (S.tool === 'text' || S.tool === 'tbox') { return; } }
-  const tool = S.tool;
+  let tool = S.tool;
+  if (tool === 'field' && e.target.closest('.ann.fld, .handle, .handle-hit')) tool = 'select';
   if (INK.stylus && e.pointerType === 'touch' && INK_TOOLS.has(tool)) return;
   if (tool === 'eraser') { e.preventDefault(); drag = { mode: 'erase', p, el, g, start: pt, id: e.pointerId }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); eraseAt(drag, pt); return; }
   if (tool === 'lasso') { e.preventDefault(); LASSO = { pageId: p.id, pts: [pt] }; drag = { mode: 'lasso', p, el, g, start: pt, id: e.pointerId }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return; }
@@ -2225,7 +2244,7 @@ pagesEl.addEventListener('pointerdown', (e) => {
   if (tool === 'crop') { drag = { mode: 'crop', p, el, g, start: pt, startPdf: pdfPt, id: e.pointerId, cur: pdfPt }; el.querySelector('svg.ov').setPointerCapture(e.pointerId); return; }
   // drag-to-create tools
   let a;
-  if (BOXES.has(tool)) { a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width }; if (tool === 'shape') a.kind = S.shapeKind; if (FILLABLE.has(tool) && S.style.fill && S.style.fill !== 'none') { a.fill = S.style.fill === 'tint' ? a.color : S.style.fill; if (S.style.fill === 'tint') a.fop = 0.25; } }
+  if (BOXES.has(tool)) { a = { id: uid('a'), t: tool, x: pdfPt[0], y: pdfPt[1], w: 0, h: 0, color: c(tool), width: S.style.width }; if (tool === 'shape') a.kind = S.shapeKind; if (tool === 'field') Object.assign(a, newFieldProps(S.fieldKind)); if (FILLABLE.has(tool) && S.style.fill && S.style.fill !== 'none') { a.fill = S.style.fill === 'tint' ? a.color : S.style.fill; if (S.style.fill === 'tint') a.fop = 0.25; } }
   else if (tool === 'line' || tool === 'arrow' || tool === 'darrow' || tool === 'measure') { a = { id: uid('a'), t: tool === 'darrow' ? 'arrow' : tool, pts: [pdfPt, pdfPt.slice()], color: tool === 'measure' && S.style.ink === '#000000' ? '#d70015' : S.style.ink, width: tool === 'measure' ? Math.min(S.style.width, 1.5) : S.style.width }; if (tool === 'measure') a.sc = Object.assign({}, mscOf({})); if (tool === 'darrow') a.both = true; }
   else if (tool === 'pen') a = newInk(pdfPt, e);
   if (!a) return;
@@ -2300,11 +2319,14 @@ function endDrag(e) {
     let keep = true; const g = geo(p); const b = dispBox(a, g); const big = Math.max(b.R - b.L, b.B - b.T) * S.zoom;
     if (BOXES.has(a.t) && big < 6) {
       if (FILLABLE.has(a.t) || a.t === 'cloud') { const sw2 = a.t === 'shape' && /^(arrR|arrL|arrLR|wave|ribbon|fterm|homeplate|chevron|notched)$/.test(a.kind) ? 96 : 72, sh2 = /^(arrU|arrD|arrUD|cylinder|fdb|lightning|moon)$/.test(a.kind || '') ? 96 : (sw2 === 96 ? 48 : (a.t === 'rect' || a.t === 'ellipse' || a.t === 'cloud' || /^(rrect|snip|snip2|frame|para|trap|fdata|falt|fpredef|fdoc|finput|fmanual|fcard|fdelay|fdisplay|callRect|callRound|callOval|callCloud|callLine|plaque)$/.test(a.kind) ? 54 : 72)); const [cx0, cy0] = ap(g.i, b.L, b.T); a.w = sw2; a.h = sh2; a.x = cx0 - sw2 / 2; a.y = cy0 - sh2 / 2; }
+      else if (a.t === 'field') { const [dw, dh] = FIELD_SIZE[a.kind] || [150, 20]; const [cx0, cy0] = ap(g.i, b.L, b.T); a.w = dw; a.h = dh; a.x = cx0 - (a.kind === 'check' || a.kind === 'radio' ? dw / 2 : 4); a.y = cy0 - dh / 2; }
       else if (a.t === 'white' || a.t === 'hl' || a.t === 'redact') { const [ax, ay] = ap(g.i, b.L - 50, b.T + 8); const [bx, by] = ap(g.i, b.L + 50, b.T - 8); a.x = Math.min(ax, bx); a.y = Math.min(ay, by); a.w = Math.abs(bx - ax); a.h = Math.abs(by - ay); }
       else keep = false;
     } else if ((a.t === 'line' || a.t === 'arrow' || a.t === 'measure') && big < 6) { if (a.t === 'line' || a.t === 'arrow') { a.pts[1] = [a.pts[0][0] + 72, a.pts[0][1]]; } else keep = false; }
     else if (a.t === 'pen' && a.pts.length < 2) { a.pts.push([a.pts[0][0] + 0.01, a.pts[0][1]]); }
+    if (keep && a.t === 'field' && (a.kind === 'check' || a.kind === 'radio')) { const m = Math.min(a.w, a.h); a.w = a.h = m; }
     if (!keep) p.annots = p.annots.filter((z) => z.id !== a.id);
+    if (keep && a.t === 'field') { drawOverlay(p, el); commit(); select(p.id, a.id); refreshFormatBar(); return; }
     if (keep && drag0.snapped && drag0.freehand) { const k = p.annots.findIndex((z) => z.id === a.id); if (k >= 0) { p.annots[k] = drag0.freehand; commit(); p.annots[k] = a; } }
     drawOverlay(p, el); commit(); return;
   }
@@ -3279,14 +3301,15 @@ const CATS = [
   ['comment', 'Comment', 'note', ['t:select', '|', 'a:hlt', 'a:ul', 'a:stk', '|', 't:note', 't:text', 't:hl', '|', 'g:shapes', 't:pen', '|', 't:tick', 't:cross', 'g:sign']],
   ['draw', 'Draw', 'pen', ['t:select', 't:hand', '|', 'p:ballpoint', 'p:fountain', 'p:gel', 'p:pencil', 'p:marker', 'p:brush', 'p:calligraphy', 'p:highlighter', '|', 't:eraser', 't:lasso', '|', 'a:undo', 'a:redo']],
   ['edit', 'Edit', 'edit', ['t:select', '|', 't:edittext', 't:objedit', '|', 't:text', 't:tbox', 'a:img', '|', 't:white', 't:crop']],
-  ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates']],
-  ['pages', 'Pages', 'blank', ['a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
+  ['forms', 'Forms', 'form', ['t:select', '|', 'f:text', 'f:multi', 'f:check', 'f:radio', 'f:drop', 'f:date', 'f:sign', '|', 'a:fdetect', 'a:fexisting', 'a:ftry', '|', 'a:forms']],
+  ['fill', 'Fill & Sign', 'sign', ['t:select', '|', 'a:forms', 't:text', 't:tick', 't:cross', 'a:date', '|', 'a:sigs', 'g:sign', 'a:templates', '|', 'a:dsign', 'a:dids', 'a:dcheck']],
+  ['pages', 'Pages', 'blank', ['a:notebooks', 'a:nbsave', '|', 'a:newpdf', 'a:organise', '|', 'a:blank', 'a:paper', 'a:addfile', 'a:addphoto', 'a:scan', 'a:sview', '|', 'a:prot', 'a:dupp', 'a:delp', 'a:reverse', 't:crop', '|', 'a:extract', 'a:split', '|', 'a:pnum', 'a:wm']],
   ['design', 'Design', 'design', ['a:design', 'a:dslib', 'a:dsnew', '|', 'a:dstpl', 'a:dscal', 'a:dsphotos', 'a:dslayouts', 'a:dsstyles', 'a:dstext', 'a:dsgfx', 'a:dsbg', '|', 'a:dspreview', 'a:dscheck', 'a:dsexport', 'a:dswin']],
   ['tools', 'Tools', 'lock', ['t:measure', 't:area', '|', 't:redact', 'a:protect', 'a:clean', '|', 'a:ocr', 'a:compare', '|', 'a:word', 'a:export', 'a:print', 'a:props']]
 ];
-const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', eraser: 'Eraser', lasso: 'Lasso', tick: 'Tick', cross: 'Cross', crop: 'Crop' };
+const TOOL_SHORT = { measure: 'Measure', area: 'Area', cloud: 'Cloud', select: 'Select', hand: 'Hand', text: 'Add text', tbox: 'Text box', edittext: 'Edit text', objedit: 'Edit objects', note: 'Note', hl: 'Box highlight', white: 'Whiteout', redact: 'Redact', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', darrow: 'Double arrow', shape: 'Shape', pen: 'Pen', eraser: 'Eraser', lasso: 'Lasso', tick: 'Tick', cross: 'Cross', crop: 'Crop', field: 'Form field' };
 const TOOL_KEY = { measure: 'M', area: 'K', cloud: 'C', select: 'V', hand: 'H', text: 'T', tbox: 'B', edittext: 'D', objedit: 'O', note: 'N', hl: 'U', white: 'W', redact: 'X', rect: 'R', ellipse: 'E', line: 'L', arrow: 'A', pen: 'P' };
-const TOOL_ICON = { eraser: 'eraser', lasso: 'lasso', measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop' };
+const TOOL_ICON = { eraser: 'eraser', lasso: 'lasso', measure: 'measure', area: 'area', cloud: 'cloud', select: 'select', hand: 'hand', text: 'text', tbox: 'tbox', edittext: 'edit', objedit: 'objedit', note: 'note', hl: 'hl', white: 'white', redact: 'redact', rect: 'rect', ellipse: 'ellipse', line: 'line', arrow: 'arrow', pen: 'pen', tick: 'tick', cross: 'cross', crop: 'crop', field: 'fld_text' };
 const RIB_ACT = {
   find: ['Search', 'search', 'Search text (Ctrl+F)', () => openFind()], goto: ['Go to page', 'goto', 'Go to page (Ctrl+G)', () => openGoto()],
   zin: ['Zoom in', 'zin', 'Zoom in (Ctrl +)', () => setZoom(S.zoom * 1.25)], zout: ['Zoom out', 'zout', 'Zoom out (Ctrl -)', () => setZoom(S.zoom / 1.25)],
@@ -3327,6 +3350,11 @@ const RIB_ACT = {
   dsexport: ['Export', 'download', 'Print-ready PDF with bleed and crop marks, or a JPG', () => openDesign({ action: 'export' })],
   dswin: ['New window', 'split2', 'Open the design studio in its own browser window', () => { const u = new URL(location.href); u.search = '?design=1'; u.hash = ''; if (!window.open(u.toString(), '_blank')) toast('Your browser blocked the new window. Allow pop-ups for this site', { err: true }); }, true],
   design: ['Open studio', 'design', 'Design studio: photo albums, collages and presentation pages with layouts, styles and print-ready export', () => openDesign()],
+  fdetect: ['Detect fields', 'fld_detect', 'Find blank lines (____) and empty boxes and turn them into fields', () => detectFields()],
+  fexisting: ['Edit fields', 'edit', 'Make the fields already in this PDF editable: move, resize, rename or delete them', () => editExistingFields()],
+  notebooks: ['Notebooks', 'nb', 'Your notebook library: folders, search, favourites (Ctrl+Shift+L)', () => openNotebooks()], nbsave: ['Save to Notebooks', 'download', 'Save this document in your notebook library', () => nbSaveCurrent()],
+  dsign: ['Digital sign', 'dsig', 'Sign with a certificate so any later change is detectable', () => openDigitalSign()], dids: ['Digital IDs', 'idcard', 'Create, import and back up digital IDs', () => openDigitalIds()], dcheck: ['Check signatures', 'shieldok', 'Check digital signatures in this PDF', () => openSigCheck()],
+  ftry: ['Try it', 'check', 'Open a test copy with working fields', () => tryForm()],
   newpdf: ['New PDF', 'blank', 'Create a new blank PDF: size, orientation, pages, lined or grid paper', () => openNewPdf()],
   organise: ['Organise', 'grid', 'Organise pages in a large grid: sort, rotate, copy, extract, delete', () => openOrganiser()],
   sview: ['Split screen', 'split2', 'Two documents side by side. Drag pages across to copy them', () => openSplitView()],
@@ -3345,6 +3373,7 @@ function buildTools() {
     const [kind, k] = it.split(':');
     if (kind === 't') { const tip = ({ eraser: 'Eraser: rub out ink strokes', lasso: 'Lasso: loop around strokes to select them', measure: 'Measure distance, to scale', area: 'Measure area, to scale', cloud: 'Revision cloud' })[k] || (TOOLS.find((x) => x[0] === k) || Object.values(GROUPS).flat().find((x) => x[0] === k) || [k, TOOL_SHORT[k]])[1]; const key = TOOL_KEY[k]; html += `<button class="tool${['pen', 'rect', 'ellipse', 'line', 'arrow', 'cloud', 'tick', 'cross'].includes(k) && ck === 'comment' ? ' shp' : ''}" data-tool="${k}" aria-pressed="${k === S.tool}" aria-label="${TOOL_SHORT[k]}" data-tip="${tip.replace(/\s*\([A-Z]\)$/, '')}${key ? ' (' + key + ')' : ''}">${icon(TOOL_ICON[k])}<span class="tl">${TOOL_SHORT[k]}</span></button>`; }
     else if (kind === 'p') { const d = penDef(k); html += `<button class="tool" data-pen="${k}" aria-pressed="${S.tool === 'pen' && INK.pen === k}" aria-label="${d[1]}" data-tip="${d[1]}: ${d[2]}">${icon('pen_' + k)}<span class="tl">${{ ballpoint: 'Ballpoint', fountain: 'Fountain', gel: 'Fineliner', pencil: 'Pencil', marker: 'Marker', brush: 'Brush', calligraphy: 'Calligraphy', highlighter: 'Highlighter' }[k]}</span></button>`; }
+    else if (kind === 'f') { const d = FIELD_KINDS.find((x) => x[0] === k); html += `<button class="tool" data-fkind="${k}" aria-pressed="${S.tool === 'field' && S.fieldKind === k}" aria-label="${d[1]}" data-tip="${d[1]} field: ${d[3]}">${icon(d[2])}<span class="tl">${d[1]}</span></button>`; }
     else if (kind === 'g' && k === 'shapes') html += `<button class="tool grp shapesbtn" data-group="shapes" aria-haspopup="dialog" aria-pressed="${SHAPE_TOOLS.has(S.tool)}" aria-label="Shapes" data-tip="Insert shapes: lines, arrows, stars, callouts, flowchart and more">${icon('shapes')}<span class="tl">Shapes</span>${CHEV}</button>`;
     else if (kind === 'g') html += `<button class="tool grp" data-group="sign" aria-haspopup="menu" aria-label="Stamps" data-tip="Stamps, signatures and images">${icon('stamp')}<span class="tl">Stamps</span>${CHEV}</button>`;
     else { const a = RIB_ACT[k]; if (a) html += `<button class="tool act${a[4] ? ' minor' : ''}" data-act="${k}" aria-label="${a[0]}" data-tip="${a[2]}">${icon(a[1])}<span class="tl">${a[0]}</span></button>`; }
@@ -3388,6 +3417,7 @@ $('#tools').addEventListener('pointerdown', (e) => { if (e.target.closest('[data
 $('#cats').addEventListener('click', (e) => { const b = e.target.closest('.cat'); if (b) setCat(b.dataset.cat); });
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('.tool'); if (!b) return;
+  if (b.dataset.fkind) { if (!S.pages.length) { toast('Open a PDF first, or create a new blank one'); return; } closeEditor(false); S.fieldKind = b.dataset.fkind; lsSet('pdfmate.fieldKind', S.fieldKind); setTool('field', true); buildToolsPressed(); return; }
   if (b.dataset.pen) { if (!S.pages.length) { toast('Open a PDF first'); return; } closeEditor(false); INK.pen = b.dataset.pen; saveInk(); setTool('pen', true); buildToolsPressed(); return; }
   if (b.dataset.catsw) { openMenu(b, CATS.map(([k, label, ic]) => ({ label, icon: k === S.cat ? 'check' : ic, run: () => setCat(k) }))); return; }
   if (b.dataset.act) { const a = RIB_ACT[b.dataset.act]; const free = ['sidebar', 'theme', 'keys', 'templates', 'addphoto', 'scan', 'night', 'sview', 'newpdf'].includes(b.dataset.act) || /^ds|^design$/.test(b.dataset.act); if (!S.pages.length && !free) { toast('Open a PDF first'); return; } closeEditor(false); a[3](); return; }
@@ -3422,6 +3452,11 @@ function refreshFormatBar() {
     refreshFmtPanel(); return;
   }
   if (S.tool === 'objedit' && S.pages.length) { fb.innerHTML = objBarHtml(); fb.hidden = false; refreshFmtPanel(); return; }
+  { const s1 = selectedAnn(); const isF = s1 && s1.a.t === 'field';
+    if (S.pages.length && ((S.tool === 'field' && !s1) || isF)) {
+      fb.innerHTML = fieldBarHtml(isF ? s1 : null) + '<span class="fb-spacer"></span>' + (isF ? `<button class="tbtn" data-act="fdown" title="Add another one below, ready for the next line">${icon('down')}<span class="tb-hide-m">Next below</span></button><button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}<span class="tb-hide-m">Duplicate</span></button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}<span class="tb-hide-m">Delete</span></button>` : `<span class="fb-hint">Drag on the page to place a field. Click a field to move or edit it.</span><button class="tbtn" data-act="ftry">${icon('check')}<span class="tb-hide-m">Try it</span></button><button class="tbtn" data-act="done">Done</button>`);
+      fb.hidden = false; refreshFmtPanel(); return;
+    } }
   { const s0 = selectedAnn(); if (S.pages.length && ((INK_TOOLS.has(S.tool) && !s0) || (s0 && s0.a.t === 'pen'))) { fb.innerHTML = inkBarHtml(s0) + (s0 ? `<span class="fb-spacer"></span><button class="tbtn" data-act="rotl" aria-label="Rotate left">${icon('rotl')}</button><button class="tbtn" data-act="rotr" aria-label="Rotate right">${icon('rotr')}</button><button class="tbtn" data-act="dup" aria-label="Duplicate">${icon('dup')}</button><button class="tbtn" data-act="del" style="color:var(--danger)" aria-label="Delete">${icon('trash')}</button>` : ''); fb.hidden = false; fb.classList.add('inkbar'); refreshFmtPanel(); return; } fb.classList.remove('inkbar'); }
   const s = selectedAnn();
   let kind = s ? s.a.t : S.tool;
@@ -3463,6 +3498,7 @@ $('#formatBar').addEventListener('pointerdown', (e) => { if (S.editing && e.targ
 $('#formatBar').addEventListener('contextmenu', inkContext);
 $('#formatBar').addEventListener('input', (e) => { const t = e.target; if (t.matches('[data-inkw]')) { const v = +t.value; t.nextElementSibling.textContent = Math.round(v * 10) / 10 + ' pt'; inkApplyQuiet({ width: v }); } else if (t.matches('[data-inkop]')) { const v = +t.value; t.nextElementSibling.textContent = Math.round(v * 100) + '%'; inkApplyQuiet({ op: v }); } });
 $('#formatBar').addEventListener('change', (e) => {
+  if (fieldBarEvent(e)) return;
   if (e.target.matches('[data-inkw],[data-inkop]')) { refreshFormatBar(); return; }
   if (e.target.matches('[data-inkpick]')) { inkApply({ color: e.target.value }); return; }
   if (e.target.id === 'fbFont') { fmtSet({ font: e.target.value }); return; }
@@ -3470,6 +3506,7 @@ $('#formatBar').addEventListener('change', (e) => {
   if (e.target.matches('[data-msr],[data-msu]')) { const fb = $('#formatBar'); const r = parseFloat(String(fb.querySelector('[data-msr]').value).replace(',', '.')); const u = fb.querySelector('[data-msu]').value; if (!(r > 0)) return; S.style.msc = { r, u }; saveStyle(); const s = selectedAnn(); if (s && (s.a.t === 'measure' || s.a.t === 'area')) { s.a.sc = { r, u }; drawOverlay(s.p); commit(); } refreshFormatBar(); }
 });
 $('#formatBar').addEventListener('click', (e) => {
+  if (fieldBarEvent(e)) return;
   if (objBarClick(e)) return;
   if (inkClick(e)) return;
   const ft = e.target.closest('[data-ftg]'); if (ft) { fmtToggle(ft.dataset.ftg); return; }
@@ -3493,6 +3530,8 @@ $('#formatBar').addEventListener('click', (e) => {
     const k = act.dataset.act;
     if (k === 'del') deleteSelected(); else if (k === 'dup') duplicateSelected(); else if (k === 'edit' && s) openEditor(s.p, s.a);
     else if (k === 'done') { closeEditor(false); setTool('select'); }
+    else if (k === 'ftry') tryForm();
+    else if (k === 'fdown' && s) { const c2 = JSON.parse(JSON.stringify(s.a)); c2.id = uid('a'); c2.y -= s.a.h + Math.max(6, s.a.h * 0.6); if (c2.kind === 'radio') { const n = allFieldAnns().filter(([, z]) => z.kind === 'radio' && z.name === c2.name).length; c2.val = 'Option ' + (n + 1); } else c2.name = nextFieldName(c2.kind); s.p.annots.push(c2); drawOverlay(s.p); commit(); select(s.p.id, c2.id); refreshFormatBar(); }
     else if (k === 'allpages') openCopyToPages();
     else if (k === 'rotl') rotateSelected(-90); else if (k === 'rotr') rotateSelected(90);
     else if (k === 'calib' && s) openCalibrate(s);
@@ -3811,9 +3850,10 @@ async function rasterPage(doc, index, view, dpi = 158, q = 0.9) {
   await pg.render({ canvasContext: x, viewport: vp }).promise;
   const out = dataUrlBytes(c.toDataURL('image/jpeg', q)); c.width = c.height = 0; return out;
 }
-function fillForm(ld, doc) {
+function fillForm(ld, doc, flatten = true) {
   const form = ld.getForm();
   try { form.deleteXFA(); } catch (e) {}
+  if (doc.dropFields) { for (const f of form.getFields()) { try { form.removeField(f); } catch (e) {} } return; }
   for (const f of doc.fields) {
     if (!Object.prototype.hasOwnProperty.call(doc.values, f.name)) continue; const v = doc.values[f.name];
     try {
@@ -3824,8 +3864,521 @@ function fillForm(ld, doc) {
       else if (f.type === 'radio') { const r = form.getRadioGroup(f.name); v ? r.select(v) : r.clear(); }
     } catch (e) { console.warn('field', f.name, e); }
   }
-  form.flatten({ updateFieldAppearances: true });
+  if (flatten) form.flatten({ updateFieldAppearances: true }); else { try { form.updateFieldAppearances(); } catch (e) {} }
 }
+/* ---------- 3.18: Form builder. Fields are annotations while editing and real AcroForm fields in the saved file ---------- */
+const FIELD_KINDS = [['text', 'Text', 'fld_text', 'Single line text'], ['multi', 'Paragraph', 'fld_multi', 'Several lines of text'], ['check', 'Check box', 'fld_check', 'Tick box'], ['radio', 'Option', 'fld_radio', 'Pick one of several. Give the options the same name'], ['drop', 'Dropdown', 'fld_drop', 'Pick from a list'], ['date', 'Date', 'fld_date', 'Date with a set format'], ['sign', 'Signature', 'fld_sign', 'Box for a signature']];
+const FIELD_SIZE = { text: [160, 20], multi: [240, 64], check: [14, 14], radio: [14, 14], drop: [130, 20], date: [100, 20], sign: [170, 46] };
+const fieldLabel = (k) => (FIELD_KINDS.find((x) => x[0] === k) || FIELD_KINDS[0])[1];
+S.fieldKind = lsGet('pdfmate.fieldKind', 'text');
+function allFieldAnns() { const out = []; for (const p of S.pages) for (const a of p.annots) if (a.t === 'field') out.push([p, a]); return out; }
+function nextFieldName(kind) {
+  const base = { text: 'Text', multi: 'Notes', check: 'Check', radio: 'Choice', drop: 'List', date: 'Date', sign: 'Signature' }[kind] || 'Field';
+  const used = new Set(allFieldAnns().map(([, a]) => a.name)); for (const d of S.docs.values()) for (const f of d.fields || []) used.add(f.name);
+  if (kind === 'radio') { const s = selectedAnn(); if (s && s.a.t === 'field' && s.a.kind === 'radio') return s.a.name; }
+  let i = 1; while (used.has(base + ' ' + i)) i++; return base + ' ' + i;
+}
+function newFieldProps(kind) {
+  const o = { kind, name: nextFieldName(kind), fs: 0, req: false };
+  if (kind === 'drop') o.opts = ['Option 1', 'Option 2', 'Option 3'];
+  if (kind === 'radio') { const n = allFieldAnns().filter(([, a]) => a.kind === 'radio' && a.name === o.name).length; o.val = 'Option ' + (n + 1); }
+  if (kind === 'date') o.fmt = 'dd/mm/yyyy';
+  return o;
+}
+function fieldSvg(g, a) {
+  const blue = '#0a84ff'; const round = a.kind === 'radio';
+  if (round) g.appendChild(sv('ellipse', { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: a.w / 2, ry: a.h / 2, fill: blue, 'fill-opacity': 0.1, stroke: blue, 'stroke-width': 0.8 }));
+  else g.appendChild(sv('rect', { x: a.x, y: a.y, width: a.w, height: a.h, rx: a.kind === 'check' ? 1.5 : 1, fill: blue, 'fill-opacity': 0.08, stroke: blue, 'stroke-width': 0.8, 'stroke-dasharray': a.kind === 'sign' ? '3 2' : 'none' }));
+  const lab = sv('g', { transform: `matrix(1 0 0 -1 ${a.x} ${a.y + a.h})`, style: 'pointer-events:none' });
+  const fs = Math.max(4, Math.min(8.5, a.h * 0.55));
+  const txt = (t, x, y, o = {}) => { const n = sv('text', { x, y, 'font-size': o.fs || fs, fill: o.fill || blue, 'font-family': '-apple-system,Segoe UI,Arial,sans-serif', 'font-weight': o.bold ? 600 : 400, 'text-anchor': o.anchor || 'start' }); n.textContent = t; lab.appendChild(n); };
+  if (a.kind === 'check') { lab.appendChild(sv('path', { d: `M${a.w * 0.22} ${a.h * 0.52}l${a.w * 0.2} ${a.h * 0.2} ${a.w * 0.38} -${a.h * 0.42}`, fill: 'none', stroke: blue, 'stroke-width': Math.max(0.6, a.w * 0.08), 'stroke-opacity': 0.5, 'stroke-linecap': 'round' })); }
+  else if (a.kind === 'radio') { lab.appendChild(sv('circle', { cx: a.w / 2, cy: a.h / 2, r: Math.min(a.w, a.h) * 0.2, fill: blue, 'fill-opacity': 0.5 })); }
+  else {
+    const y = a.kind === 'multi' || a.kind === 'sign' ? fs + 2 : a.h / 2 + fs * 0.35;
+    txt(a.name, 3, y, { bold: true });
+    if (a.kind === 'drop') txt('▾', a.w - 3, a.h / 2 + fs * 0.35, { anchor: 'end' });
+    if (a.kind === 'date') txt((a.fmt || 'dd/mm/yyyy').toUpperCase(), a.w - 3, a.h / 2 + fs * 0.35, { anchor: 'end', fill: '#6e6e73' });
+    if (a.kind === 'sign') { lab.appendChild(sv('path', { d: `M6 ${a.h - 7}H${a.w - 6}`, stroke: blue, 'stroke-width': 0.6, 'stroke-opacity': 0.6 })); txt('Sign here', a.w - 6, a.h - 9, { anchor: 'end', fill: '#6e6e73' }); }
+  }
+  if (a.req) txt('*', a.w + 1.5, fs, { fill: '#d70015', bold: true });
+  g.appendChild(lab);
+}
+async function flatField() { /* fields are left out of flattened output */ }
+function fieldBarHtml(s) {
+  const a = s ? s.a : null; const k = a ? a.kind : S.fieldKind; const parts = [];
+  parts.push(`<span class="fb-label">${a ? 'Form field' : 'Add field'}</span>`);
+  if (!a) parts.push(FIELD_KINDS.map(([kk, n, ic, tip]) => `<button class="fb-chip" data-fk="${kk}" aria-pressed="${kk === S.fieldKind}" title="${tip}">${icon(ic)}<span class="tb-hide-m">${n}</span></button>`).join(''));
+  else {
+    parts.push(`<select class="fb-font" data-fkind aria-label="Field type">${FIELD_KINDS.map(([kk, n]) => `<option value="${kk}" ${kk === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`);
+    parts.push(`<input class="fb-in" data-fname value="${esc(a.name)}" aria-label="Field name" title="Field name. Fields with the same name share their value" style="width:130px">`);
+    if (k === 'drop') parts.push(`<input class="fb-in" data-fopts value="${esc((a.opts || []).join(', '))}" aria-label="Options" title="Options, separated by commas" placeholder="Options, comma separated" style="width:200px">`);
+    if (k === 'radio') parts.push(`<input class="fb-in" data-fval value="${esc(a.val || '')}" aria-label="Value when chosen" title="Value when this option is chosen. Give options the same name to group them" style="width:110px">`);
+    if (k === 'date') parts.push(`<select class="fb-font" data-ffmt aria-label="Date format">${['dd/mm/yyyy', 'mm/dd/yyyy', 'yyyy-mm-dd', 'dd mmm yyyy'].map((f) => `<option ${f === (a.fmt || 'dd/mm/yyyy') ? 'selected' : ''}>${f}</option>`).join('')}</select>`);
+    if (['text', 'multi', 'drop', 'date'].includes(k)) parts.push(`<select class="fb-font" data-ffs aria-label="Font size" title="Text size">${[0, 8, 9, 10, 11, 12, 14, 16].map((v) => `<option value="${v}" ${(a.fs || 0) === v ? 'selected' : ''}>${v ? v + ' pt' : 'Auto size'}</option>`).join('')}</select>`);
+    if (k === 'text' || k === 'multi') parts.push(`<input class="fb-in" data-fdef value="${esc(a.def || '')}" aria-label="Default text" placeholder="Default text" style="width:120px">`);
+    parts.push(`<button class="fb-chip" data-freq aria-pressed="${!!a.req}" title="Must be filled in before the form is complete">Required</button>`);
+  }
+  return parts.join('');
+}
+function fieldBarEvent(e) {
+  const t = e.target; const s = selectedAnn(); const a = s && s.a.t === 'field' ? s.a : null;
+  if (e.type === 'click') {
+    const fk = t.closest('[data-fk]'); if (fk) { S.fieldKind = fk.dataset.fk; lsSet('pdfmate.fieldKind', S.fieldKind); if (S.tool !== 'field') setTool('field'); refreshFormatBar(); buildToolsPressed(); return true; }
+    if (t.closest('[data-freq]') && a) { a.req = !a.req; drawOverlay(s.p); commit(); refreshFormatBar(); return true; }
+    return false;
+  }
+  if (!a) return false;
+  if (t.matches('[data-fname]')) { const old = a.name; const v = t.value.trim().replace(/[.]/g, '_') || old; if (e.type === 'change') { a.name = v; drawOverlay(s.p); commit(); } return true; }
+  if (t.matches('[data-fopts]')) { if (e.type === 'change') { a.opts = t.value.split(',').map((x) => x.trim()).filter(Boolean); commit(); } return true; }
+  if (t.matches('[data-fval]')) { if (e.type === 'change') { a.val = t.value.trim() || 'Option'; commit(); } return true; }
+  if (t.matches('[data-fdef]')) { if (e.type === 'change') { a.def = t.value; commit(); } return true; }
+  if (e.type !== 'change') return false;
+  if (t.matches('[data-fkind]')) { const nk = t.value; Object.assign(a, newFieldProps(nk), { name: a.name }); if (nk === 'check' || nk === 'radio') { const m = Math.min(a.w, a.h, 18); a.y += a.h - m; a.w = a.h = m; } else if (a.w < 40) { const [dw, dh] = FIELD_SIZE[nk]; a.w = dw; a.y += a.h - dh; a.h = dh; } drawOverlay(s.p); commit(); refreshFormatBar(); return true; }
+  if (t.matches('[data-ffmt]')) { a.fmt = t.value; drawOverlay(s.p); commit(); return true; }
+  if (t.matches('[data-ffs]')) { a.fs = +t.value; commit(); return true; }
+  return false;
+}
+// Finds blank lines (____) and empty boxes in the text of the page and turns them into fields
+async function detectFields() {
+  const pages = S.selPages.size ? S.pages.filter((p) => S.selPages.has(p.id)) : S.pages; let n = 0, scanned = 0;
+  const t = toast('Looking for blanks and boxes', { spin: true, sticky: true });
+  for (const p of pages) {
+    if (p.kind !== 'pdf') continue; const doc = S.docs.get(p.docId); if (!doc || !doc.pdf) continue;
+    let tc; try { tc = await (await doc.pdf.getPage(p.index + 1)).getTextContent(); } catch (e) { continue; } scanned++;
+    const items = tc.items.filter((i) => i.str && i.transform && Math.abs(i.transform[1]) < 0.01 && Math.abs(i.transform[2]) < 0.01);
+    const free = (x, y, w, h) => !p.annots.some((z) => z.t === 'field' && x < z.x + z.w && x + w > z.x && y < z.y + z.h && y + h > z.y);
+    const labelFor = (it, idx) => { let pre = it.str.slice(0, idx).replace(/[_\s.:]+$/, '').trim(); if (!pre) { const prev = items.filter((o) => o !== it && Math.abs(o.transform[5] - it.transform[5]) < 2 && o.transform[4] < it.transform[4]).sort((a2, b2) => b2.transform[4] - a2.transform[4])[0]; pre = prev ? prev.str.replace(/[_\s.:]+$/, '').trim() : ''; } pre = pre.split(/\s{2,}|\t/).pop().slice(-40).replace(/[.]/g, ''); return pre || null; };
+    for (const it of items) {
+      const [a0, , , d0, x0, y0] = it.transform; const fs = Math.abs(d0) || Math.abs(a0) || 10; const L = it.str.length || 1; const cw = (it.width || fs * L * 0.5) / L;
+      for (const m of it.str.matchAll(/_{3,}/g)) {
+        const x = x0 + m.index * cw, w = Math.max(24, m[0].length * cw), h = Math.max(12, fs * 1.3), y = y0 - fs * 0.15;
+        if (!free(x, y, w, h)) continue; const lab = labelFor(it, m.index); const props = newFieldProps('text'); if (lab && !allFieldAnns().some(([, z]) => z.name === lab)) props.name = lab;
+        p.annots.push({ id: uid('a'), t: 'field', x, y, w, h, color: '#0a84ff', width: 1, ...props }); n++;
+      }
+      for (const m of it.str.matchAll(/[☐□❑◻▢]|\[\s?\]/g)) {
+        const sz = Math.max(9, fs * 0.9); const x = x0 + m.index * cw, y = y0 - fs * 0.1;
+        if (!free(x, y, sz, sz)) continue; const props = newFieldProps('check'); const after = it.str.slice(m.index + m[0].length).trim().split(/\s{2,}/)[0].slice(0, 40).replace(/[.]/g, ''); if (after && !allFieldAnns().some(([, z]) => z.name === after)) props.name = after;
+        p.annots.push({ id: uid('a'), t: 'field', x, y, w: sz, h: sz, color: '#0a84ff', width: 1, ...props }); n++;
+      }
+    }
+    drawOverlay(p);
+  }
+  t.remove();
+  if (n) { commit(); setTool('field'); toast(`Added ${n} field${n > 1 ? 's' : ''} from blank lines and boxes. Click a field to rename it or change its type`, { ms: 5000 }); }
+  else toast(scanned ? 'No blank lines (____) or empty boxes found. Drag on the page to add fields yourself' : 'This page has no text to scan. Drag on the page to add fields', { ms: 4500 });
+}
+// Turns the fields already in a PDF into editable fields so they can be moved, renamed or deleted
+function editExistingFields() {
+  let n = 0;
+  for (const doc of S.docs.values()) {
+    if (!doc.fields || !doc.fields.length) continue;
+    for (const f of doc.fields) {
+      const kind = f.type === 'text' ? (f.multiline ? 'multi' : 'text') : f.type === 'check' ? 'check' : f.type === 'radio' ? 'radio' : f.type === 'drop' ? 'drop' : null; if (!kind) continue;
+      const val = fieldValue(doc, f);
+      for (const w of f.widgets) {
+        const p = S.pages.find((q) => q.kind === 'pdf' && q.docId === doc.id && q.index === w.page); if (!p) continue;
+        const a = { id: uid('a'), t: 'field', x: w.x, y: w.y, w: w.w, h: w.h, color: '#0a84ff', width: 1, kind, name: f.name, fs: 0, req: false };
+        if (kind === 'drop') a.opts = (f.options || []).slice(); if (kind === 'radio') a.val = w.opt || 'Option'; if ((kind === 'text' || kind === 'multi') && val) a.def = String(val);
+        p.annots.push(a); n++;
+      }
+    }
+    doc.dropFields = true; doc.fields = []; doc.widgets = new Map();
+  }
+  if (!n) { toast('This PDF has no form fields to edit. Use Detect fields or draw new ones'); return; }
+  renderAll(); commit(); setTool('field'); toast(`${n} field${n > 1 ? 's are' : ' is'} now editable. Move, resize, rename or delete them`, { ms: 4500 });
+}
+const DATE_JS = { 'dd/mm/yyyy': 'dd/mm/yyyy', 'mm/dd/yyyy': 'mm/dd/yyyy', 'yyyy-mm-dd': 'yyyy-mm-dd', 'dd mmm yyyy': 'dd mmm yyyy' };
+// Writes the field annotations into the output document as real, fillable form fields
+async function addFormFields(out, outPages, list, opts) {
+  const anns = []; list.forEach((p, i) => { for (const a of p.annots) if (a.t === 'field' && outPages[i]) anns.push([p, outPages[i], a]); });
+  if (!anns.length) return 0;
+  const form = out.getForm(); const existing = new Set(form.getFields().map((f) => f.getName()));
+  const made = new Map(); const nameOf = (a) => { const k = a.kind + '|' + a.name; if (made.has(k)) return made.get(k).name; let n = (a.name || 'Field').replace(/[.]/g, '_'), b = n, i = 2; while (existing.has(n)) n = b + ' ' + i++; existing.add(n); made.set(k, { name: n }); return n; };
+  const grey = PL.rgb(0.55, 0.6, 0.7);
+  for (const [p, page, a] of anns) {
+    const r = { x: a.x, y: a.y, width: a.w, height: a.h, borderColor: grey, borderWidth: a.kind === 'sign' ? 0 : 0.6 }; const rot = tr(p); if (rot) r.rotate = PL.degrees(rot);
+    const nm = nameOf(a); const key = a.kind + '|' + a.name; const rec = made.get(key);
+    try {
+      if (a.kind === 'text' || a.kind === 'multi' || a.kind === 'date') {
+        let f = rec.f; if (!f) { f = form.createTextField(nm); if (a.kind === 'multi') f.enableMultiline(); if (a.def) f.setText(sanitize(a.def)); if (a.req) f.enableRequired(); rec.f = f; }
+        f.addToPage(page, r); try { f.setFontSize(a.fs || 0); } catch (e) {}
+        if (a.kind === 'date' && !opts.noJs && !rec.js) { rec.js = 1; const fmt = DATE_JS[a.fmt] || 'dd/mm/yyyy'; const ctx = out.context; f.acroField.dict.set(PL.PDFName.of('AA'), ctx.obj({ F: ctx.obj({ S: 'JavaScript', JS: PL.PDFString.of(`AFDate_FormatEx("${fmt}");`) }), K: ctx.obj({ S: 'JavaScript', JS: PL.PDFString.of(`AFDate_KeystrokeEx("${fmt}");`) }) })); }
+      } else if (a.kind === 'check') { let f = rec.f; if (!f) { f = form.createCheckBox(nm); if (a.req) f.enableRequired(); rec.f = f; } f.addToPage(page, r); }
+      else if (a.kind === 'radio') { let f = rec.f; if (!f) { f = form.createRadioGroup(nm); if (a.req) f.enableRequired(); rec.f = f; } f.addOptionToPage(a.val || 'Option', page, r); }
+      else if (a.kind === 'drop') { let f = rec.f; if (!f) { f = form.createDropdown(nm); const o = (a.opts && a.opts.length ? a.opts : ['Option 1']).map(sanitize); f.addOptions(o); if (a.def && o.includes(a.def)) f.select(a.def); if (a.req) f.enableRequired(); rec.f = f; } f.addToPage(page, r); try { f.setFontSize(a.fs || 0); } catch (e) {} }
+      else if (a.kind === 'sign') {
+        const ctx = out.context; const wd = ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Sig', T: PL.PDFString.of(nm), Rect: [a.x, a.y, a.x + a.w, a.y + a.h], F: 4, P: page.ref, MK: { BC: [0.55, 0.6, 0.7] } });
+        const ref = ctx.register(wd); page.node.addAnnot(ref); form.acroForm.addField(ref);
+      }
+    } catch (e) { console.warn('field', a.name, e); }
+  }
+  try { form.updateFieldAppearances(); } catch (e) {}
+  return anns.length;
+}
+// After copying pages that keep their own fields, list those fields in the new document's form
+function registerCopiedFields(out, page) {
+  const annots = page.node.Annots(); if (!annots) return; const form = out.getForm(); const ctx = out.context; const have = new Set(form.acroForm.getAllFields().map(([, ref]) => ref && ref.toString()));
+  for (let i = 0; i < annots.size(); i++) {
+    let ref = annots.get(i); let d = ctx.lookup(ref); if (!d || !d.get) continue; if (String(d.get(PL.PDFName.of('Subtype'))) !== '/Widget') continue;
+    let guard = 0; while (d.get(PL.PDFName.of('Parent')) && guard++ < 10) { ref = d.get(PL.PDFName.of('Parent')); d = ctx.lookup(ref); }
+    if (!(ref instanceof PL.PDFRef) || have.has(ref.toString())) continue; form.acroForm.addField(ref); have.add(ref.toString());
+  }
+}
+async function tryForm() {
+  if (!allFieldAnns().length && ![...S.docs.values()].some((d) => d.fields && d.fields.length)) { toast('Add some fields first'); return; }
+  const tt = toast('Building a test copy', { spin: true, sticky: true });
+  try { const bytes = await buildPdf(S.pages, null, { keepForms: true }); const name = ($('#docName').value || 'Form') + ' (test)'; tt.remove(); newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); toast('This is a test copy with working fields. Fill it in to check the tab order and sizes, then close the tab', { ms: 5000 }); }
+  catch (e) { tt.remove(); console.error(e); toast('Could not build the test copy', { err: true }); }
+}
+
+/* ---------- Notebooks: local library with folders ---------- */
+const NB = { db: null, folder: 'all', q: '', sort: lsGet('pdfmate.nbSort', 'mod'), auto: lsGet('pdfmate.nbAuto', true), open: new Set(lsGet('pdfmate.nbOpen', [])), fv: null, timer: 0 };
+const NB_SRC = new Map();
+function nbDb() {
+  return NB.db || (NB.db = new Promise((res, rej) => { const r = indexedDB.open('pdfmate-library', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('folders', { keyPath: 'id' }); d.createObjectStore('items', { keyPath: 'id' }); d.createObjectStore('packs'); }; r.onsuccess = () => res(r.result); r.onerror = () => { NB.db = null; rej(r.error); }; }));
+}
+async function nbTx(stores, mode, fn) {
+  const d = await nbDb();
+  return new Promise((res, rej) => { const t = d.transaction(stores, mode); const st = [].concat(stores).map((s) => t.objectStore(s)); const r = fn(...st); t.oncomplete = () => res(r && r instanceof IDBRequest ? r.result : r); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Storage is full')); });
+}
+async function nbAll() { const [folders, items] = await Promise.all([nbTx('folders', 'readonly', (s) => s.getAll()), nbTx('items', 'readonly', (s) => s.getAll())]); return { folders: folders || [], items: items || [] }; }
+const nbPack = (id) => nbTx('packs', 'readonly', (s) => s.get(id));
+function nbPackCurrent() {
+  const docs = new Set(), imgs = new Set(); refsOf(S.pages, docs, imgs); const res = {}; let size = 0;
+  for (const id of docs) { const d = S.docs.get(id); if (d) { res[id] = { kind: 'pdf', name: d.name, bytes: d.bytes, password: d.password || null }; size += d.bytes.length; } }
+  for (const id of imgs) { const im = S.imgs.get(id); if (im) { res[id] = { kind: 'img', src: im.src, w: im.w, h: im.h }; size += (im.src || '').length * 0.75; } }
+  return { pack: { pages: JSON.parse(JSON.stringify(S.pages)), meta: S.meta || null, vals: [...docs].map((id) => [id, (S.docs.get(id) || {}).values || {}]), res }, size: Math.round(size) };
+}
+const nbFolderName = (f, folders) => f === 'root' || !f ? 'Notebooks' : (folders.find((x) => x.id === f) || { name: 'Notebooks' }).name;
+async function nbSaveCurrent(o = {}) {
+  if (!S.pages.length) return null; saveTab(); const t = WS.list[WS.active];
+  let it = t.libId ? (await nbTx('items', 'readonly', (s) => s.get(t.libId))) : null;
+  const { pack, size } = nbPackCurrent(); const now = Date.now();
+  if (!it) it = { id: uid('nb'), created: now, folder: o.folder || (NB.folder !== 'all' && NB.folder !== 'fav' && NB.folder !== 'recent' ? NB.folder : 'root'), fav: false };
+  Object.assign(it, { name: (o.name || $('#docName').value || 'Untitled').trim(), modified: now, opened: now, pages: S.pages.length, size, thumb: (await tabThumb(S)) || it.thumb || null });
+  try { await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(it); p.put(pack, it.id); }); }
+  catch (e) { console.warn(e); toast('Could not save to Notebooks. The device storage may be full.', { err: true, ms: 4500 }); return null; }
+  t.libId = it.id; setDirty(false); renderTabs(); scheduleSave();
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if (!o.quiet) toast(`Saved to Notebooks${it.folder !== 'root' ? ', ' + nbFolderName(it.folder, (await nbAll()).folders) : ''}`);
+  if (NB.fv) nbRender();
+  return it;
+}
+function nbAutoSave() { clearTimeout(NB.timer); NB.timer = setTimeout(() => { const t = WS.list[WS.active]; if (NB.auto && t && t.libId && S.dirty && S.pages.length) nbSaveCurrent({ quiet: true }); }, 2500); }
+async function nbOpenItem(id) {
+  const ti = WS.list.findIndex((t) => t.libId === id); if (ti >= 0) { if (NB.fv) NB.fv._close(); switchTab(ti); return; }
+  const it = await nbTx('items', 'readonly', (s) => s.get(id)); const pk = await nbPack(id); if (!it || !pk) return toast('This notebook could not be read', { err: true });
+  const t0 = toast(`Opening ${it.name}`, { spin: true, sticky: true });
+  for (const [k, v] of Object.entries(pk.res || {})) NB_SRC.set(k, v);
+  let pages; try { pages = await hydrate(JSON.parse(JSON.stringify(pk.pages)), pk.vals); } finally { NB_SRC.clear(); t0.remove(); }
+  if (!pages.length) return toast('This notebook has no readable pages', { err: true });
+  if (NB.fv) NB.fv._close();
+  if (S.pages.length) newTab();
+  const t = WS.list[WS.active]; t.libId = id;
+  S.pages = pages; S.meta = pk.meta || null; $('#docName').value = it.name; resetHistory(); setDirty(false);
+  renderAll(); if (innerWidth > 760) setSidebar(true); renderTabs(); updateChrome(); scheduleSave();
+  it.opened = Date.now(); nbTx('items', 'readwrite', (s) => s.put(it));
+}
+async function nbImportFiles(files, folder) {
+  let n = 0;
+  for (const f of files) {
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { toast(`${f.name} is not a PDF`, { err: true }); continue; }
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer()); const pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() }).promise;
+      const docId = uid('d'); const pages = []; let thumb = null;
+      for (let i = 0; i < pdf.numPages; i++) { const pg = await pdf.getPage(i + 1); pages.push({ id: uid('p'), kind: 'pdf', docId, index: i, view: pg.view.slice(), baseRot: pg.rotate || 0, rot: 0, annots: [] }); if (!i) thumb = await nbRenderThumb(pg); }
+      try { pdf.loadingTask.destroy(); } catch (e) {}
+      const now = Date.now(); const it = { id: uid('nb'), name: f.name.replace(/\.pdf$/i, ''), folder, created: now, modified: now, opened: 0, pages: pages.length, size: bytes.length, thumb, fav: false };
+      await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(it); p.put({ pages, meta: null, vals: [], res: { [docId]: { kind: 'pdf', name: f.name, bytes, password: null } } }, it.id); }); n++;
+    } catch (e) { console.warn(e); toast(`Could not import ${f.name}${e && e.name === 'PasswordException' ? ': it is password protected, open it first and save it from there' : ''}`, { err: true, ms: 4500 }); }
+  }
+  if (n) toast(`Imported ${n} notebook${n > 1 ? 's' : ''}`); if (NB.fv) nbRender();
+}
+async function nbRenderThumb(pg) {
+  try { const v = pg.getViewport({ scale: 1 }); const vp = pg.getViewport({ scale: 200 / v.width }); const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); await pg.render({ canvasContext: x, viewport: vp }).promise; return c.toDataURL('image/jpeg', 0.72); } catch (e) { return null; }
+}
+async function nbExportPdf(id) {
+  const it = await nbTx('items', 'readonly', (s) => s.get(id)); const pk = await nbPack(id); if (!pk) return;
+  const t0 = toast('Preparing PDF', { spin: true, sticky: true });
+  try { for (const [k, v] of Object.entries(pk.res || {})) NB_SRC.set(k, v); const pages = await hydrate(JSON.parse(JSON.stringify(pk.pages)), pk.vals); NB_SRC.clear(); const bytes = await buildPdf(pages, null, { keepForms: true }); downloadBlob(new Blob([bytes], { type: 'application/pdf' }), it.name.replace(/[\\/:*?"<>|]+/g, '-') + '.pdf'); }
+  catch (e) { console.error(e); toast('Could not export this notebook', { err: true }); }
+  NB_SRC.clear(); t0.remove();
+}
+async function nbBackup() {
+  const { folders, items } = await nbAll(); if (!items.length && !folders.length) return toast('Nothing to back up yet');
+  const t0 = toast('Preparing backup', { spin: true, sticky: true });
+  try {
+    const parts = []; const head = { app: 'pdfmate-notebooks', v: 1, at: Date.now(), folders, items: [] }; let off = 0;
+    for (const it of items) { const pk = await nbPack(it.id); if (!pk) continue; const res = {}; for (const [k, v] of Object.entries(pk.res || {})) { if (v.kind === 'pdf') { res[k] = { ...v, bytes: undefined, off, len: v.bytes.length }; parts.push(v.bytes); off += v.bytes.length; } else res[k] = v; } head.items.push({ meta: it, pack: { ...pk, res } }); }
+    const hj = new TextEncoder().encode(JSON.stringify(head)); const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, hj.length);
+    const d = new Date(); downloadBlob(new Blob([new TextEncoder().encode('PDFMATENB1'), len, hj, ...parts], { type: 'application/octet-stream' }), `Notebooks backup ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.pdfmate`);
+    toast(`Backup ready: ${items.length} notebook${items.length !== 1 ? 's' : ''}, ${folders.length} folder${folders.length !== 1 ? 's' : ''}`);
+  } catch (e) { console.error(e); toast('Backup failed', { err: true }); }
+  t0.remove();
+}
+async function nbRestore(file) {
+  try {
+    const b = new Uint8Array(await file.arrayBuffer()); if (new TextDecoder().decode(b.subarray(0, 10)) !== 'PDFMATENB1') throw new Error('Not a PDF Mate notebooks backup');
+    const hl = new DataView(b.buffer, b.byteOffset + 10, 4).getUint32(0); const head = JSON.parse(new TextDecoder().decode(b.subarray(14, 14 + hl))); const base = 14 + hl;
+    const { items: have } = await nbAll(); const haveIds = new Set(have.map((x) => x.id)); let n = 0;
+    await nbTx('folders', 'readwrite', (s) => { for (const f of head.folders) s.put(f); });
+    for (const { meta, pack } of head.items) {
+      for (const v of Object.values(pack.res)) if (v.kind === 'pdf') { v.bytes = b.slice(base + v.off, base + v.off + v.len); delete v.off; delete v.len; }
+      if (haveIds.has(meta.id)) { const cur = have.find((x) => x.id === meta.id); if (cur.modified >= meta.modified) continue; }
+      await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(meta); p.put(pack, meta.id); }); n++;
+    }
+    toast(`Restored ${n} notebook${n !== 1 ? 's' : ''}${head.items.length - n ? `, ${head.items.length - n} already up to date` : ''}`); if (NB.fv) nbRender();
+  } catch (e) { console.error(e); toast(e.message || 'Could not read this backup', { err: true, ms: 4000 }); }
+}
+function nbAsk(title, label, value, ok, okLabel = 'Save') {
+  const sh = sheet(`<h2>${esc(title)}</h2><div class="field"><label for="nbIn">${esc(label)}</label><input id="nbIn" class="inp" value="${esc(value)}" autocomplete="off" autofocus></div><div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>${esc(okLabel)}</button></div>`);
+  const inp = sh.querySelector('#nbIn'); setTimeout(() => inp.select(), 40);
+  const go = () => { const v = inp.value.trim(); if (!v) return inp.focus(); closeSheet(); ok(v); };
+  sh.querySelector('[data-x]').onclick = closeSheet; sh.querySelector('[data-ok]').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+async function nbNewFolder(parent) { nbAsk('New folder', 'Folder name', 'New folder', async (name) => { const f = { id: uid('nf'), name, parent: parent || 'root', created: Date.now() }; await nbTx('folders', 'readwrite', (s) => s.put(f)); NB.open.add(f.parent); NB.folder = f.id; nbRender(); }, 'Create'); }
+function nbDescendants(id, folders) { const out = new Set([id]); let grew = true; while (grew) { grew = false; for (const f of folders) if (out.has(f.parent) && !out.has(f.id)) { out.add(f.id); grew = true; } } return out; }
+async function nbMove(itemIds, folder) { await nbTx('items', 'readwrite', (s) => { for (const id of itemIds) { const r = s.get(id); r.onsuccess = () => { if (r.result) { r.result.folder = folder; s.put(r.result); } }; } }); nbRender(); }
+async function nbMovePicker(anchor, it) {
+  const { folders } = await nbAll(); const rows = [];
+  const walk = (p, d) => folders.filter((f) => f.parent === p).sort((a, b) => a.name.localeCompare(b.name)).forEach((f) => { rows.push({ label: ' '.repeat(d) + f.name, icon: 'folder', run: () => nbMove([it.id], f.id) }); walk(f.id, d + 1); });
+  rows.push({ label: 'Notebooks (top level)', icon: 'nb', run: () => nbMove([it.id], 'root') }); walk('root', 1);
+  openMenu(anchor, [{ h: 'Move to' }, ...rows]);
+}
+function nbSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function nbAgo(t) { if (!t) return ''; const d = (Date.now() - t) / 1000; if (d < 60) return 'just now'; if (d < 3600) return Math.round(d / 60) + ' min ago'; if (d < 86400) return Math.round(d / 3600) + ' h ago'; if (d < 7 * 86400) return Math.round(d / 86400) + ' d ago'; return new Date(t).toLocaleDateString(); }
+async function openNotebooks() {
+  if (NB.fv) return;
+  const fv = fullView('nbv', `<b class="fv-title">${icon('nb')} Notebooks</b><span class="fv-sp"></span>
+    <input class="inp nb-q" type="search" placeholder="Search" aria-label="Search notebooks" value="${esc(NB.q)}">
+    <select class="inp nb-sort" aria-label="Sort"><option value="mod">Last edited</option><option value="opened">Last opened</option><option value="name">Name</option><option value="created">Date created</option><option value="size">Size</option></select>
+    <button class="tbtn primary" data-nb="new" title="New notebook">${icon('blank')}<span>New</span></button><button class="tbtn" data-nb="import" title="Import PDF files">${icon('open')}<span>Import</span></button>${S.pages.length && !(WS.list[WS.active] || {}).libId ? `<button class="tbtn" data-nb="savecur" title="Save the open document as a notebook">${icon('download')}<span>Save open document</span></button>` : ''}<button class="tbtn" data-nb="more" aria-label="More" title="Backup, restore and settings">${icon('more')}</button><button class="tbtn" data-nb="close" title="Close (Esc)">Done</button>`);
+  NB.fv = fv; fv._onclose = () => { NB.fv = null; };
+  fv.querySelector('.nb-sort').value = NB.sort;
+  fv.querySelector('.fv-body').innerHTML = '<div class="nb-wrap"><nav class="nb-tree" aria-label="Folders"></nav><section class="nb-main"><div class="nb-crumb"></div><div class="nb-grid"></div><div class="nb-foot"></div></section></div>';
+  fv.querySelector('.nb-q').oninput = (e) => { NB.q = e.target.value; nbRender(); };
+  fv.querySelector('.nb-sort').onchange = (e) => { NB.sort = e.target.value; lsSet('pdfmate.nbSort', NB.sort); nbRender(); };
+  const fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.multiple = true; fileIn.accept = 'application/pdf,.pdf';
+  fileIn.onchange = () => { nbImportFiles([...fileIn.files], nbCurFolder()); fileIn.value = ''; };
+  fv.querySelector('.fv-head').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-nb]'); if (!b) return; const k = b.dataset.nb;
+    if (k === 'close') fv._close();
+    else if (k === 'import') fileIn.click();
+    else if (k === 'new') { const folder = nbCurFolder(); fv._close(); openNewPdf({ lib: folder }); }
+    else if (k === 'savecur') { nbSaveCurrent({ folder: nbCurFolder() }); b.remove(); }
+    else if (k === 'more') openMenu(b, [
+      { label: 'New folder', icon: 'folder', run: () => nbNewFolder(nbCurFolder()) },
+      { label: (NB.auto ? 'Turn off' : 'Turn on') + ' auto-save', icon: 'check', run: () => { NB.auto = !NB.auto; lsSet('pdfmate.nbAuto', NB.auto); toast(NB.auto ? 'Open notebooks save themselves as you work' : 'Auto-save off. Press Ctrl+S to save a notebook'); nbRender(); } },
+      '-', { label: 'Back up all notebooks', icon: 'download', run: nbBackup },
+      { label: 'Restore from backup', icon: 'open', run: () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.pdfmate'; i.onchange = () => i.files[0] && nbRestore(i.files[0]); i.click(); } }
+    ]);
+  });
+  const body = fv.querySelector('.fv-body');
+  body.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/nb')) { e.preventDefault(); const f = e.target.closest('[data-fo]'); body.querySelectorAll('.nb-drop').forEach((x) => x !== f && x.classList.remove('nb-drop')); if (f) f.classList.add('nb-drop'); } });
+  body.addEventListener('dragleave', (e) => { const f = e.target.closest('[data-fo]'); if (f && !f.contains(e.relatedTarget)) f.classList.remove('nb-drop'); });
+  body.addEventListener('drop', (e) => {
+    e.preventDefault(); const f = e.target.closest('[data-fo]'); body.querySelectorAll('.nb-drop').forEach((x) => x.classList.remove('nb-drop'));
+    const target = f ? (['all', 'fav', 'recent'].includes(f.dataset.fo) ? 'root' : f.dataset.fo) : nbCurFolder();
+    const nb = e.dataTransfer.getData('text/nb'); if (nb) { nbMove([nb], target); return; }
+    if (e.dataTransfer.files.length) nbImportFiles([...e.dataTransfer.files], target);
+  });
+  body.addEventListener('dragstart', (e) => { const c = e.target.closest('[data-it]'); if (c) { e.dataTransfer.setData('text/nb', c.dataset.it); e.dataTransfer.effectAllowed = 'move'; } });
+  body.addEventListener('click', async (e) => {
+    const { folders, items } = await nbAll();
+    const tw = e.target.closest('[data-tw]'); if (tw) { const id = tw.dataset.tw; NB.open.has(id) ? NB.open.delete(id) : NB.open.add(id); lsSet('pdfmate.nbOpen', [...NB.open]); nbRender(); return; }
+    const fm = e.target.closest('[data-fm]'); if (fm) {
+      const f = folders.find((x) => x.id === fm.dataset.fm); if (!f) return;
+      openMenu(fm, [
+        { label: 'New subfolder', icon: 'folder', run: () => nbNewFolder(f.id) },
+        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename folder', 'Folder name', f.name, async (v) => { f.name = v; await nbTx('folders', 'readwrite', (s) => s.put(f)); nbRender(); }) },
+        '-', { label: 'Delete folder', icon: 'trash', run: () => { const ds = nbDescendants(f.id, folders); const n = items.filter((i) => ds.has(i.folder)).length; confirmSheet(`Delete ${f.name}?`, n ? `The folder${ds.size > 1 ? ', its subfolders' : ''} and ${n} notebook${n > 1 ? 's' : ''} inside will be deleted from this device.` : 'The folder is empty.', 'Delete', async () => { await nbTx(['folders', 'items', 'packs'], 'readwrite', (fs, is, ps) => { for (const id of ds) fs.delete(id); for (const i of items) if (ds.has(i.folder)) { is.delete(i.id); ps.delete(i.id); } }); WS.list.forEach((t) => { if (t.libId && items.some((i) => i.id === t.libId && ds.has(i.folder))) t.libId = null; }); if (ds.has(NB.folder)) NB.folder = f.parent === 'root' ? 'all' : f.parent; nbRender(); }); } }
+      ]); return;
+    }
+    const fo = e.target.closest('[data-fo]'); if (fo && !e.target.closest('[data-it]')) { NB.folder = fo.dataset.fo; if (fo.dataset.fo !== 'all' && fo.dataset.fo !== 'fav' && fo.dataset.fo !== 'recent') NB.open.add(fo.dataset.fo); nbRender(); return; }
+    const im = e.target.closest('[data-im]'); if (im) {
+      const it = items.find((x) => x.id === im.dataset.im); if (!it) return;
+      openMenu(im, [
+        { label: 'Open', icon: 'open', run: () => nbOpenItem(it.id) },
+        { label: it.fav ? 'Remove from favourites' : 'Add to favourites', icon: 'star', run: async () => { it.fav = !it.fav; await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); } },
+        { label: 'Rename', icon: 'edit', run: () => nbAsk('Rename notebook', 'Name', it.name, async (v) => { it.name = v; await nbTx('items', 'readwrite', (s) => s.put(it)); const ti = WS.list.findIndex((t) => t.libId === it.id); if (ti === WS.active) $('#docName').value = v; else if (ti >= 0) WS.list[ti].name = v; renderTabs(); nbRender(); }) },
+        { label: 'Move to', icon: 'folder', run: () => nbMovePicker(im, it) },
+        { label: 'Duplicate', icon: 'dup', run: async () => { const pk = await nbPack(it.id); const c = { ...it, id: uid('nb'), name: it.name + ' copy', created: Date.now(), modified: Date.now(), fav: false }; await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.put(c); p.put(pk, c.id); }); nbRender(); } },
+        { label: 'Export as PDF', icon: 'download', run: () => nbExportPdf(it.id) },
+        '-', { label: 'Delete', icon: 'trash', run: () => confirmSheet(`Delete ${it.name}?`, 'It will be removed from this device. Export it first if you may need it.', 'Delete', async () => { await nbTx(['items', 'packs'], 'readwrite', (i, p) => { i.delete(it.id); p.delete(it.id); }); WS.list.forEach((t) => { if (t.libId === it.id) t.libId = null; }); nbRender(); }) }
+      ]); return;
+    }
+    const fav = e.target.closest('[data-fav]'); if (fav) { const it = items.find((x) => x.id === fav.dataset.fav); it.fav = !it.fav; await nbTx('items', 'readwrite', (s) => s.put(it)); nbRender(); return; }
+    const card = e.target.closest('[data-it]'); if (card) nbOpenItem(card.dataset.it);
+  });
+  fv._key = (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); fv.querySelector('.nb-q').focus(); } };
+  nbRender();
+}
+function nbCurFolder() { return ['all', 'fav', 'recent'].includes(NB.folder) ? 'root' : NB.folder; }
+async function nbRender() {
+  const fv = NB.fv; if (!fv) return; const { folders, items } = await nbAll();
+  if (!['all', 'fav', 'recent', 'root'].includes(NB.folder) && !folders.some((f) => f.id === NB.folder)) NB.folder = 'all';
+  const count = (id) => { const ds = nbDescendants(id, folders); return items.filter((i) => ds.has(i.folder)).length; };
+  const node = (f, d) => { const kids = folders.filter((x) => x.parent === f.id).sort((a, b) => a.name.localeCompare(b.name)); const op = NB.open.has(f.id);
+    return `<div class="nb-row ${NB.folder === f.id ? 'on' : ''}" data-fo="${f.id}" style="--d:${d}">${kids.length ? `<button class="nb-tw ${op ? 'op' : ''}" data-tw="${f.id}" aria-label="${op ? 'Collapse' : 'Expand'}">${icon('chevr')}</button>` : '<span class="nb-tw"></span>'}${icon('folder')}<span class="nb-fn">${esc(f.name)}</span><small>${count(f.id) || ''}</small><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>${op ? kids.map((k) => node(k, d + 1)).join('') : ''}`; };
+  const top = folders.filter((f) => f.parent === 'root').sort((a, b) => a.name.localeCompare(b.name));
+  fv.querySelector('.nb-tree').innerHTML = `<div class="nb-row ${NB.folder === 'all' ? 'on' : ''}" data-fo="all">${icon('nb')}<span class="nb-fn">All notebooks</span><small>${items.length || ''}</small></div><div class="nb-row ${NB.folder === 'recent' ? 'on' : ''}" data-fo="recent">${icon('history')}<span class="nb-fn">Recent</span></div><div class="nb-row ${NB.folder === 'fav' ? 'on' : ''}" data-fo="fav">${icon('star')}<span class="nb-fn">Favourites</span><small>${items.filter((i) => i.fav).length || ''}</small></div><div class="nb-h"><span>Folders</span><button class="nb-fm" data-nbnf aria-label="New folder" title="New folder">+</button></div>${top.map((f) => node(f, 0)).join('') || '<p class="nb-empty-t">No folders yet</p>'}`;
+  const nf = fv.querySelector('[data-nbnf]'); if (nf) nf.onclick = (e) => { e.stopPropagation(); nbNewFolder('root'); };
+  const q = NB.q.trim().toLowerCase(); let list, subs = [];
+  if (q) list = items.filter((i) => i.name.toLowerCase().includes(q));
+  else if (NB.folder === 'all') list = items;
+  else if (NB.folder === 'fav') list = items.filter((i) => i.fav);
+  else if (NB.folder === 'recent') list = items.filter((i) => i.opened || i.modified).sort((a, b) => Math.max(b.opened || 0, b.modified) - Math.max(a.opened || 0, a.modified)).slice(0, 24);
+  else if (NB.folder === 'root') list = items.filter((i) => i.folder === 'root');
+  else { list = items.filter((i) => i.folder === NB.folder); subs = folders.filter((f) => f.parent === NB.folder).sort((a, b) => a.name.localeCompare(b.name)); }
+  if (!q && NB.folder === 'root') subs = top;
+  const by = { mod: (a, b) => b.modified - a.modified, opened: (a, b) => (b.opened || 0) - (a.opened || 0), name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }), created: (a, b) => b.created - a.created, size: (a, b) => b.size - a.size };
+  if (NB.folder !== 'recent' || q) list = list.slice().sort(by[NB.sort] || by.mod);
+  const path = []; let c = folders.find((f) => f.id === NB.folder); while (c) { path.unshift(c); c = folders.find((f) => f.id === c.parent); }
+  const chips = `<div class="nb-chips">${[['all', 'All'], ['recent', 'Recent'], ['fav', 'Favourites'], ['root', 'Folders']].map(([k, l]) => `<button data-fo="${k}" class="${NB.folder === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  fv.querySelector('.nb-crumb').innerHTML = chips + (q ? `<b>Results for "${esc(NB.q.trim())}"</b><small>${list.length}</small>` : path.length ? `<button data-fo="all">Notebooks</button>${path.map((f, i) => `<span>/</span>${i === path.length - 1 ? `<b>${esc(f.name)}</b>` : `<button data-fo="${f.id}">${esc(f.name)}</button>`}`).join('')}<span class="fv-sp"></span><button class="tbtn nb-nbtn" data-nbsub>${icon('folder')}<span>New subfolder</span></button>` : `<b>${{ all: 'All notebooks', fav: 'Favourites', recent: 'Recent', root: 'Folders' }[NB.folder]}</b><small>${list.length + subs.length}</small>${NB.folder === 'root' ? `<span class="fv-sp"></span><button class="tbtn nb-nbtn" data-nbsub>${icon('folder')}<span>New folder</span></button>` : ''}`);
+  const ns = fv.querySelector('[data-nbsub]'); if (ns) ns.onclick = (e) => { e.stopPropagation(); nbNewFolder(nbCurFolder()); };
+  const openIds = new Set(WS.list.map((t) => t.libId).filter(Boolean));
+  const fcard = (f) => `<div class="nb-card nb-fold" data-fo="${f.id}"><div class="nb-fic">${icon('folder')}</div><div class="nb-meta"><b>${esc(f.name)}</b><small>${count(f.id)} notebook${count(f.id) !== 1 ? 's' : ''}</small></div><button class="nb-fm" data-fm="${f.id}" aria-label="Folder options">${icon('more')}</button></div>`;
+  const icard = (it) => `<div class="nb-card" data-it="${it.id}" draggable="true" title="${esc(it.name)}"><div class="nb-th">${it.thumb ? `<img src="${it.thumb}" alt="" loading="lazy">` : icon('blank')}${openIds.has(it.id) ? '<span class="nb-open">Open</span>' : ''}<button class="nb-star ${it.fav ? 'on' : ''}" data-fav="${it.id}" aria-label="${it.fav ? 'Remove from favourites' : 'Add to favourites'}">${icon('star')}</button></div><div class="nb-meta"><b>${esc(it.name)}</b><small>${nbAgo(it.modified)} · ${it.pages} page${it.pages !== 1 ? 's' : ''}${NB.folder === 'all' || NB.folder === 'fav' || NB.folder === 'recent' || q ? ` · ${esc(nbFolderName(it.folder, folders))}` : ''}</small></div><button class="nb-fm" data-im="${it.id}" aria-label="Notebook options">${icon('more')}</button></div>`;
+  const grid = fv.querySelector('.nb-grid');
+  grid.innerHTML = subs.map(fcard).join('') + list.map(icard).join('') || `<div class="nb-empty">${icon('nb')}<b>${q ? 'No notebooks match' : NB.folder === 'fav' ? 'No favourites yet' : 'Nothing here yet'}</b><p>${q ? 'Try another word.' : 'Create a notebook, import PDFs, or drag PDF files here. Everything stays on this device.'}</p></div>`;
+  let est = ''; try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); est = ` · ${nbSize(e.usage || 0)} used of ${nbSize(e.quota || 0)} available to this app`; } } catch (e) {}
+  fv.querySelector('.nb-foot').textContent = `${items.length} notebook${items.length !== 1 ? 's' : ''}, ${nbSize(items.reduce((s, i) => s + (i.size || 0), 0))} · auto-save ${NB.auto ? 'on' : 'off'}${est}. Stored only on this device. Back up from the menu.`;
+}
+
+/* ---------- Digital signatures (certificate based) ---------- */
+let SGM = null; const sgMod = async () => SGM || (SGM = await import('./sign.js?v=1'));
+const SIG_PW = new Map();
+const fmtWhen = (t) => t ? new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+function signedDocs() { return [...S.docs.values()].filter((d) => d.sigs && d.sigs.length); }
+async function checkSigs(doc, quiet) {
+  try {
+    const M = await sgMod(); if (!M.hasSignatures(doc.bytes)) { doc.sigs = []; return; }
+    doc.sigs = await M.verifyPdf(doc.bytes); if (!doc.sigs.length || quiet) return;
+    const ok = doc.sigs.every((r) => r.valid), r = doc.sigs[doc.sigs.length - 1];
+    setTimeout(() => toast(ok ? `Digitally signed by ${r.name}. Signature valid${r.whole ? ', no changes since signing' : ', changes were added later'}.` : 'This PDF has a signature that is not valid. See Fill & Sign, Check signatures.', { ms: 5200, err: !ok }), 2800);
+  } catch (e) { console.warn('signature check', e); }
+}
+function sigCard(r) {
+  const st = r.error ? ['bad', 'Could not check', r.error] : !r.valid ? ['bad', 'Not valid', 'The document was changed after it was signed, or the signature is damaged.'] : r.whole ? ['ok', 'Valid', 'The document has not changed since it was signed.'] : ['warn', 'Valid, with later changes', 'The signed part is intact, but more changes were saved after signing.'];
+  const who = r.selfSigned ? 'Self-issued digital ID. The name is the signer\'s own claim, not confirmed by a certificate authority.' : `Certificate issued by ${esc(r.issuer || 'unknown')}. Check that you trust this authority.`;
+  return `<div class="sgc ${st[0]}"><div class="sgh"><span class="sgdot"></span><b>${st[1]}</b></div><p class="sub" style="margin:2px 0 8px">${esc(st[2])}</p>
+    <dl class="sgd"><dt>Signed by</dt><dd>${esc(r.name || r.signer || 'Unknown')}${r.email ? ` (${esc(r.email)})` : ''}</dd>${r.org ? `<dt>Organisation</dt><dd>${esc(r.org)}</dd>` : ''}<dt>Signed on</dt><dd>${esc(fmtWhen(r.when) || 'Unknown')}</dd>${r.reason ? `<dt>Reason</dt><dd>${esc(r.reason)}</dd>` : ''}${r.location ? `<dt>Location</dt><dd>${esc(r.location)}</dd>` : ''}${r.notAfter ? `<dt>ID valid until</dt><dd>${esc(new Date(r.notAfter).toLocaleDateString())}${r.expiredAtSigning ? ' (expired when signed)' : ''}</dd>` : ''}</dl><p class="sub" style="margin:8px 0 0">${who}</p></div>`;
+}
+async function openSigCheck() {
+  if (!S.pages.length) return toast('Open a PDF first');
+  const t = toast('Checking signatures', { spin: true, sticky: true });
+  for (const d of S.docs.values()) if (!d.sigs) await checkSigs(d, true);
+  t.remove();
+  const ds = signedDocs();
+  const body = ds.length ? ds.map((d) => `${ds.length > 1 ? `<div class="flabel" style="margin-top:10px">${esc(d.name)}</div>` : ''}${d.sigs.map(sigCard).join('')}`).join('') : '<p class="sub">No digital signatures in this PDF. Drawn or typed signatures are pictures and are not checked here.</p>';
+  const sh = sheet(`<h2>Signatures</h2>${body}<p class="sub" style="margin-top:12px">Checked on this device. Nothing was uploaded.</p><div class="acts"><button class="btn primary" data-x>Done</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+}
+async function openDigitalIds(after) {
+  const M = await sgMod(); const ids = await M.listIds();
+  const card = (r) => `<div class="sgid" data-id="${r.id}"><div class="sgid-i">${icon('dsig')}</div><div class="sgid-t"><b>${esc(r.name)}</b><small>${esc([r.email, r.org].filter(Boolean).join(' · '))}</small><small>${r.selfSigned ? 'Self-issued' : 'Issued by ' + esc(r.issuer)} · valid until ${esc(new Date(r.notAfter).toLocaleDateString())}${Date.now() > r.notAfter ? ' (expired)' : ''}</small></div><button class="tbtn" data-idm="${r.id}" aria-label="Options">${icon('more')}</button></div>`;
+  const sh = sheet(`<h2>Digital IDs</h2><p class="sub">A digital ID is a certificate and private key. Signing with it locks the PDF: any later change shows the signature as broken. IDs stay on this device, protected by your password.</p>
+    <div class="sgids">${ids.length ? ids.map(card).join('') : '<p class="sub" style="margin:6px 0">No digital IDs yet.</p>'}</div>
+    <div class="acts" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn primary" data-new>Create ID</button><button class="btn" data-imp>${icon('open')} Import .p12 / .pfx</button><span style="flex:1"></span><button class="btn" data-x>Close</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-new]').onclick = () => createIdSheet(after);
+  sh.querySelector('[data-imp]').onclick = () => importIdSheet(after);
+  sh.querySelectorAll('[data-idm]').forEach((b) => b.onclick = () => {
+    const r = ids.find((x) => x.id === b.dataset.idm);
+    openMenu(b, [
+      { label: 'Export backup (.p12)', icon: 'download', run: () => downloadBlob(new Blob([r.p12], { type: 'application/x-pkcs12' }), r.name.replace(/[^\w.-]+/g, '_') + '.p12') },
+      { label: 'Share certificate (.cer)', icon: 'share', run: () => askIdPassword(r, 'Unlock to export the public certificate', async (pw) => { const der = await M.certDer(r, pw); downloadBlob(new Blob([der], { type: 'application/pkix-cert' }), r.name.replace(/[^\w.-]+/g, '_') + '.cer'); }) },
+      '-', { label: 'Delete', icon: 'trash', run: () => confirmSheet('Delete this digital ID?', `${r.name}. Export a backup first if you may need it. PDFs you already signed stay valid.`, 'Delete', async () => { await M.deleteId(r.id); SIG_PW.delete(r.id); openDigitalIds(after); }) }
+    ]);
+  });
+}
+function askIdPassword(r, title, run) {
+  const sh = sheet(`<h2>${esc(title)}</h2><p class="sub">${esc(r.name)}</p><div class="field"><label for="idpw">Password</label><input id="idpw" class="inp" type="password" autocomplete="current-password" autofocus></div><small class="sub" id="idpe" style="color:var(--danger)"></small><div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>Unlock</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  const go = async () => { try { await run(sh.querySelector('#idpw').value); closeSheet(); } catch (e) { sh.querySelector('#idpe').textContent = 'Wrong password, or the ID could not be read.'; } };
+  sh.querySelector('[data-ok]').onclick = go; sh.querySelector('#idpw').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+}
+function createIdSheet(after) {
+  const sh = sheet(`<h2>Create digital ID</h2><p class="sub">Self-issued, RSA 2048, SHA-256, valid for 5 years. Readers such as Adobe Acrobat will show the signature as intact but the identity as unconfirmed, unless they trust this certificate. For legally recognised signatures use an ID from a certificate authority and import it.</p>
+    <div class="field"><label for="idn">Full name</label><input id="idn" class="inp" autocomplete="name" autofocus></div>
+    <div class="field"><label for="ido">Organisation or rank (optional)</label><input id="ido" class="inp" autocomplete="organization"></div>
+    <div class="field"><label for="ide">Email (optional)</label><input id="ide" class="inp" type="email" autocomplete="email"></div>
+    <div class="field"><label for="idp">Password</label><input id="idp" class="inp" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="idp2">Repeat password</label><input id="idp2" class="inp" type="password" autocomplete="new-password"></div>
+    <small class="sub" id="idpe" style="color:var(--danger)"></small>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>Create</button></div>`);
+  sh.querySelector('[data-x]').onclick = () => openDigitalIds(after);
+  sh.querySelector('[data-ok]').onclick = async (e) => {
+    const v = (k) => sh.querySelector(k).value.trim(), er = sh.querySelector('#idpe');
+    if (!v('#idn')) return (er.textContent = 'Enter your name.');
+    if (sh.querySelector('#idp').value.length < 6) return (er.textContent = 'Use a password of at least 6 characters.');
+    if (sh.querySelector('#idp').value !== sh.querySelector('#idp2').value) return (er.textContent = 'The passwords do not match.');
+    e.target.disabled = true; e.target.textContent = 'Creating...';
+    try { const M = await sgMod(); const r = await M.createId({ name: v('#idn'), org: v('#ido'), email: v('#ide'), password: sh.querySelector('#idp').value }); SIG_PW.set(r.id, sh.querySelector('#idp').value); toast('Digital ID created. Export a backup from Digital IDs.'); after ? after(r.id) : openDigitalIds(); }
+    catch (err) { console.error(err); er.textContent = 'Could not create the ID: ' + err.message; e.target.disabled = false; e.target.textContent = 'Create'; }
+  };
+}
+function importIdSheet(after) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.p12,.pfx,application/x-pkcs12';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; const bytes = new Uint8Array(await f.arrayBuffer());
+    const fake = { name: f.name };
+    askIdPassword(fake, 'Import digital ID', async (pw) => { const M = await sgMod(); const r = await M.importId(bytes, pw); SIG_PW.set(r.id, pw); setTimeout(() => { toast(`Imported ${r.name}`); after ? after(r.id) : openDigitalIds(); }, 50); });
+  };
+  inp.click();
+}
+async function openDigitalSign(pick) {
+  if (!S.pages.length) return toast('Open a PDF first');
+  closeEditor(false);
+  const M = await sgMod(); const ids = await M.listIds();
+  if (!ids.length) return openDigitalIds((id) => openDigitalSign(id));
+  const lastId = pick || lsGet('pdfmate.sigId', '') ; let id = ids.find((r) => r.id === lastId) || ids[0];
+  const sigFields = allFieldAnns().filter(([, a]) => a.kind === 'sign').length + [...S.docs.values()].reduce((n, d) => n + (d.emptySig || 0), 0);
+  let place = sigFields ? 'field' : 'last';
+  const reasons = ['I am the author of this document', 'I approve this document', 'I have reviewed this document', 'I agree to the terms of this document'];
+  const prev = lsGet('pdfmate.sigOpts', {});
+  const already = signedDocs().length;
+  const sh = sheet(`<h2>Sign with digital ID</h2><p class="sub">Makes a signed copy. After signing, any change to the PDF breaks the signature, so finish filling and editing first.</p>
+    ${already ? '<p class="sub" style="color:var(--danger)">This PDF already has a digital signature. Saving a new copy makes the existing signature show as not valid.</p>' : ''}
+    <div class="field"><label for="sgid">Digital ID</label><div style="display:flex;gap:8px"><select id="sgid" class="inp" style="flex:1">${ids.map((r) => `<option value="${r.id}" ${r === id ? 'selected' : ''}>${esc(r.name)}${r.email ? ' · ' + esc(r.email) : ''}</option>`).join('')}</select><button class="btn" data-ids>Manage</button></div></div>
+    <div class="field" id="sgpwf"><label for="sgpw">Password</label><input id="sgpw" class="inp" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="sgr">Reason</label><input id="sgr" class="inp" list="sgrl" value="${esc(prev.reason || reasons[1])}"><datalist id="sgrl">${reasons.map((x) => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="field"><label for="sgl">Location (optional)</label><input id="sgl" class="inp" value="${esc(prev.location || '')}" placeholder="Ship, port or city"></div>
+    <div class="field"><span class="flabel">Appearance</span><div class="seg" role="group">${sigFields ? '<button data-pl="field">Signature field</button>' : ''}<button data-pl="last">End of last page</button><button data-pl="this">This page</button><button data-pl="none">Invisible</button></div></div>
+    <small class="sub" id="sge" style="color:var(--danger)"></small>
+    <div class="acts"><button class="btn" data-x>Cancel</button><button class="btn primary" data-ok>${icon('dsig')} Sign and download</button></div>`);
+  const pw = sh.querySelector('#sgpw'), pwf = sh.querySelector('#sgpwf');
+  const syncPw = () => { id = ids.find((r) => r.id === sh.querySelector('#sgid').value); pwf.hidden = SIG_PW.has(id.id); };
+  syncPw(); sh.querySelector('#sgid').onchange = syncPw;
+  const segs = sh.querySelectorAll('[data-pl]'); const setPl = (v) => { place = v; segs.forEach((b) => b.setAttribute('aria-pressed', b.dataset.pl === v)); }; setPl(place);
+  segs.forEach((b) => b.onclick = () => setPl(b.dataset.pl));
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-ids]').onclick = () => openDigitalIds((nid) => openDigitalSign(nid));
+  setTimeout(() => (pwf.hidden ? sh.querySelector('[data-ok]') : pw).focus(), 40);
+  pw.onkeydown = (e) => { if (e.key === 'Enter') sh.querySelector('[data-ok]').click(); };
+  sh.querySelector('[data-ok]').onclick = async (e) => {
+    const er = sh.querySelector('#sge'); er.textContent = ''; const btn = e.currentTarget;
+    let key; const pass = SIG_PW.get(id.id) ?? pw.value;
+    try { key = await M.unlock(id, pass); } catch (err) { SIG_PW.delete(id.id); pwf.hidden = false; er.textContent = 'Wrong password for this digital ID.'; pw.focus(); return; }
+    if (Date.now() > id.notAfter) { er.textContent = 'This digital ID has expired. Create or import a new one.'; return; }
+    SIG_PW.set(id.id, pass); lsSet('pdfmate.sigId', id.id);
+    const reason = sh.querySelector('#sgr').value.trim(), location = sh.querySelector('#sgl').value.trim(); lsSet('pdfmate.sigOpts', { reason, location });
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Signing';
+    try {
+      const bytes = await buildPdf(S.pages, null, { keepForms: true });
+      const pages = S.pages.length, pgi = place === 'this' ? clamp(S.current || 0, 0, pages - 1) : pages - 1;
+      const pv = S.pages[pgi]; const rot = ((pv.baseRot || 0) + (pv.rot || 0)) % 180 !== 0; const pw2 = rot ? pv.view[3] - pv.view[1] : pv.view[2] - pv.view[0];
+      const o = { reason, location, contact: id.email, useField: place === 'field', visible: place !== 'none', page: pgi, rect: place === 'none' ? [0, 0, 0, 0] : [Math.max(10, pw2 - 236), 28, 210, 62] };
+      const out = await M.signPdf(PL, bytes, key, o);
+      const name = fileName().replace(/\.pdf$/i, '') + '-signed.pdf';
+      downloadBlob(new Blob([out], { type: 'application/pdf' }), name);
+      closeSheet(); toast(`Signed copy saved as ${name}`, { ms: 4000 });
+    } catch (err) { console.error(err); er.textContent = 'Signing failed: ' + err.message; btn.disabled = false; btn.innerHTML = `${icon('dsig')} Sign and download`; }
+  };
+}
+
 // A page counts as heavy if it took long to draw on screen, or has a very large number of drawing operations.
 async function isHeavyPage(p) {
   if (p.kind !== 'pdf') return false; if (pst(p).heavy) return true;
@@ -3843,8 +4396,8 @@ async function buildPdf(list, onProgress, opts = {}) {
     if (!doc.encrypted) {
       try { ld = await PL.PDFDocument.load(doc.ebytes || doc.bytes, { updateMetadata: false }); }
       catch (e) { ld = null; }
-      if (ld && doc.fields.length) {
-        try { fillForm(ld, doc); }
+      if (ld && (doc.fields.length || doc.dropFields)) {
+        try { fillForm(ld, doc, !opts.keepForms); }
         catch (e) { console.warn('flatten failed', e); try { ld = await PL.PDFDocument.load(doc.ebytes || doc.bytes, { updateMetadata: false }); } catch (e2) { ld = null; } doc._flatFail = true; }
       }
     }
@@ -3855,13 +4408,14 @@ async function buildPdf(list, onProgress, opts = {}) {
     const e = im.src.startsWith('data:image/png') ? await out.embedPng(bytes) : await out.embedJpg(bytes); imgCache.set(id, e); return e;
   };
   const isolate = (page) => { const ctx = out.context; const s = ctx.register(ctx.contentStream([PL.pushGraphicsState()])); const e = ctx.register(ctx.contentStream([PL.popGraphicsState()])); page.node.normalize(); page.node.wrapContentStreams(s, e); };
+  const outPages = [];
   for (let i = 0; i < list.length; i++) {
     const p = list[i]; let page = null;
     if (!opts.noRedact && p.annots.some((a) => a.t === 'redact')) {
       // True redaction: flatten the page to an image so content under black boxes is gone from the file
       const one = await buildPdf([p], null, { noRedact: true });
       const flat = await rasterizePdf(one, 200, 0.9); const fd = await PL.PDFDocument.load(flat);
-      const [cp] = await out.copyPages(fd, [0]); out.addPage(cp);
+      const [cp] = await out.copyPages(fd, [0]); out.addPage(cp); outPages[i] = cp;
       if (onProgress) onProgress((i + 1) / list.length); continue;
     }
     if (p.kind === 'pdf' && opts.flatHeavy && await isHeavyPage(p)) {
@@ -3870,7 +4424,7 @@ async function buildPdf(list, onProgress, opts = {}) {
       page.drawImage(jpg, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }); page.setRotation(PL.degrees(tr(p)));
     } else if (p.kind === 'pdf') {
       const doc = S.docs.get(p.docId); const ld = await libFor(doc);
-      if (ld) { try { [page] = await out.copyPages(ld, [p.index]); out.addPage(page); isolate(page); } catch (e) { console.warn(e); page = null; } }
+      if (ld) { try { [page] = await out.copyPages(ld, [p.index]); out.addPage(page); isolate(page); if (opts.keepForms && doc.fields.length && !doc.dropFields) registerCopiedFields(out, page); } catch (e) { console.warn(e); page = null; } }
       if (!page) {
         const jpg = await out.embedJpg(await rasterPage(doc, p.index)); const [x0, y0, x1, y1] = p.view;
         page = out.addPage([x1 - x0, y1 - y0]); page.setMediaBox(x0, y0, x1 - x0, y1 - y0);
@@ -3886,8 +4440,10 @@ async function buildPdf(list, onProgress, opts = {}) {
     for (const a of p.annots) await drawAnn(page, a, font, embedImg);
     if (p.ocr && p.ocr.length) { const f = await font('helv', false); for (const w of p.ocr) { if (needsUni(w.t)) continue; const wd = f.widthOfTextAtSize(w.t, 1) || 1; const size = Math.max(1, Math.min(w.h * 0.95, w.w / wd)); const { V } = UV(w.r); const off = w.h * 0.18; try { page.drawText(w.t, { x: w.ax + off * V[0], y: w.ay + off * V[1], size, font: f, opacity: 0, rotate: PL.degrees(w.r) }); } catch (e) {} } }
     if (p.crop) { const [cx0, cy0, cx1, cy1] = p.crop; page.setCropBox(cx0, cy0, cx1 - cx0, cy1 - cy0); }
+    outPages[i] = page;
     if (onProgress) onProgress((i + 1) / list.length);
   }
+  if (!opts.noFields) await addFormFields(out, outPages, list, opts);
   const md = S.meta || {};
   if (md.title) out.setTitle(md.title); if (md.author) out.setAuthor(md.author); if (md.subject) out.setSubject(md.subject);
   if (md.keywords) out.setKeywords(md.keywords.split(',').map((k) => k.trim()).filter(Boolean));
@@ -3929,6 +4485,7 @@ async function drawAnn(page, a, font, embedImg) {
     page.pushOperators(PL.popGraphicsState());
   }
   else if (a.t === 'redact') page.drawRectangle({ ...RB(a.x, a.y), width: a.w, height: a.h, color: PL.rgb(0, 0, 0) });
+  else if (a.t === 'field') { if (a._flat) await flatField(page, a, font); }
   else if (a.t === 'measure' || a.t === 'area' || a.t === 'cloud') await measPdf(page, a, font);
   else if (a.t === 'mark') {
     if (a.kind === 'hl') for (const [x, y, rw, rh] of a.rects) page.drawRectangle({ x, y, width: rw, height: rh, color: col, opacity: 0.4, blendMode: PL.BlendMode.Multiply });
@@ -3971,6 +4528,7 @@ function openSave() {
   if (!S.pages.length) return; closeEditor(false);
   const nSel = S.selPages.size; const canShare = !!(navigator.canShare && window.File);
   let scope = 'all';
+  const nCreated = allFieldAnns().length; const hasExisting = [...S.docs.values()].some((d) => (d.fields && d.fields.length) || d.dropFields); const hasForm = nCreated > 0 || hasExisting; let keepF = nCreated > 0 || [...S.docs.values()].some((d) => d.dropFields);
   const sh = sheet(`<h2>Save PDF</h2><p class="sub">${S.pages.length} page${S.pages.length > 1 ? 's' : ''}. Markup, signatures and form entries are written into the file.</p>
     <div class="field"><label for="saveName">File name</label><input id="saveName" class="inp" value="${esc(fileName())}" autocomplete="off"></div>
     ${nSel ? `<div class="field"><span class="flabel">Pages</span><div class="seg" role="group"><button aria-pressed="true" data-sc="all">All ${S.pages.length}</button><button aria-pressed="false" data-sc="sel">Selected ${nSel}</button></div></div>` : ''}
@@ -3979,8 +4537,13 @@ function openSave() {
       <small class="sub" id="czNote" style="margin:6px 0 0;display:block">Keeps text selectable and sharp.</small></div>
     <div class="field"><span class="flabel">Drawings</span><div class="seg" role="group"><button aria-pressed="true" data-fh="0">Keep as is</button><button aria-pressed="false" data-fh="1">Flatten heavy pages</button></div>
       <small class="sub" id="fhNote" style="margin:6px 0 0;display:block">${S.pages.some((p) => pst(p).heavy) ? 'This file has heavy drawing pages. Flattening makes it open fast on any device.' : 'Heavy drawing pages stay as vector graphics.'}</small></div>
+    ${signedDocs().length ? '<p class="sub" style="color:var(--danger)">This PDF is digitally signed. A saved copy will show the signature as not valid. To keep it valid, share the original file.</p>' : ''}
+    ${hasForm ? `<div class="field"><span class="flabel">Form fields</span><div class="seg" role="group"><button aria-pressed="${keepF}" data-ff="1">Keep fillable</button><button aria-pressed="${!keepF}" data-ff="0">Flatten</button></div><small class="sub" id="ffNote" style="margin:6px 0 0;display:block"></small></div>` : ''}
     <div class="progress" hidden><i></i></div>
-    <div class="acts"><button class="btn" data-print>${icon('print')} Print</button>${canShare ? `<button class="btn" data-share>${icon('share')} Share</button>` : ''}<button class="btn primary" data-dl>${icon('download')} Download</button></div>`);
+    <div class="acts"><button class="btn" data-nbs title="Keep an editable copy in your notebook library">${icon('nb')} ${(WS.list[WS.active] || {}).libId ? 'Update notebook' : 'Save to Notebooks'}</button><button class="btn" data-print>${icon('print')} Print</button>${canShare ? `<button class="btn" data-share>${icon('share')} Share</button>` : ''}<button class="btn primary" data-dl>${icon('download')} Download</button></div>`);
+  const ffNote = () => { const n = sh.querySelector('#ffNote'); if (n) n.textContent = keepF ? 'Fields stay fillable in any PDF reader, including Adobe Acrobat and Chrome.' : 'Entries are printed into the page and the fields are removed, so nobody can change them.' + (nCreated ? ' Empty fields you added are left out.' : ''); }; ffNote();
+  sh.querySelector('[data-nbs]').onclick = () => { closeSheet(); nbSaveCurrent({ name: sh.querySelector('#saveName').value.replace(/\.pdf$/i, '') }); };
+  sh.querySelectorAll('[data-ff]').forEach((b) => b.onclick = () => { keepF = b.dataset.ff === '1'; sh.querySelectorAll('[data-ff]').forEach((z) => z.setAttribute('aria-pressed', z === b)); ffNote(); });
   sh.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { scope = b.dataset.sc; sh.querySelectorAll('[data-sc]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
   let cz = 0, ps = '';
   sh.querySelectorAll('[data-ps]').forEach((b) => b.onclick = () => { ps = b.dataset.ps; sh.querySelectorAll('[data-ps]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
@@ -3994,9 +4557,10 @@ function openSave() {
     const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i');
     try {
       const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : S.pages;
-      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps, flatHeavy: fh });
+      const fo = hasForm ? { keepForms: keepF, noFields: !keepF } : {};
+      let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps, flatHeavy: fh, ...fo });
       let keptVec = false;
-      if (fh) { const vec = await buildPdf(list, null, { pageSize: ps }); if (vec.length <= bytes.length) { bytes = vec; keptVec = true; } }
+      if (fh) { const vec = await buildPdf(list, null, { pageSize: ps, ...fo }); if (vec.length <= bytes.length) { bytes = vec; keptVec = true; } }
       if (cz) { const smaller = await rasterizePdf(bytes, cz, cz >= 150 ? 0.8 : 0.68, (f) => { bar.style.width = Math.round(50 + f * 50) + '%'; }); if (smaller.length < bytes.length) bytes = smaller; else toast('This file is already as small as it gets'); }
       const blob = new Blob([bytes], { type: 'application/pdf' });
       if (mode === 'share') {
@@ -4971,6 +5535,8 @@ $('#eOpen').addEventListener('click', () => $('#fileOpen').click());
 $('#ePhotos').addEventListener('click', () => $('#fileImg').click());
 $('#eBlank').addEventListener('click', () => openNewPdf());
 $('#eDesign').addEventListener('click', () => openDesign());
+$('#eNotes').addEventListener('click', () => openNotebooks());
+$('#btnNotes').addEventListener('click', () => openNotebooks());
 $('#eScan').addEventListener('click', startScan);
 $('#fileOpen').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; openFilesInTabs(f); });
 $('#fileImg').addEventListener('change', (e) => { const f = [...e.target.files]; e.target.value = ''; addFiles(f, S.pages.length ? S.current + 1 : 0); });
@@ -5042,7 +5608,8 @@ function appGuide() {
     ${sec('sign', 'Why there is no sign-in', `<p>Accounts exist to store your data on someone else's computer. This app stores nothing anywhere except your own device, so there is nothing to log in to, no password to leak and no account to be hacked or closed.</p><p>It also means no subscription, no trial that runs out and no watermark on your documents.</p>`)}
     ${sec('install', 'Install it as an app', `<p>Installing adds an app icon and its own window. It needs no administrator rights on most computers, takes a few seconds and can be removed like any app.</p><ul><li><b>Windows or Mac, Chrome or Edge:</b> click the install icon at the right of the address bar, or open the browser menu and choose Install Meridian PDF Mate.</li><li><b>Android, Chrome:</b> open the menu and tap Install app or Add to Home screen.</li><li><b>iPhone or iPad, Safari:</b> tap Share, then Add to Home Screen.</li></ul><p>On Windows you can then set it as the default app for PDF files from Settings, Apps, Default apps.</p>`)}
     ${sec('check', 'What makes it different', `<ul><li>Free, with every feature included.</li><li>No installation file and no admin rights needed, so it runs on ship and office computers.</li><li>Works offline, made for life at sea.</li><li>Fill forms, sign, stamp, scan, OCR, compare, redact, protect with a password and export to Word.</li><li>A full Design studio with 90 templates, calendars and print-ready export.</li><li>Light, dark and red bridge night mode.</li></ul>`)}
-    ${sec('download', 'Your data and backups', `<p>Work is saved in this browser on this device. Clearing the browser's site data, or using a private window, removes it. To keep a copy, save your PDF, or in the Design studio choose Save project file.</p><p>Each device keeps its own work; nothing syncs between devices.</p>`)}
+    ${sec('form', 'Forms, digital signatures and notebooks', `<ul><li><b>Make fillable forms.</b> Forms tab: add text, paragraph, check box, option, dropdown, date and signature fields, or let Detect fields turn blank lines and boxes into fields. Save with Keep fillable and the form works in Adobe Acrobat, Chrome and phone readers.</li><li><b>Digital signatures.</b> Fill &amp; Sign, Digital sign. A digital ID (certificate and key, kept on this device behind your password) signs the PDF so any later change is detectable. Opening a signed PDF checks it automatically. Self-issued IDs prove the file is unchanged; for legally recognised signatures import an ID from a certificate authority (.p12 or .pfx).</li><li><b>Notebooks.</b> A library on this device with folders and subfolders, search, favourites and lined, grid or dotted notebooks. Notebooks stay editable and save themselves as you write. Back up everything to one file from the Notebooks menu.</li></ul>`)}
+    ${sec('download', 'Your data and backups', `<p>Work is saved in this browser on this device. Clearing the browser's site data, or using a private window, removes it, including Notebooks and digital IDs. To keep a copy, save your PDF, or in the Design studio choose Save project file.</p><p>Each device keeps its own work; nothing syncs between devices.</p>`)}
     ${sec('tour', 'Updates', `<p>When a new version is published the app downloads it quietly in the background. To switch to it straight away, open i, then Update. Your open documents are kept.</p>`)}
     ${sec('mail', 'Help and feedback', `<p>Suggestions, problems or requests: <b>tangojulietdev@gmail.com</b>. Every message is read.</p>`)}
     </div>
@@ -5067,7 +5634,8 @@ document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z' && !inField) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y' && !inField) { e.preventDefault(); redo(); return; }
-  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); openSave(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); openNotebooks(); return; }
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); const lt = WS.list[WS.active]; if (lt && lt.libId && !e.shiftKey && S.pages.length) nbSaveCurrent(); else openSave(); return; }
   if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); openPrint(); return; }
   if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind(); return; }
   if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); openGoto(); return; }
@@ -5179,7 +5747,7 @@ addEventListener('beforeunload', (e) => { saveTab(); if (skipUnloadPrompt) retur
 /* ---------- Boot ---------- */
 function boot() {
   $('#btnSidebar').innerHTML = icon('sidebar'); $('#btnUndo').innerHTML = icon('undo'); $('#btnRedo').innerHTML = icon('redo');
-  $('#btnOpen').innerHTML = icon('open'); $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#btnNight').innerHTML = icon('moon'); markThemeBtn(); $('#saveIc').outerHTML = icon('share');
+  $('#btnOpen').innerHTML = icon('open'); $('#btnNotes').innerHTML = icon('nb'); $('#eNotes').innerHTML = icon('nb') + ' Notebooks'; $('#btnInstall').innerHTML = icon('install'); $('#btnPrint').innerHTML = icon('print'); $('#btnMore').innerHTML = icon('info'); $('#btnNight').innerHTML = icon('moon'); markThemeBtn(); $('#saveIc').outerHTML = icon('share');
   $('#zoomIn').innerHTML = icon('zin'); $('#zoomOut').innerHTML = icon('zout');
   for (const b of $$('.toolbar .tbtn[title], #tsIc[title]')) { b.dataset.tip = b.getAttribute('title'); b.removeAttribute('title'); }
   const fi = { rotl: 'rotl', rotr: 'rotr', up: 'up', down: 'down', blank: 'blank', del: 'trash' };
