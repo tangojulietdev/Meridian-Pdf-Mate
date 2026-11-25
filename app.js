@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.12.0';
+const VERSION = '3.13.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -4976,11 +4976,45 @@ function infoMenu(anchor) {
   if (menuEl && menuEl.classList.contains('infopop')) { closeMenu(); return; }
   closeMenu(); const m = document.createElement('div'); m.className = 'menu infopop'; m.setAttribute('role', 'menu');
   const T = (k, ic, t, d) => `<button class="ip-tile" role="menuitem" data-k="${k}"><span class="ip-ic">${icon(ic)}</span><span class="ip-tx"><b>${t}</b><small>${d}</small></span></button>`;
-  m.innerHTML = T('keys', 'kbd', 'Keyboard shortcuts', 'Every tool has a key') + T('tour', 'tour', 'Quick tour', 'A one minute walk through') + T('about', 'info', 'About', `Version ${VERSION}, contact`);
-  m.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeMenu(); const k = b.dataset.k; if (k === 'keys') openShortcuts(); else if (k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else about(); });
+  m.innerHTML = T('keys', 'kbd', 'Keyboard shortcuts', 'Every tool has a key') + T('tour', 'tour', 'Quick tour', 'A one minute walk through') + T('about', 'info', 'About', `Version ${VERSION}, contact`) + T('update', 'download', 'Update', 'Check for a new version and refresh');
+  m.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b) return; closeMenu(); const k = b.dataset.k; if (k === 'keys') openShortcuts(); else if (k === 'tour') { if (S.pages.length) startTour(true); else toast('Open a PDF first to take the tour'); } else if (k === 'update') checkUpdate(); else about(); });
   document.body.appendChild(m); menuEl = m; const r = anchor.getBoundingClientRect();
   m.style.left = clamp(r.right - m.offsetWidth, 8, innerWidth - m.offsetWidth - 8) + 'px'; m.style.top = (r.bottom + 8) + 'px';
   setTimeout(() => { document.addEventListener('pointerdown', menuOutside, true); document.addEventListener('keydown', menuKey); const f = m.querySelector('button'); if (f) f.focus(); }, 0);
+}
+/* ---------- 3.13: update and full refresh ---------- */
+let skipUnloadPrompt = false;
+const verNum = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0).reduce((a, n) => a * 1000 + n, 0);
+async function remoteVersion() { const r = await fetch('version.json?fresh=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('http ' + r.status); return (await r.json()).version; }
+async function checkUpdate() {
+  if (!navigator.onLine) { toast('You are offline. Connect to the internet to check for updates.', { err: true, ms: 4000 }); return; }
+  const t = toast('Checking for updates', { spin: true, sticky: true }); let latest = null;
+  try { latest = await remoteVersion(); } catch (e) { latest = null; }
+  t.remove();
+  const newer = latest && verNum(latest) > verNum(VERSION);
+  const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('download')}</div><div><h2 style="margin:0">${newer ? 'Update available' : latest ? 'You are up to date' : 'Could not check'}</h2><p class="sub" style="margin:2px 0 0">This device: version ${VERSION}${latest ? ` · Latest: version ${esc(latest)}` : ''}</p></div></div>
+    <p class="about-lead">${newer ? 'The app will download the new version and restart. Your open documents and the design studio are kept.' : latest ? 'You already have the newest version. A full refresh reloads every app file from the internet, which can fix a screen that looks wrong or a feature that stopped working. Open documents are kept.' : 'The update server did not answer. Try again in a moment, or do a full refresh.'}</p>
+    <div class="acts"><button class="btn" data-x>Close</button><button class="btn${newer ? ' primary' : ''}" data-go>${icon('download')} ${newer ? 'Update now' : 'Full refresh'}</button></div>`);
+  sh.querySelector('[data-x]').onclick = closeSheet;
+  sh.querySelector('[data-go]').onclick = () => { closeSheet(); applyUpdate(); };
+}
+async function applyUpdate() {
+  const t = toast('Updating Meridian PDF Mate', { spin: true, sticky: true });
+  try { clearTimeout(saveT); await saveSession(); } catch (e) {}
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        const changed = new Promise((res) => { navigator.serviceWorker.addEventListener('controllerchange', res, { once: true }); setTimeout(res, 15000); });
+        await reg.update().catch(() => {});
+        if (reg.installing || reg.waiting) { (reg.waiting || reg.installing).postMessage('skip'); await changed; }
+      }
+    }
+    // Drop every cached app file so the reload fetches fresh copies; shared files waiting to open are kept.
+    if ('caches' in window) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => k.startsWith('meridian-pdf-mate-') && !k.endsWith('-share')).map((k) => caches.delete(k))); }
+  } catch (e) { console.warn('update', e); }
+  t.remove(); skipUnloadPrompt = true;
+  const u = new URL(location.href); u.searchParams.delete('share'); u.searchParams.set('updated', Date.now()); location.replace(u.toString());
 }
 function about() {
   const sh = sheet(`<div class="about-hero"><div class="about-ic">${icon('sign')}</div><div><h2 style="margin:0">Meridian PDF Mate</h2><p class="sub" style="margin:2px 0 0">Version ${VERSION} · Tango Juliet Dev</p></div></div>
@@ -5106,7 +5140,7 @@ addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefaul
 addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth--; if (dragDepth <= 0 && mask) { mask.remove(); mask = null; dragDepth = 0; } });
 addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
 addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; if (mask) { mask.remove(); mask = null; } openFilesInTabs([...e.dataTransfer.files]); });
-addEventListener('beforeunload', (e) => { saveTab(); if (WS.list.some((t) => t.dirty)) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('beforeunload', (e) => { saveTab(); if (skipUnloadPrompt) return; if (WS.list.some((t) => t.dirty)) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- Boot ---------- */
 function boot() {
@@ -5169,7 +5203,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   const firstInstall = !navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then((reg) => {
     if (firstInstall) navigator.serviceWorker.ready.then(() => { toast('Ready to work offline'); });
-    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w && !firstInstall) w.addEventListener('statechange', () => { if (w.state === 'activated') toast('Meridian PDF Mate updated. Reopen to use the new version.', { ms: 4500 }); }); });
+    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w && !firstInstall) w.addEventListener('statechange', () => { if (w.state === 'activated' && !skipUnloadPrompt) toast('A new version is ready. Tap i, then Update, to switch to it now.', { ms: 6000 }); }); });
   }).catch((e) => console.warn('SW', e));
 }
 // Files opened from the OS (installed desktop app: Open with PDF Mate)
@@ -5192,6 +5226,7 @@ async function takeShared() {
 }
 takeShared();
 if (/[?&]source=pwa/.test(location.search)) history.replaceState(null, '', location.pathname);
+if (/[?&]updated=/.test(location.search)) { history.replaceState(null, '', location.pathname); setTimeout(() => toast(`Updated. You are on version ${VERSION}`, { ms: 3500 }), 900); }
 viewer.classList.toggle('stylus-only', INK.stylus); eraserCursor();
 applyNight(); initSplit(); initNav(); initRuler(); initScrollbars();
 window.__pdfmate = { openDesign, renderAll, WS, SPL, openSplitView, NAV, RUL, recogniseStroke, openReading, openOrganiser, S, buildPdf, geo, vpTransform, addFiles, PSTAT, SNAP, layoutPdf, finishPrint };

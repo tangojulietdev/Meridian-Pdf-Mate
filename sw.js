@@ -1,10 +1,10 @@
 // Meridian PDF Mate service worker: full offline precache, share target, file opening.
-const VERSION = 'meridian-pdf-mate-v33';
+const VERSION = 'meridian-pdf-mate-v34';
 const SHARE = 'meridian-pdf-mate-share';
 const ASSETS = [
 "./",
 "index.html",
-"app.js?v=15",
+"app.js?v=16",
 "design.js?v=1",
 "manifest.webmanifest?v=3",
 "icons/icon-192.png",
@@ -220,7 +220,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('meridian-pdf-mate-') && k !== VERSION && k !== SHARE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-self.addEventListener('message', (e) => { if (e.data === 'version' && e.source) e.source.postMessage({ version: VERSION }); });
+self.addEventListener('message', (e) => { if (e.data === 'skip') { self.skipWaiting(); return; } if (e.data === 'version' && e.source) e.source.postMessage({ version: VERSION }); });
 
 async function handleShare(req) {
   try {
@@ -241,7 +241,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method === 'POST' && url.pathname.endsWith('/share-target')) { e.respondWith(handleShare(req)); return; }
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.endsWith('manifest.webmanifest') || url.pathname.endsWith('/sw.js')) {
+  if (url.pathname.endsWith('manifest.webmanifest') || url.pathname.endsWith('/sw.js') || url.pathname.endsWith('/version.json')) {
     // Always fresh: the browser uses these to identify and update the installed app
     e.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
     return;
