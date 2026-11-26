@@ -1041,14 +1041,16 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 @media (prefers-reduced-motion:reduce){.cat-ind{transition:none}.cats .cat svg.i{transition:none;transform:none!important}}
 @keyframes mitem{from{opacity:0;transform:translateY(4px)}}.menu>button{animation:mitem .22s cubic-bezier(.2,.9,.3,1) backwards}.menu>button:nth-of-type(2){animation-delay:18ms}.menu>button:nth-of-type(3){animation-delay:36ms}.menu>button:nth-of-type(4){animation-delay:54ms}.menu>button:nth-of-type(5){animation-delay:72ms}.menu>button:nth-of-type(6){animation-delay:90ms}.menu>button:nth-of-type(7){animation-delay:108ms}.menu>button:nth-of-type(8){animation-delay:126ms}.menu>button:nth-of-type(9){animation-delay:144ms}.menu>button:nth-of-type(10){animation-delay:162ms}.menu>button:nth-of-type(11){animation-delay:180ms}.menu>button:nth-of-type(12){animation-delay:198ms}@media (prefers-reduced-motion:reduce){.menu>button{animation:none}}
 @media (min-width:761px){
-  .toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr);column-gap:14px}
+  .toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(min-content,1fr);column-gap:12px}
   .toolbar .tb-left{position:relative;display:flex;align-items:center;gap:10px;min-width:0;justify-self:stretch;flex:none}
   .toolbar .tb-right{justify-self:end;min-width:max-content;flex:none}
   .toolbar .cats{justify-self:center}
   .tb-left .docname{flex:0 1 auto;min-width:48px}
   .tb-left .tb-hist{flex:none}
   .tb-left .tsearch:not(.open){margin-left:auto}
-  .toolbar .tb-left{justify-self:start;width:min(var(--rw,100%),100%)}
+  .toolbar .tb-left{justify-self:stretch;width:auto}
+  .toolbar .tb-right{justify-self:stretch;min-width:0;width:auto;justify-content:flex-start}
+  .toolbar .tb-right #btnSave{margin-left:auto}
   .tb-left .docname{flex:0 1 auto;max-width:260px}
   .ps-hist{display:none}
   .tb-left .tsearch{flex:none}
@@ -1194,6 +1196,6 @@ svg.ov .marq{fill:color-mix(in srgb,var(--accent) 12%,transparent);stroke:var(--
 <input type="file" id="fileAdd" accept="application/pdf,.pdf,image/*" multiple hidden>
 <div id="layer"></div>
 <script src="vendor/pdf-lib.min.js"></script>
-<script type="module" src="app.js?v=26"></script>
+<script type="module" src="app.js?v=27"></script>
 </body>
 </html>
