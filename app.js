@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.20.0';
+const VERSION = '3.21.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -652,7 +652,7 @@ function askPassword(name, wrong) {
     sh.querySelector('#pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
   });
 }
-async function readFields(doc) {
+async function readFields(doc, o = {}) {
   doc.fields = []; doc.values = {}; doc.widgets = new Map();
   try {
     const ld = await PL.PDFDocument.load(doc.bytes, { ignoreEncryption: true, updateMetadata: false });
@@ -680,12 +680,16 @@ async function readFields(doc) {
       doc.fields.push(fld);
       for (const w of widgets) { if (!doc.widgets.has(w.page)) doc.widgets.set(w.page, []); doc.widgets.get(w.page).push({ ...w, field: fld }); }
     }
+    // Comments made in other apps become editable here. Signed files are left as they are.
+    if (o.imp && !new TextDecoder('latin1').decode(doc.bytes).includes('/ByteRange')) {
+      try { const per = importComments(ld); if (per) { doc.bytes = await ld.save({ useObjectStreams: true, updateFieldAppearances: false }); doc.impAnnots = per; } } catch (e) { console.warn('comment import', e); }
+    }
   } catch (e) { /* not fatal: no form support for this file */ }
 }
 async function addFiles(files, at = S.pages.length) {
   files = [...files]; if (!files.length) return;
   const t = toast(files.length > 1 ? `Opening ${files.length} files` : `Opening ${files[0].name}`, { spin: true, sticky: true });
-  const newPages = []; let firstName = null, formCount = 0;
+  const newPages = []; let firstName = null, formCount = 0, cmtCount = 0;
   for (const f of files) {
     try {
       if (isPdf(f)) {
@@ -700,12 +704,13 @@ async function addFiles(files, at = S.pages.length) {
         }
         if (!pdf) continue;
         const doc = { id: uid('d'), name: f.name, bytes, pdf, password: pw, fields: [], values: {}, widgets: new Map() };
-        await readFields(doc); if (pw) doc.encrypted = true; checkSigs(doc);
-        formCount += doc.fields.length;
+        await readFields(doc, { imp: true }); if (pw) doc.encrypted = true; checkSigs(doc);
+        if (doc.impAnnots) { try { pdf.loadingTask.destroy(); } catch (e) {} pdf = await pdfjsLib.getDocument({ ...PDFJS_OPTS, data: doc.bytes.slice(), password: pw }).promise; doc.pdf = pdf; }
+        formCount += doc.fields.length; if (doc.impAnnots) for (const v of doc.impAnnots.values()) cmtCount += v.length;
         S.docs.set(doc.id, doc);
         for (let i = 0; i < pdf.numPages; i++) {
           const pg = await pdf.getPage(i + 1);
-          newPages.push({ id: uid('p'), kind: 'pdf', docId: doc.id, index: i, view: pg.view.slice(), baseRot: pg.rotate || 0, rot: 0, annots: [] });
+          newPages.push({ id: uid('p'), kind: 'pdf', docId: doc.id, index: i, view: pg.view.slice(), baseRot: pg.rotate || 0, rot: 0, annots: (doc.impAnnots && doc.impAnnots.get(i)) || [] });
         }
         if (!S.meta) { try { const md = await pdf.getMetadata(); const inf = (md && md.info) || {}; S.meta = { title: inf.Title || '', author: inf.Author || '', subject: inf.Subject || '', keywords: inf.Keywords || '' }; } catch (e) { S.meta = {}; } }
         firstName = firstName || f.name.replace(/\.pdf$/i, '');
@@ -727,7 +732,8 @@ async function addFiles(files, at = S.pages.length) {
   if (wasEmpty) { setDirty(false); resetHistory(); updateChrome(); }
   else { toast(`Added ${newPages.length} page${newPages.length > 1 ? 's' : ''}`); scrollToPage(at); }
   scheduleSave();
-  if (formCount) toast(`This PDF has ${formCount} form field${formCount > 1 ? 's' : ''}. Tap a field to fill it.`, { ms: 4200 });
+  if (cmtCount) toast(`${cmtCount} comment${cmtCount > 1 ? "s" : ""} opened as editable markup. Saving keeps them as comments.`, { ms: 4200 });
+  else if (formCount) toast(`This PDF has ${formCount} form field${formCount > 1 ? 's' : ''}. Tap a field to fill it.`, { ms: 4200 });
 }
 function newBlank(at = S.pages.length, like) {
   const view = like ? (tr(like) % 180 ? [0, 0, like.view[3] - like.view[1], like.view[2] - like.view[0]] : [0, 0, like.view[2] - like.view[0], like.view[3] - like.view[1]]) : [0, 0, 595.28, 841.89];
@@ -1775,7 +1781,7 @@ function renderAll() {
     const el = document.createElement('div'); el.className = 'page'; el.dataset.id = p.id;
     el.style.width = g.w * S.zoom + 'px'; el.style.height = g.h * S.zoom + 'px';
     el.style.setProperty('--total-scale-factor', S.zoom); el.style.setProperty('--scale-factor', S.zoom);
-    el.innerHTML = `<canvas></canvas><div class="textLayer"></div><div class="findlayer"></div><div class="formlayer"></div><svg class="ov" viewBox="0 0 ${g.w} ${g.h}" xmlns="${SVGNS}" aria-label="Page ${i + 1}"></svg><span class="pnum">${i + 1}</span>`;
+    el.innerHTML = `<canvas width="0" height="0"></canvas><div class="textLayer"></div><div class="findlayer"></div><div class="formlayer"></div><svg class="ov" viewBox="0 0 ${g.w} ${g.h}" xmlns="${SVGNS}" aria-label="Page ${i + 1}"></svg><span class="pnum">${i + 1}</span>`;
     pagesEl.appendChild(el); io.observe(el);
   });
   $('#empty').hidden = S.pages.length > 0;
@@ -1790,7 +1796,7 @@ const pageById = (id) => S.pages.find((p) => p.id === id);
 const isPhone = () => innerWidth <= 760 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
 const BASE_MAX = () => (isPhone() ? 5e6 : 9e6);     // pixels for one whole-page canvas
 const DETAIL_MAX = () => (isPhone() ? 6e6 : 14e6);  // pixels for the sharp on-screen part
-const MEM_MAX = () => (isPhone() ? 32e6 : 96e6);    // pixels kept across all page canvases
+const MEM_MAX = () => (isPhone() ? 24e6 : (navigator.deviceMemory || 4) >= 8 ? 64e6 : 40e6); // pixels kept across all page canvases
 const HEAVY_MS = 800;
 const RQ = { busy: false, t: 0, again: false, dtask: null, lru: 0, idle: [] };
 const SNAP = new Map(); // heavy page snapshots: id|rot -> { blob, scale }
@@ -2067,15 +2073,17 @@ function refreshForms(doc) { for (const p of S.pages) if (p.docId === doc.id) dr
 const sbList = $('#sbList');
 const thumbCache = new Map();
 let thumbQ = new Set(), thumbBusy = false;
+// Thumbnails far out of view give their memory back and are redrawn when scrolled to again.
+const thumbOut = new IntersectionObserver((ents) => { for (const e of ents) { if (e.isIntersecting) continue; const c = e.target.querySelector('canvas'); if (c && c.width > 1) { c.width = 1; c.height = 1; e.target._seen = false; thumbIO.observe(e.target); } } }, { root: document.getElementById('sbList'), rootMargin: '1200px 0px' });
 const thumbIO = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { thumbIO.unobserve(e.target); scheduleThumb(e.target.dataset.id); } }, { root: document.getElementById('sbList'), rootMargin: '400px 0px' });
 function renderThumbs() {
-  thumbIO.disconnect();
+  thumbIO.disconnect(); thumbOut.disconnect();
   sbList.innerHTML = '';
   S.pages.forEach((p, i) => {
     const b = document.createElement('button'); b.className = 'thumb'; b.dataset.id = p.id; b.draggable = true;
     b.setAttribute('aria-label', `Page ${i + 1}`);
     b.innerHTML = `<div class="tw"><canvas width="1" height="1"></canvas></div><span class="tn">${i + 1}</span><span class="chk">${icon('check', 'style="width:13px;height:13px;stroke-width:2.6"')}</span>`;
-    sbList.appendChild(b); thumbIO.observe(b);
+    sbList.appendChild(b); thumbIO.observe(b); thumbOut.observe(b);
   });
   markThumbs();
   $('#sbTitle').textContent = S.pages.length ? `${S.pages.length} page${S.pages.length > 1 ? 's' : ''}` : 'Pages';
@@ -2089,13 +2097,14 @@ async function runThumbs() {
   while (thumbQ.size) {
     const id = thumbQ.values().next().value; thumbQ.delete(id);
     const p = pageById(id); const b = sbList.querySelector(`.thumb[data-id="${id}"]`); if (!p || !b) continue;
+    { const r = b.getBoundingClientRect(), lr = sbList.getBoundingClientRect(); if (r.bottom < lr.top - 1200 || r.top > lr.bottom + 1200) { b._seen = false; thumbIO.unobserve(b); thumbIO.observe(b); continue; } }
     try { await paintThumb(p, b.querySelector('canvas')); } catch (e) { console.error(e); }
   }
   thumbBusy = false;
 }
 async function basePageBitmap(p, s) {
   const key = p.id + '|' + tr(p);
-  if (thumbCache.has(key)) return thumbCache.get(key);
+  if (thumbCache.has(key)) { const c0 = thumbCache.get(key); thumbCache.delete(key); thumbCache.set(key, c0); return c0; }
   const g = geo(p); const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(g.w * s)); c.height = Math.max(1, Math.round(g.h * s));
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
   if (p.kind === 'pdf') {
@@ -2107,7 +2116,7 @@ async function basePageBitmap(p, s) {
   }
   else drawPaperCanvas(x, p, s);
   if (p.kind === 'img') { const t = g.t; x.setTransform(t[0] * s, t[1] * s, t[2] * s, t[3] * s, t[4] * s, t[5] * s); const [x0, y0, x1, y1] = p.view; x.transform(x1 - x0, 0, 0, -(y1 - y0), x0, y1); x.drawImage(S.imgs.get(p.imgId).el, 0, 0, 1, 1); }
-  thumbCache.set(key, c); return c;
+  thumbCache.set(key, c); while (thumbCache.size > 120) thumbCache.delete(thumbCache.keys().next().value); return c;
 }
 async function paintThumb(p, cv) {
   const g = geo(p); const dpr = Math.min(devicePixelRatio || 1, 2); const s = Math.min(150 / g.w, 196 / g.h) * dpr;
@@ -4657,7 +4666,7 @@ async function buildPdf(list, onProgress, opts = {}) {
       else await drawPaperPdf(page, p, font);
       page.setRotation(PL.degrees(tr(p)));
     }
-    for (const a of p.annots) await drawAnn(page, a, font, embedImg);
+    for (const a of p.annots) { if (opts.comments && isComment(a)) await addComment(out, page, a, font, embedImg, opts.author); else await drawAnn(page, a, font, embedImg); }
     if (p.ocr && p.ocr.length) { const f = await font('helv', false); for (const w of p.ocr) { if (needsUni(w.t)) continue; const wd = f.widthOfTextAtSize(w.t, 1) || 1; const size = Math.max(1, Math.min(w.h * 0.95, w.w / wd)); const { V } = UV(w.r); const off = w.h * 0.18; try { page.drawText(w.t, { x: w.ax + off * V[0], y: w.ay + off * V[1], size, font: f, opacity: 0, rotate: PL.degrees(w.r) }); } catch (e) {} } }
     if (p.crop) { const [cx0, cy0, cx1, cy1] = p.crop; page.setCropBox(cx0, cy0, cx1 - cx0, cy1 - cy0); }
     outPages[i] = page;
@@ -4688,6 +4697,113 @@ async function fitPagesTo(src, [TW0, TH0]) {
   }
   return out.save({ useObjectStreams: true });
 }
+/* ---------- Real PDF comments: export as annotations, import as editable ---------- */
+const COMMENT_T = new Set(['hl', 'mark', 'rect', 'ellipse', 'line', 'arrow', 'pen', 'cloud', 'shape', 'measure', 'area']);
+const isComment = (a) => COMMENT_T.has(a.t) || (a.t === 'text' && ((!!a.bg && !a.border) || !!a.cm));
+const hasComments = (pages) => pages.some((p) => p.annots.some(isComment));
+function commentBBox(a) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of corners(a)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const w = a.width || 1.5; let pad = w + 2;
+  if (a.t === 'arrow') pad += Math.max(10, w * 6); if (a.t === 'cloud') pad += 10; if (a.t === 'measure' || a.t === 'area') pad += 46; if (a.t === 'text') pad = 2 + (a.shadow ? 4 : 0);
+  const r = (v) => Math.round(v * 100) / 100;
+  return [r(x0 - pad), r(y0 - pad), r(x1 + pad), r(y1 + pad)];
+}
+const rgbArr = (h) => { const c = hexRgb(h || '#000000'); return [c.red, c.green, c.blue].map((v) => Math.round(v * 1000) / 1000); };
+const arrHex = (arr) => { if (!arr || !arr.length) return null; let [r, g, b] = arr; if (arr.length === 1) r = g = b = arr[0]; if (arr.length === 4) { const [c, m, y, k] = arr; r = (1 - c) * (1 - k); g = (1 - m) * (1 - k); b = (1 - y) * (1 - k); } return '#' + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join(''); };
+async function addComment(out, page, a, font, embedImg, author) {
+  const ctx = out.context, N = (n) => PL.PDFName.of(n);
+  const tmp = PL.PDFPage.create(out);
+  await drawAnn(tmp, a, font, embedImg);
+  const ops = tmp.contentStream ? tmp.contentStream.operators : [];
+  const res = tmp.node.Resources();
+  try { if (tmp.contentStreamRef) ctx.delete(tmp.contentStreamRef); ctx.delete(tmp.ref); } catch (e) { /* orphan is harmless */ }
+  const bb = commentBBox(a);
+  const xo = ctx.formXObject(ops, { BBox: bb, Matrix: [1, 0, 0, 1, 0, 0], Resources: res });
+  const now = PL.PDFString.fromDate(new Date());
+  const sub = { hl: 'Highlight', mark: { hl: 'Highlight', ul: 'Underline', st: 'StrikeOut' }[a.kind] || 'Highlight', rect: 'Square', cloud: 'Square', shape: 'Square', ellipse: 'Circle', line: 'Line', arrow: 'Line', measure: a.pts && a.pts.length === 2 ? 'Line' : 'PolyLine', area: 'Polygon', pen: 'Ink', text: 'FreeText' }[a.t] || 'Square';
+  const d = ctx.obj({ Type: 'Annot', Subtype: sub, Rect: bb, F: 4, C: rgbArr(a.t === 'text' ? (a.bg || a.color) : a.color) });
+  d.set(N('NM'), PL.PDFString.of(a.id)); d.set(N('M'), now); d.set(N('CreationDate'), now); d.set(N('T'), PL.PDFHexString.fromText(author || 'PDF Mate')); d.set(N('P'), page.ref);
+  d.set(N('AP'), ctx.obj({ N: ctx.register(xo) }));
+  if (!['mark', 'hl', 'text'].includes(a.t)) d.set(N('BS'), ctx.obj({ Type: 'Border', W: a.width || 1.5, S: 'S' }));
+  const quad = (x, y, w, h) => [x, y + h, x + w, y + h, x, y, x + w, y];
+  if (a.t === 'hl') d.set(N('QuadPoints'), ctx.obj(quad(a.x, a.y, a.w, a.h)));
+  if (a.t === 'mark') d.set(N('QuadPoints'), ctx.obj(a.rects.flatMap(([x, y, w, h]) => quad(x, y, w, h))));
+  if ((a.t === 'rect' || a.t === 'ellipse' || a.t === 'shape') && a.fill) d.set(N('IC'), ctx.obj(rgbArr(a.fill)));
+  if (a.t === 'cloud') d.set(N('BE'), ctx.obj({ S: 'C', I: 1 }));
+  if ((a.t === 'line' || a.t === 'arrow' || sub === 'Line') && a.pts) { d.set(N('L'), ctx.obj([...a.pts[0].slice(0, 2), ...a.pts[1].slice(0, 2)])); if (a.t === 'arrow') d.set(N('LE'), ctx.obj([a.both ? 'OpenArrow' : 'None', 'OpenArrow'].map((x) => N(x)))); }
+  if ((sub === 'Polygon' || sub === 'PolyLine') && a.pts) d.set(N('Vertices'), ctx.obj(a.pts.flatMap((q) => q.slice(0, 2))));
+  if (a.t === 'pen') d.set(N('InkList'), ctx.obj([a.pts.flatMap((q) => q.slice(0, 2))]));
+  if (a.t === 'pen' && a.pen === 'highlighter') d.set(N('CA'), PL.PDFNumber.of(0.45));
+  if (a.t === 'text') { const [r, g, b] = rgbArr(a.color); d.set(N('Contents'), PL.PDFHexString.fromText(a.text || '')); d.set(N('DA'), PL.PDFString.of(`/Helv ${a.size} Tf ${r} ${g} ${b} rg`)); }
+  if (a.t === 'measure' || a.t === 'area') { const lbl = (a.label || a.txt || ''); if (lbl) d.set(N('Contents'), PL.PDFHexString.fromText(String(lbl))); }
+  d.set(N('PMData'), PL.PDFHexString.fromText(JSON.stringify(a)));
+  page.node.addAnnot(ctx.register(d));
+}
+// Turns a PDF annotation dictionary into editable annotations, or null when it is not a type we edit.
+const IMPORT_T = new Set(['/Highlight', '/Underline', '/StrikeOut', '/Squiggly', '/Square', '/Circle', '/Line', '/Ink', '/FreeText', '/Text', '/Polygon', '/PolyLine']);
+function annFromDict(d, rot, mb) {
+  const N = (n) => PL.PDFName.of(n); const g = (k) => d.get(N(k));
+  const nums = (o) => (o && o.asArray ? o.asArray().map((x) => (x.asNumber ? x.asNumber() : +x)) : null);
+  const txt = (o) => { try { return o ? (o.decodeText ? o.decodeText() : String(o)) : ''; } catch (e) { return ''; } };
+  const R = nums(g('Rect')); if (!R) return null; const [x0, y0, x1, y1] = [Math.min(R[0], R[2]), Math.min(R[1], R[3]), Math.max(R[0], R[2]), Math.max(R[1], R[3])];
+  const pm = g('PMData');
+  if (pm) { try { const a = JSON.parse(txt(pm)); const bb = commentBBox(a); const same = Math.abs(bb[0] - x0) < 1 && Math.abs(bb[1] - y0) < 1 && Math.abs(bb[2] - x1) < 1 && Math.abs(bb[3] - y1) < 1; const ct = g('Contents'); if (same && (a.t !== 'text' || !ct || txt(ct) === (a.text || ''))) return [{ ...a, id: uid('a') }]; } catch (e) { /* fall through */ } }
+  const st = String(g('Subtype')); const color = arrHex(nums(g('C'))) || '#d70015';
+  const bs = g('BS'); let width = 1; if (bs && bs.get) { const w = bs.get(N('W')); if (w) width = w.asNumber(); } else { const b = nums(g('Border')); if (b && b.length > 2) width = b[2]; }
+  width = Math.max(0.3, width || 1);
+  const base = { id: uid('a'), color, width };
+  if (['/Highlight', '/Underline', '/StrikeOut', '/Squiggly'].includes(st)) {
+    const q = nums(g('QuadPoints')) || [x0, y1, x1, y1, x0, y0, x1, y0]; const rects = [];
+    for (let i = 0; i + 7 < q.length; i += 8) { const xs = [q[i], q[i + 2], q[i + 4], q[i + 6]], ys = [q[i + 1], q[i + 3], q[i + 5], q[i + 7]]; const rx = Math.min(...xs), ry = Math.min(...ys); rects.push([rx, ry, Math.max(...xs) - rx, Math.max(...ys) - ry]); }
+    const kind = st === '/Highlight' ? 'hl' : st === '/StrikeOut' ? 'st' : 'ul';
+    const a = { ...base, t: 'mark', kind, color: arrHex(nums(g('C'))) || (kind === 'hl' ? '#ffd60a' : '#d70015'), rects };
+    if (kind !== 'hl') { a.width = Math.max(0.6, Math.min(...rects.map((r) => r[3])) * 0.075); a.segs = rects.map(([x, y, w, h]) => { const yy = kind === 'ul' ? y + h * 0.06 : y + h * 0.45; return [[x, yy], [x + w, yy]]; }); } else delete a.width;
+    return [a];
+  }
+  if (st === '/Square' || st === '/Circle') { const a = { ...base, t: st === '/Square' ? 'rect' : 'ellipse', x: x0, y: y0, w: x1 - x0, h: y1 - y0, rot: 0 }; const ic = arrHex(nums(g('IC'))); if (ic) { a.fill = ic; a.fop = 1; } const ca = g('CA'); if (ca && ca.asNumber && ic) a.fop = ca.asNumber(); return [a]; }
+  if (st === '/Line') { const L = nums(g('L')); if (!L) return null; const le = g('LE'); const ends = le && le.asArray ? le.asArray().map(String) : []; const arr = (v) => /Arrow/.test(v || ''); let p0 = [L[0], L[1]], p1 = [L[2], L[3]]; const a = { ...base, t: arr(ends[0]) || arr(ends[1]) ? 'arrow' : 'line' }; if (arr(ends[0]) && !arr(ends[1])) [p0, p1] = [p1, p0]; if (arr(ends[0]) && arr(ends[1])) a.both = true; a.pts = [p0, p1]; return [a]; }
+  if (st === '/Ink') { const il = g('InkList'); if (!il || !il.asArray) return null; const out = []; const ca = g('CA'); for (const s of il.asArray()) { const v = nums(s); if (!v || v.length < 2) continue; const pts = []; for (let i = 0; i + 1 < v.length; i += 2) pts.push([v[i], v[i + 1]]); const a = { ...base, id: uid('a'), t: 'pen', pts }; if (ca && ca.asNumber && ca.asNumber() < 0.9) { a.pen = 'highlighter'; a.op = 1; } out.push(a); } return out.length ? out : null; }
+  if (st === '/Polygon' || st === '/PolyLine') { const v = nums(g('Vertices')); if (!v || v.length < 4) return null; const pts = []; for (let i = 0; i + 1 < v.length; i += 2) pts.push([v[i], v[i + 1]]); if (st === '/Polygon') pts.push(pts[0].slice()); return [{ ...base, t: 'pen', pts }]; }
+  if (st === '/FreeText' || st === '/Text') {
+    const text = txt(g('Contents')); if (!text.trim() && st === '/Text') return null;
+    const da = txt(g('DA')) + ' ' + txt(g('DS')); const sm = da.match(/([\d.]+)\s+Tf/) || da.match(/([\d.]+)pt/); const cm = da.match(/([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg/) || da.match(/([\d.]+)\s+g\b/); const css = da.match(/color:\s*(#[0-9a-f]{6})/i);
+    const a = { id: uid('a'), t: 'text', r: rot, text, cm: true, size: st === '/Text' ? 10 : Math.max(6, Math.min(48, sm ? +sm[1] || 12 : 12)), color: css ? css[1].toLowerCase() : cm ? arrHex(cm.length > 2 ? [+cm[1], +cm[2], +cm[3]] : [+cm[1]]) : '#000000', w: 1, h: 1, ax: 0, ay: 0, box: true };
+    Object.assign(a, pick(txDefaults(), TX_KEYS)); if (a.align === 'justify') a.align = 'left';
+    if (st === '/Text') { a.bg = '#fff3a6'; a.w = 180; } else { a.w = Math.max(30, rot % 180 ? y1 - y0 : x1 - x0); const c = arrHex(nums(g('C'))); if (c && c !== '#000000') a.bg = c; }
+    const bx = textBox(a); a.h = Math.max(bx.h, st === '/Text' ? 0 : (rot % 180 ? x1 - x0 : y1 - y0));
+    const { U, V } = UV(rot); const top = st === '/Text' ? [x0, y1] : null;
+    const cands = top ? [[x0, y1 - a.h]] : [[x0, y0], [x1, y0], [x0, y1], [x1, y1]];
+    let best = cands[0], err = Infinity;
+    for (const [cx, cy] of cands) { const pts = [[cx, cy], [cx + a.w * U[0], cy + a.w * U[1]], [cx + a.h * V[0], cy + a.h * V[1]], [cx + a.w * U[0] + a.h * V[0], cy + a.w * U[1] + a.h * V[1]]]; const e = pts.reduce((s, [px, py]) => s + Math.max(0, x0 - px) + Math.max(0, px - x1) + Math.max(0, y0 - py) + Math.max(0, py - y1), 0); if (e < err) { err = e; best = [cx, cy]; } }
+    [a.ax, a.ay] = best; if (st === '/Text' && mb && !rot) { a.ax = Math.max(mb.x + 6, Math.min(a.ax, mb.x + mb.width - a.w - 6)); a.ay = Math.max(mb.y + 6, Math.min(a.ay, mb.y + mb.height - a.h - 6)); } return [a];
+  }
+  return null;
+}
+function importComments(ld) {
+  const N = (n) => PL.PDFName.of(n); const per = new Map(); let n = 0;
+  ld.getPages().forEach((pg, i) => {
+    const arr = pg.node.Annots(); if (!arr) return; const rot = ((pg.getRotation().angle % 360) + 360) % 360; const mb = pg.getMediaBox();
+    const refs = arr.asArray(); const drop = new Set(); const got = []; const replies = [];
+    for (const ref of refs) {
+      const d = ld.context.lookup(ref); if (!(d instanceof PL.PDFDict)) continue;
+      const st = String(d.get(N('Subtype'))); if (!IMPORT_T.has(st)) continue;
+      const fl = d.get(N('F')); if (fl && fl.asNumber && (fl.asNumber() & 2)) continue;
+      if (d.get(N('IRT'))) { replies.push([ref, d]); continue; }
+      let a = null; try { a = annFromDict(d, rot, mb); } catch (e) { console.warn('comment import', e); }
+      if (!a) continue; a.forEach((x) => { x._src = ref; }); got.push(...a); drop.add(ref); const pp = d.get(N('Popup')); if (pp) drop.add(pp);
+    }
+    for (const [ref, d] of replies) { const parent = got.find((x) => x._src === d.get(N('IRT'))); let t = ''; try { const c = d.get(N('Contents')); t = c ? c.decodeText() : ''; } catch (e) {} if (parent && parent.t === 'text' && t) { parent.text += '\n↳ ' + t; parent.h = textBox(parent).h; } if (parent) { drop.add(ref); const pp = d.get(N('Popup')); if (pp) drop.add(pp); } }
+    for (const ref of refs) { const d = ld.context.lookup(ref); if (d instanceof PL.PDFDict && String(d.get(N('Subtype'))) === '/Popup') { const par = d.get(N('Parent')); if (par && drop.has(par)) drop.add(ref); } }
+    if (!got.length) return;
+    got.forEach((x) => delete x._src);
+    const keep = refs.filter((r) => !drop.has(r));
+    if (keep.length) pg.node.set(N('Annots'), ld.context.obj(keep)); else pg.node.delete(N('Annots'));
+    per.set(i, got); n += got.length;
+  });
+  return n ? per : null;
+}
+
 const FILLO = (a) => (a.fill ? { color: hexRgb(a.fill), opacity: a.fop == null ? 1 : a.fop } : {});
 async function drawAnn(page, a, font, embedImg) {
   const col = hexRgb(a.color); const w = a.width || 1.5; const RC = PL.LineCapStyle.Round;
@@ -4748,6 +4864,7 @@ function openSave() {
   if (!S.pages.length) return; closeEditor(false);
   const nSel = S.selPages.size; const canShare = !!(navigator.canShare && window.File);
   let scope = 'all';
+  const hasCm = hasComments(S.pages); let keepC = lsGet('pdfmate.keepComments', true);
   const nCreated = allFieldAnns().length; const hasExisting = [...S.docs.values()].some((d) => (d.fields && d.fields.length) || d.dropFields); const hasForm = nCreated > 0 || hasExisting; let keepF = nCreated > 0 || [...S.docs.values()].some((d) => d.dropFields);
   const sh = sheet(`<h2>Save PDF</h2><p class="sub">${S.pages.length} page${S.pages.length > 1 ? 's' : ''}. Markup, signatures and form entries are written into the file.</p>
     <div class="field"><label for="saveName">File name</label><input id="saveName" class="inp" value="${esc(fileName())}" autocomplete="off"></div>
@@ -4758,10 +4875,13 @@ function openSave() {
     <div class="field"><span class="flabel">Drawings</span><div class="seg" role="group"><button aria-pressed="true" data-fh="0">Keep as is</button><button aria-pressed="false" data-fh="1">Flatten heavy pages</button></div>
       <small class="sub" id="fhNote" style="margin:6px 0 0;display:block">${S.pages.some((p) => pst(p).heavy) ? 'This file has heavy drawing pages. Flattening makes it open fast on any device.' : 'Heavy drawing pages stay as vector graphics.'}</small></div>
     ${signedDocs().length ? '<p class="sub" style="color:var(--danger)">This PDF is digitally signed. A saved copy will show the signature as not valid. To keep it valid, share the original file.</p>' : ''}
+    ${hasCm ? `<div class="field"><span class="flabel">Comments</span><div class="seg" role="group"><button aria-pressed="${keepC}" data-cm="1">Keep as comments</button><button aria-pressed="${!keepC}" data-cm="0">Flatten</button></div><small class="sub" id="cmNote" style="margin:6px 0 0;display:block"></small><input id="cmAuthor" class="inp" placeholder="Your name, shown as the comment author" value="${esc(lsGet('pdfmate.author', ''))}" autocomplete="name" style="margin-top:8px"></div>` : ''}
     ${hasForm ? `<div class="field"><span class="flabel">Form fields</span><div class="seg" role="group"><button aria-pressed="${keepF}" data-ff="1">Keep fillable</button><button aria-pressed="${!keepF}" data-ff="0">Flatten</button></div><small class="sub" id="ffNote" style="margin:6px 0 0;display:block"></small></div>` : ''}
     <div class="progress" hidden><i></i></div>
     <div class="acts"><button class="btn" data-nbs title="Keep an editable copy in your notebook library">${icon('nb')} ${(WS.list[WS.active] || {}).libId ? 'Update notebook' : 'Save to Notebooks'}</button><button class="btn" data-print>${icon('print')} Print</button>${canShare ? `<button class="btn" data-share>${icon('share')} Share</button>` : ''}<button class="btn primary" data-dl>${icon('download')} Download</button></div>`);
   const ffNote = () => { const n = sh.querySelector('#ffNote'); if (n) n.textContent = keepF ? 'Fields stay fillable in any PDF reader, including Adobe Acrobat and Chrome.' : 'Entries are printed into the page and the fields are removed, so nobody can change them.' + (nCreated ? ' Empty fields you added are left out.' : ''); }; ffNote();
+  const cmNote = () => { const n = sh.querySelector('#cmNote'); if (!n) return; n.textContent = keepC ? 'Notes, highlights, shapes and drawings stay as comments others can see, reply to and remove in Acrobat, Edge or Chrome.' : 'Everything is printed into the page. Nobody can move or remove it.'; sh.querySelector('#cmAuthor').hidden = !keepC; }; cmNote();
+  sh.querySelectorAll('[data-cm]').forEach((b) => b.onclick = () => { keepC = b.dataset.cm === '1'; lsSet('pdfmate.keepComments', keepC); sh.querySelectorAll('[data-cm]').forEach((z) => z.setAttribute('aria-pressed', z === b)); cmNote(); });
   sh.querySelector('[data-nbs]').onclick = () => { closeSheet(); nbSaveCurrent({ name: sh.querySelector('#saveName').value.replace(/\.pdf$/i, '') }); };
   sh.querySelectorAll('[data-ff]').forEach((b) => b.onclick = () => { keepF = b.dataset.ff === '1'; sh.querySelectorAll('[data-ff]').forEach((z) => z.setAttribute('aria-pressed', z === b)); ffNote(); });
   sh.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { scope = b.dataset.sc; sh.querySelectorAll('[data-sc]').forEach((z) => z.setAttribute('aria-pressed', z === b)); });
@@ -4777,7 +4897,7 @@ function openSave() {
     const pr = sh.querySelector('.progress'); pr.hidden = false; const bar = pr.querySelector('i');
     try {
       const list = scope === 'sel' ? S.pages.filter((p) => S.selPages.has(p.id)) : S.pages;
-      const fo = hasForm ? { keepForms: keepF, noFields: !keepF } : {};
+      const fo = hasForm ? { keepForms: keepF, noFields: !keepF } : {}; if (hasCm && keepC) { fo.comments = true; fo.author = (sh.querySelector('#cmAuthor').value || '').trim(); lsSet('pdfmate.author', fo.author); }
       let bytes = await buildPdf(list, (f) => { bar.style.width = Math.round(f * (cz ? 50 : 100)) + '%'; }, { pageSize: ps, flatHeavy: fh, ...fo });
       let keptVec = false;
       if (fh) { const vec = await buildPdf(list, null, { pageSize: ps, ...fo }); if (vec.length <= bytes.length) { bytes = vec; keptVec = true; } }
@@ -5828,7 +5948,7 @@ function appGuide() {
     ${sec('sign', 'Why there is no sign-in', `<p>Accounts exist to store your data on someone else's computer. This app stores nothing anywhere except your own device, so there is nothing to log in to, no password to leak and no account to be hacked or closed.</p><p>It also means no subscription, no trial that runs out and no watermark on your documents.</p>`)}
     ${sec('install', 'Install it as an app', `<p>Installing adds an app icon and its own window. It needs no administrator rights on most computers, takes a few seconds and can be removed like any app.</p><ul><li><b>Windows or Mac, Chrome or Edge:</b> click the install icon at the right of the address bar, or open the browser menu and choose Install Meridian PDF Mate.</li><li><b>Android, Chrome:</b> open the menu and tap Install app or Add to Home screen.</li><li><b>iPhone or iPad, Safari:</b> tap Share, then Add to Home Screen.</li></ul><p>On Windows you can then set it as the default app for PDF files from Settings, Apps, Default apps.</p>`)}
     ${sec('check', 'What makes it different', `<ul><li>Free, with every feature included.</li><li>No installation file and no admin rights needed, so it runs on ship and office computers.</li><li>Works offline, made for life at sea.</li><li>Fill forms, sign, stamp, scan, OCR, compare, redact, protect with a password and export to Word.</li><li>A full Design studio with 90 templates, calendars and print-ready export.</li><li>Light, dark and red bridge night mode.</li></ul>`)}
-    ${sec('form', 'Forms, digital signatures and notebooks', `<ul><li><b>Make fillable forms.</b> Forms tab: add text, paragraph, check box, option, dropdown, date and signature fields, or let Detect fields turn blank lines and boxes into fields. Save with Keep fillable and the form works in Adobe Acrobat, Chrome and phone readers.</li><li><b>Digital signatures.</b> Fill &amp; Sign, Digital sign. A digital ID (certificate and key, kept on this device behind your password) signs the PDF so any later change is detectable. Opening a signed PDF checks it automatically. Self-issued IDs prove the file is unchanged; for legally recognised signatures import an ID from a certificate authority (.p12 or .pfx).</li><li><b>Notebooks.</b> A library with folders and subfolders, colours and icons, search, favourites and lined, grid or dotted notebooks. Notebooks stay editable and save themselves as you write. In Chrome or Edge on a computer, choose a folder (for example in OneDrive or on a USB stick) and every notebook is also kept there as a normal PDF; choose the same folder on another computer to bring everything in. PDFs you drop into that folder are added too.</li></ul>`)}
+    ${sec('form', 'Forms, digital signatures and notebooks', `<ul><li><b>Make fillable forms.</b> Forms tab: add text, paragraph, check box, option, dropdown, date and signature fields, or let Detect fields turn blank lines and boxes into fields. Save with Keep fillable and the form works in Adobe Acrobat, Chrome and phone readers.</li><li><b>Digital signatures.</b> Fill &amp; Sign, Digital sign. A digital ID (certificate and key, kept on this device behind your password) signs the PDF so any later change is detectable. Opening a signed PDF checks it automatically. Self-issued IDs prove the file is unchanged; for legally recognised signatures import an ID from a certificate authority (.p12 or .pfx).</li><li><b>Comments that travel.</b> Notes, highlights, underlines, shapes, arrows and drawings are saved as real PDF comments, so colleagues see, reply to and remove them in Adobe Acrobat, Edge or Chrome. Comments made in those apps open here as editable markup. Choose Flatten in the Save window to print them into the page instead.</li><li><b>Notebooks.</b> A library with folders and subfolders, colours and icons, search, favourites and lined, grid or dotted notebooks. Notebooks stay editable and save themselves as you write. In Chrome or Edge on a computer, choose a folder (for example in OneDrive or on a USB stick) and every notebook is also kept there as a normal PDF; choose the same folder on another computer to bring everything in. PDFs you drop into that folder are added too.</li></ul>`)}
     ${sec('download', 'Your data and backups', `<p>Work is saved in this browser on this device. Clearing the browser's site data, or using a private window, removes it, including Notebooks and digital IDs. To keep a copy, save your PDF, or in the Design studio choose Save project file.</p><p>Each device keeps its own work; nothing syncs between devices.</p>`)}
     ${sec('tour', 'Updates', `<p>When a new version is published the app downloads it quietly in the background. To switch to it straight away, open i, then Update. Your open documents are kept.</p>`)}
     ${sec('mail', 'Help and feedback', `<p>Suggestions, problems or requests: <b>tangojulietdev@gmail.com</b>. Every message is read.</p>`)}
