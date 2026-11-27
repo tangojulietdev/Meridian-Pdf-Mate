@@ -1,7 +1,7 @@
 // Meridian PDF Mate by Tango Juliet Dev. Offline PDF fill, sign, mark up and page editing.
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 
-const VERSION = '3.21.1';
+const VERSION = '3.22.0';
 const PL = window.PDFLib;
 const base = new URL('./vendor/', import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.mjs';
@@ -952,7 +952,7 @@ async function openDesign(o = {}) {
   if (o instanceof Event) o = {};
   closeMenu(); closeSheet();
   try {
-    const m = await import('./design.js?v=5');
+    const m = await import('./design.js?v=6');
     await m.openDesign({ PL, icon, toast, downloadBlob, print: () => openPrint(), openPdf: async (bytes, name) => { if (S.pages.length) newTab(); await addFiles([new File([bytes], name + '.pdf', { type: 'application/pdf' })]); } }, o);
   } catch (e) { console.error(e); toast('The design studio could not open. Reload the app and try again', { err: true }); }
 }
